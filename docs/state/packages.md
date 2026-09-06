@@ -8,6 +8,7 @@
 
 ## packages/
 
+- `@qajet/db` — `packages/db`
 - `@qajet/ui` — `packages/ui`
 
 ## tools/

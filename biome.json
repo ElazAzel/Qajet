@@ -11,7 +11,8 @@
       "!docs/state",
       "!**/*.db",
       "!pnpm-lock.yaml",
-      "!apps/web/next-env.d.ts"
+      "!apps/web/next-env.d.ts",
+      "!packages/db/migrations/meta"
     ]
   },
   "formatter": {

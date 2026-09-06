@@ -165,7 +165,9 @@ const PHASES: PhaseCheck[] = [
   {
     phase: 1,
     title: 'Данные и доступ: схема Drizzle, RLS, Supabase Auth',
-    evidencePaths: ['packages/db/schema', 'packages/db/policies'],
+    // Policies живут не в отдельной директории, а как pgPolicy() внутри тех
+    // же файлов схемы — так их видно рядом с таблицей, которую они защищают.
+    evidencePaths: ['packages/db/src/schema', 'apps/web/app/login/actions.ts'],
   },
   {
     phase: 2,
