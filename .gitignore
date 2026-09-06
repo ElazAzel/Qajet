@@ -1,0 +1,50 @@
+node_modules/
+.pnpm-store/
+
+# сборка
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+
+# сгенерированный Serwist service worker — собирается из app/sw.ts
+apps/web/public/sw.js
+apps/web/public/sw.js.map
+
+# окружение — .env.example коммитится, реальные значения нет
+.env
+.env.local
+.env.*.local
+
+# тесты
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# RAG: корпус и решения коммитятся, бинарный индекс — нет
+tools/rag/.index/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# нативные оболочки (фаза 7)
+apps/desktop/src-tauri/target/
+apps/mobile/ios/App/Pods/
+apps/mobile/android/.gradle/
+
+# ос и редакторы
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# supabase
+supabase/.branches/
+supabase/.temp/

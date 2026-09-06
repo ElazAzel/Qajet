@@ -1,0 +1,39 @@
+{
+  "name": "@qajet/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./motion": "./src/motion/index.ts",
+    "./primitives": "./src/primitives/index.ts",
+    "./shell": "./src/shell/index.ts",
+    "./lib/cn": "./src/lib/cn.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "clean": "rm -rf .turbo"
+  },
+  "dependencies": {
+    "clsx": "2.1.1",
+    "cmdk": "1.1.1",
+    "lucide-react": "1.41.0",
+    "motion": "catalog:",
+    "react-resizable-panels": "4.12.3",
+    "tailwind-merge": "3.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  }
+}

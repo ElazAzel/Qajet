@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   QAJET — токены дизайна
+   Источник истины: agents.md §12. Значения здесь менять нельзя без правки §12.
+
+   Концепция — «ведомость, которая думает»: аккуратный финансовый документ,
+   а не дашборд с карточками. Отсюда линии вместо теней, выравнивание цифр
+   по разряду и штампы вместо пилюль.
+   ============================================================================ */
+
+@theme {
+  /* --- Палитра §12. Один акцент, и он означает выбор человека. --- */
+  --color-ink: #0c1b22; /* глубокий петроль-чёрный: текст и тёмные плоскости */
+  --color-paper: #edefea; /* холодная костяная бумага: фон приложения */
+  --color-surface: #ffffff; /* плоскость документа */
+  --color-rule: #c9cfc6; /* линии внутри данных */
+  --color-accent: #d9a521; /* шафран: выбрано или требует выбора. Больше нигде */
+  --color-signal: #a62b2b; /* ТОЛЬКО нарушение обязательного условия и просрочка */
+  --color-muted: #5c6b6e; /* вторичный текст */
+
+  /* Производные. Считаются от базовых, отдельными цветами не являются. */
+  --color-rule-soft: color-mix(in oklab, var(--color-rule) 55%, var(--color-paper));
+  --color-ink-soft: color-mix(in oklab, var(--color-ink) 8%, transparent);
+  --color-accent-wash: color-mix(in oklab, var(--color-accent) 12%, var(--color-surface));
+  --color-signal-wash: color-mix(in oklab, var(--color-signal) 8%, var(--color-surface));
+
+  /* --- Типографика §12 --- */
+  /* Onest — единственное семейство интерфейса. Не Inter, не системный дефолт. */
+  --font-sans: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
+  /* IBM Plex Mono — ТОЛЬКО деньги, количества, номера документов, id. */
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --text-micro: 0.6875rem; /* 11px — подписи под данными, единицы измерения */
+  --text-micro--line-height: 1rem;
+  --text-fine: 0.8125rem; /* 13px — плотные таблицы консьержа */
+  --text-fine--line-height: 1.125rem;
+
+  /* --- Радиусы дифференцированы по смыслу §12. Один радиус на всё — шаблон. --- */
+  --radius-doc: 2px; /* документы, таблицы, строки данных */
+  --radius-control: 8px; /* интерактивные элементы */
+  --radius-overlay: 12px; /* модальные окна и шторки */
+
+  /* --- Движение §12. Те же значения читает packages/ui/motion/tokens.ts. --- */
+  --duration-instant: 120ms;
+  --duration-quick: 180ms;
+  --duration-base: 240ms;
+  --duration-deliberate: 420ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate: cubic-bezier(0, 0, 0, 1);
+  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --stagger-step: 60ms;
+}
+
+/* ============================================================================
+   Единственная разрешённая тень во всём продукте — под оверлеем.
+   §12 прямо запрещает одинаковую мягкую тень под каждой карточкой:
+   разделение плоскостей делают линии --rule, а не размытие.
+   ============================================================================ */
+@utility shadow-overlay {
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--color-ink) 8%, transparent),
+    0 12px 32px -8px color-mix(in oklab, var(--color-ink) 22%, transparent);
+}
+
+/* Денежные и числовые значения: моноширинный, цифры одной ширины,
+   выравнивание по разряду. Применяется только к числам, никогда к подписям. */
+@utility numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings:
+    "tnum" 1,
+    "zero" 1;
+  letter-spacing: -0.01em;
+}
+
+/* Незаполненное поле — прочерк на линии подчёркивания, как в бумажном бланке.
+   Не серый плейсхолдер (§12). */
+@utility blank-field {
+  display: inline-block;
+  min-width: 3.5rem;
+  border-bottom: 1px solid var(--color-rule);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-rule);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Заголовки — предложенным регистром. Никаких ALL-CAPS-эйрбоу (§12). */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  /* Длина строки в тексте — до 80 знаков (§12). */
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Видимый фокус клавиатуры — требование планки качества §12.
+     Обводка шафрановая: фокус это «здесь ты сейчас выбираешь». */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-doc);
+  }
+
+  /* Таблицы — это ведомость. Цифры по правому краю, линии тонкие. */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  ::selection {
+    background-color: var(--color-accent-wash);
+    color: var(--color-ink);
+  }
+}
+
+/* ============================================================================
+   prefers-reduced-motion. MotionProvider обнуляет длительности в JS,
+   здесь — то же самое для CSS-переходов, чтобы не осталось щелей.
+   ============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-quick: 0ms;
+    --duration-base: 0ms;
+    --duration-deliberate: 0ms;
+    --stagger-step: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================================
+   Оболочка приложения ведёт себя как приложение, а не как страница:
+   документ не тянется резинкой, скроллятся только области данных.
+   ============================================================================ */
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overscroll-behavior-y: none;
+  }
+
+  /* Мобильная оболочка поставщика: учёт вырезов и домашней полосы. */
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* В установленном PWA и в нативной оболочке текст не выделяется случайным
+     долгим нажатием — но в областях данных выделение обязано работать. */
+  @media (display-mode: standalone) {
+    body {
+      user-select: none;
+    }
+
+    input,
+    textarea,
+    [data-selectable] {
+      user-select: text;
+    }
+  }
+}

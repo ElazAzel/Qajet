@@ -1,0 +1,23 @@
+{
+  "name": "@qajet/rag",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "qajet-rag": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf .index .turbo"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "qajet",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "e2e": "turbo run e2e",
+    "rag:sync": "tsx tools/rag/src/cli.ts sync",
+    "rag:search": "tsx tools/rag/src/cli.ts search",
+    "rag:check": "tsx tools/rag/src/cli.ts check",
+    "rag:log": "tsx tools/rag/src/cli.ts log",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.12",
+    "turbo": "2.10.12",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3"
+  }
+}

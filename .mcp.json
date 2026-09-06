@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "qajet-rag": {
+      "command": "pnpm",
+      "args": ["exec", "tsx", "tools/rag/src/mcp.ts"],
+      "description": "Поиск по agents.md, ADR и журналу разработки QAJET (tools/rag)."
+    }
+  }
+}

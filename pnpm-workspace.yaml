@@ -1,0 +1,27 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "tools/*"
+
+# Сборочные скрипты разрешены поимённо. Всё остальное не выполняется.
+onlyBuiltDependencies:
+  - "@biomejs/biome"
+  - "@tailwindcss/oxide"
+  - esbuild
+  - sharp
+
+# Версии зафиксированы явно (ADR-0001). Каталог не даёт разъехаться
+# версиям одной библиотеки между пакетами монорепо.
+catalog:
+  react: 19.2.8
+  react-dom: 19.2.8
+  "@types/react": 19.2.18
+  "@types/react-dom": 19.2.7
+  next: 16.3.4
+  typescript: 5.9.3
+  motion: 13.2.0
+  zod: 4.5.4
+  vitest: 4.1.11
+  "@vitejs/plugin-react": 6.1.1
+  tailwindcss: 4.3.3
+  "@tailwindcss/postcss": 4.3.3
