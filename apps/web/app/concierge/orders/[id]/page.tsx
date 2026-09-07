@@ -1,7 +1,7 @@
 import type { CombinedPlan, PlanKind } from '@qajet/engine/combine';
 import { nextStatesFor } from '@qajet/engine/order';
 import { BarGrow, type BarSegment, Reveal, Stagger, Stamp } from '@qajet/ui/motion';
-import { formatKzt, Money } from '@qajet/ui/primitives';
+import { Card, formatKzt, Money } from '@qajet/ui/primitives';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadRequestComparison } from '../../../lib/comparison';
@@ -160,7 +160,7 @@ function PlanCard({
   }
 
   return (
-    <div className="rounded-card border border-rule bg-surface p-5">
+    <Card padding="sm">
       <div className="flex items-center justify-between gap-4">
         <div>
           <span className="text-fine font-semibold text-muted">{PLAN_LABEL[plan.kind]}</span>
@@ -197,7 +197,7 @@ function PlanCard({
       </div>
 
       {action}
-    </div>
+    </Card>
   );
 }
 

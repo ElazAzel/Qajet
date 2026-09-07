@@ -1,6 +1,6 @@
 import { nextStatesFor } from '@qajet/engine/order';
 import { Reveal, Stamp } from '@qajet/ui/motion';
-import { formatKzt, Money } from '@qajet/ui/primitives';
+import { Card, formatKzt, Money } from '@qajet/ui/primitives';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerOrder } from '../../../lib/buyer-order';
@@ -36,41 +36,43 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
       </Reveal>
 
       {order.plan && (
-        <Reveal className="mt-6 rounded-card border border-rule bg-surface p-5" from="up">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <span className="text-fine font-semibold text-muted">
-                {PLAN_LABEL[order.plan.kind] ?? order.plan.kind}
-              </span>
-              <p className="mt-0.5 text-xl font-extrabold text-ink">
-                <Money amountKzt={order.plan.totalKzt} />
-              </p>
-            </div>
-            <div className="text-right text-fine text-muted">
-              <p>
-                Срок {order.plan.etaDate ?? '—'} · запас {order.plan.slackDays ?? '—'} дн.
-              </p>
-              <p>
-                {order.plan.supplierCount}{' '}
-                {order.plan.supplierCount === 1 ? 'поставщик' : 'поставщика'}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-1.5">
-            {order.plan.decomposition.map((line) => (
-              <div key={line.label} className="flex items-center justify-between text-fine">
-                <span className="text-muted">{line.label}</span>
-                <span className="numeric text-ink">{formatKzt(line.amountKzt ?? 0)}</span>
+        <Reveal className="mt-6" from="up">
+          <Card padding="sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <span className="text-fine font-semibold text-muted">
+                  {PLAN_LABEL[order.plan.kind] ?? order.plan.kind}
+                </span>
+                <p className="mt-0.5 text-xl font-extrabold text-ink">
+                  <Money amountKzt={order.plan.totalKzt} />
+                </p>
               </div>
-            ))}
-          </div>
-
-          {canApprove && (
-            <div className="mt-4">
-              <ApprovePlanCta orderId={order.id} />
+              <div className="text-right text-fine text-muted">
+                <p>
+                  Срок {order.plan.etaDate ?? '—'} · запас {order.plan.slackDays ?? '—'} дн.
+                </p>
+                <p>
+                  {order.plan.supplierCount}{' '}
+                  {order.plan.supplierCount === 1 ? 'поставщик' : 'поставщика'}
+                </p>
+              </div>
             </div>
-          )}
+
+            <div className="mt-4 flex flex-col gap-1.5">
+              {order.plan.decomposition.map((line) => (
+                <div key={line.label} className="flex items-center justify-between text-fine">
+                  <span className="text-muted">{line.label}</span>
+                  <span className="numeric text-ink">{formatKzt(line.amountKzt ?? 0)}</span>
+                </div>
+              ))}
+            </div>
+
+            {canApprove && (
+              <div className="mt-4">
+                <ApprovePlanCta orderId={order.id} />
+              </div>
+            )}
+          </Card>
         </Reveal>
       )}
 
@@ -87,22 +89,24 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
       )}
 
       {order.closedAt && (
-        <Reveal className="mt-6 rounded-card border border-rule bg-surface p-5" from="up">
-          <p className="text-sm font-bold text-ink">Заказ закрыт</p>
-          <div className="mt-2 flex items-center justify-between text-fine">
-            <span className="text-muted">Итоговая стоимость</span>
-            <span className="numeric text-ink">{formatKzt(order.finalCostKzt ?? 0)}</span>
-          </div>
-          {order.settlement && order.settlement !== 'exact' && (
-            <div className="mt-1 flex items-center justify-between text-fine">
-              <span className="text-muted">
-                {order.settlement === 'refund' ? 'Возврат покупателю' : 'Доплата от покупателя'}
-              </span>
-              <span className="numeric text-ink">
-                {formatKzt(Math.abs(order.settlementAmountKzt ?? 0))}
-              </span>
+        <Reveal className="mt-6" from="up">
+          <Card padding="sm">
+            <p className="text-sm font-bold text-ink">Заказ закрыт</p>
+            <div className="mt-2 flex items-center justify-between text-fine">
+              <span className="text-muted">Итоговая стоимость</span>
+              <span className="numeric text-ink">{formatKzt(order.finalCostKzt ?? 0)}</span>
             </div>
-          )}
+            {order.settlement && order.settlement !== 'exact' && (
+              <div className="mt-1 flex items-center justify-between text-fine">
+                <span className="text-muted">
+                  {order.settlement === 'refund' ? 'Возврат покупателю' : 'Доплата от покупателя'}
+                </span>
+                <span className="numeric text-ink">
+                  {formatKzt(Math.abs(order.settlementAmountKzt ?? 0))}
+                </span>
+              </div>
+            )}
+          </Card>
         </Reveal>
       )}
 

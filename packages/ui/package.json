@@ -5,6 +5,7 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./hooks": "./src/hooks/index.ts",
     "./motion": "./src/motion/index.ts",
     "./primitives": "./src/primitives/index.ts",
     "./shell": "./src/shell/index.ts",

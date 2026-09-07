@@ -181,7 +181,7 @@ export function ShellLayout({
               href={item.href}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'relative flex flex-1 flex-col items-center gap-1 py-2.5 text-micro',
+                'relative flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-micro',
                 active
                   ? dark
                     ? 'text-lime'
@@ -192,7 +192,7 @@ export function ShellLayout({
               )}
             >
               <span aria-hidden="true">{item.icon}</span>
-              {item.label}
+              <span className="w-full truncate text-center">{item.label}</span>
               {!!item.badge && (
                 <span className="absolute top-1 right-[calc(50%-18px)] flex h-4 min-w-4 items-center justify-center rounded-full bg-purple px-1 text-[10px] font-medium text-white">
                   {item.badge}

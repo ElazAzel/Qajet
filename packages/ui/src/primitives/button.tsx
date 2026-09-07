@@ -32,16 +32,41 @@ const sizeClass: Record<ButtonSize, string> = {
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** Идёт запрос — крутилка вместо иконки слева, кнопка недоступна. Единственный
+   *  разрешённый бесконечный цикл анимации (§12: «только у индикаторов загрузки»). */
+  loading?: boolean;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'secondary', size = 'md', type = 'button', ...props }, ref) => (
+  (
+    {
+      className,
+      variant = 'secondary',
+      size = 'md',
+      type = 'button',
+      loading = false,
+      disabled,
+      children,
+      ...props
+    },
+    ref,
+  ) => (
     <button
       ref={ref}
       type={type}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cn(base, variantClass[variant], sizeClass[size], className)}
       {...props}
-    />
+    >
+      {loading && (
+        <span
+          aria-hidden="true"
+          className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent"
+        />
+      )}
+      {children}
+    </button>
   ),
 );
 Button.displayName = 'Button';

@@ -1,4 +1,5 @@
 import { Reveal, Stagger } from '@qajet/ui/motion';
+import { Card, StatTile } from '@qajet/ui/primitives';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadLearningMetrics } from '../../lib/learning-metrics';
 import { ExplorationChart, LeadtimeChart, MapeMarginChart } from './_charts';
@@ -61,66 +62,62 @@ export default async function AdminLearningPage() {
         />
       </Stagger>
 
-      <Reveal className="rounded-card border border-rule bg-surface p-6" delay={0.12}>
-        <h3 className="text-base font-bold text-ink">MAPE калькулятора и средний запас</h3>
-        <p className="mt-1 text-fine text-muted">
-          MAPE — средняя ошибка оценки по категориям, где уже есть история наблюдений. Запас —
-          P80-квантиль ошибки, который движок закладывает сверх точечной оценки; он снижается по
-          мере роста числа наблюдений на товар.
-        </p>
-        {estimator.length > 0 ? (
-          <div className="mt-4">
-            <MapeMarginChart points={estimator} />
-          </div>
-        ) : (
-          <EmptyNote text="Нет ни одного прогона estimator в model_snapshots." />
-        )}
+      <Reveal delay={0.12}>
+        <Card>
+          <h3 className="text-base font-bold text-ink">MAPE калькулятора и средний запас</h3>
+          <p className="mt-1 text-fine text-muted">
+            MAPE — средняя ошибка оценки по категориям, где уже есть история наблюдений. Запас —
+            P80-квантиль ошибки, который движок закладывает сверх точечной оценки; он снижается по
+            мере роста числа наблюдений на товар.
+          </p>
+          {estimator.length > 0 ? (
+            <div className="mt-4">
+              <MapeMarginChart points={estimator} />
+            </div>
+          ) : (
+            <EmptyNote text="Нет ни одного прогона estimator в model_snapshots." />
+          )}
+        </Card>
       </Reveal>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Reveal className="rounded-card border border-rule bg-surface p-6" delay={0.18}>
-          <h3 className="text-base font-bold text-ink">Поставщики с историей срока поставки</h3>
-          <p className="mt-1 text-fine text-muted">
-            leadtime.predictAfterQuote() сдвигает прогноз к 1.0 при малой выборке — чем больше
-            поставщиков с накопленной историей, тем точнее slack_days в сравнении вариантов.
-          </p>
-          {leadtime.length > 0 ? (
-            <div className="mt-4">
-              <LeadtimeChart points={leadtime} />
-            </div>
-          ) : (
-            <EmptyNote text="Нет ни одного прогона leadtime в model_snapshots." />
-          )}
+        <Reveal delay={0.18}>
+          <Card>
+            <h3 className="text-base font-bold text-ink">Поставщики с историей срока поставки</h3>
+            <p className="mt-1 text-fine text-muted">
+              leadtime.predictAfterQuote() сдвигает прогноз к 1.0 при малой выборке — чем больше
+              поставщиков с накопленной историей, тем точнее slack_days в сравнении вариантов.
+            </p>
+            {leadtime.length > 0 ? (
+              <div className="mt-4">
+                <LeadtimeChart points={leadtime} />
+              </div>
+            ) : (
+              <EmptyNote text="Нет ни одного прогона leadtime в model_snapshots." />
+            )}
+          </Card>
         </Reveal>
 
-        <Reveal className="rounded-card border border-rule bg-surface p-6" delay={0.22}>
-          <h3 className="text-base font-bold text-ink">
-            Новые поставщики через слоты исследования
-          </h3>
-          <p className="mt-1 text-fine text-muted">
-            Thompson sampling иногда осознанно приглашает поставщика без истории вместо проверенного
-            лидера — так матчер собирает данные о новых компаниях, а не застревает на первых лидерах
-            навсегда.
-          </p>
-          {exploration.length > 0 ? (
-            <div className="mt-4">
-              <ExplorationChart points={exploration} />
-            </div>
-          ) : (
-            <EmptyNote text="Ни одного RFQ со слотом исследования (rfqs.is_exploration) пока нет." />
-          )}
+        <Reveal delay={0.22}>
+          <Card>
+            <h3 className="text-base font-bold text-ink">
+              Новые поставщики через слоты исследования
+            </h3>
+            <p className="mt-1 text-fine text-muted">
+              Thompson sampling иногда осознанно приглашает поставщика без истории вместо
+              проверенного лидера — так матчер собирает данные о новых компаниях, а не застревает на
+              первых лидерах навсегда.
+            </p>
+            {exploration.length > 0 ? (
+              <div className="mt-4">
+                <ExplorationChart points={exploration} />
+              </div>
+            ) : (
+              <EmptyNote text="Ни одного RFQ со слотом исследования (rfqs.is_exploration) пока нет." />
+            )}
+          </Card>
         </Reveal>
       </div>
-    </div>
-  );
-}
-
-function StatTile({ title, value, note }: { title: string; value: string; note: string }) {
-  return (
-    <div className="rounded-card border border-rule bg-surface p-5">
-      <p className="text-xl font-extrabold text-ink">{value}</p>
-      <p className="mt-1 text-fine font-semibold text-ink">{title}</p>
-      {note && <p className="mt-0.5 text-micro text-muted">{note}</p>}
     </div>
   );
 }

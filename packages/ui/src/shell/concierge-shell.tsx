@@ -1,5 +1,8 @@
 'use client';
 
+import { ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import {
   Group,
@@ -8,6 +11,7 @@ import {
   Separator,
   useDefaultLayout,
 } from 'react-resizable-panels';
+import { cn } from '../lib/cn';
 import { ShellLayout, type ShellNavItem, type ShellUser } from './shell-layout';
 
 /**
@@ -20,6 +24,16 @@ import { ShellLayout, type ShellNavItem, type ShellUser } from './shell-layout';
  * react-resizable-panels v4 переписал API на примитивы Group/Panel/Separator
  * (раньше — PanelGroup/PanelResizeHandle). Читать это как факт версии,
  * а не как сокращение имён по вкусу.
+ *
+ * Split-панель имеет смысл только от планшета и выше — при ≤375px 32%
+ * список превращается в нечитаемую полосу в 120px. Ниже `md` split не
+ * рисуется вовсе: одна колонка на весь экран, список ИЛИ карточка, в
+ * зависимости от маршрута (`/concierge` — список, `/concierge/orders/[id]`
+ * — карточка с кнопкой «Все заказы» назад). Разметка списка/карточки при
+ * этом присутствует в DOM дважды (для desktop-сплита и для мобильной
+ * колонки) и переключается через `hidden`/`md:hidden` — тот же приём,
+ * что уже использует ShellLayout для сайдбара и нижних вкладок, не новый
+ * паттерн ради этого экрана.
  */
 
 /**
@@ -56,27 +70,53 @@ export function ConciergeShell({
     id: 'qajet-concierge-layout',
     storage: typeof window === 'undefined' ? noopStorage : window.localStorage,
   });
+  const pathname = usePathname();
+  const isDetailRoute = pathname !== '/concierge';
 
   return (
     <ShellLayout navItems={navItems} user={user}>
-      <Group
-        orientation="horizontal"
-        id="concierge-columns"
-        defaultLayout={defaultLayout}
-        onLayoutChanged={onLayoutChanged}
-        className="-m-6 h-[calc(100%+3rem)]"
-      >
-        <Panel id="list" defaultSize="32" minSize="22%" maxSize="48%">
-          <div className="h-full overflow-y-auto border-r border-rule bg-surface">{list}</div>
-        </Panel>
-        <Separator className="w-px bg-rule transition-colors hover:bg-purple data-[active]:bg-purple" />
-        <Panel id="detail" minSize="40%">
-          <div className="relative h-full overflow-y-auto bg-page">
-            {detail}
-            {overlayPanel}
-          </div>
-        </Panel>
-      </Group>
+      {/*
+        react-resizable-panels рендерит Group/Panel со своим инлайновым
+        `style={{ display: 'flex' }}` (нужен ему для собственной раскладки) —
+        инлайновый style всегда побеждает класс, поэтому `hidden md:flex`
+        НА САМОМ Group ничего не прячет. Прячем через внешний div, до
+        которого библиотека не дотягивается.
+      */}
+      <div className="-m-6 hidden h-[calc(100%+3rem)] md:block">
+        <Group
+          orientation="horizontal"
+          id="concierge-columns"
+          defaultLayout={defaultLayout}
+          onLayoutChanged={onLayoutChanged}
+          className="h-full"
+        >
+          <Panel id="list" defaultSize="32" minSize="22%" maxSize="48%">
+            <div className="h-full overflow-y-auto border-r border-rule bg-surface">{list}</div>
+          </Panel>
+          <Separator className="w-px bg-rule transition-colors hover:bg-purple data-[active]:bg-purple" />
+          <Panel id="detail" minSize="40%">
+            <div className="relative h-full overflow-y-auto bg-page">
+              {detail}
+              {overlayPanel}
+            </div>
+          </Panel>
+        </Group>
+      </div>
+
+      <div className="-mx-6 -mt-6 md:hidden">
+        <div className={cn('bg-surface', isDetailRoute && 'hidden')}>{list}</div>
+        <div className={cn('relative bg-page', !isDetailRoute && 'hidden')}>
+          <Link
+            href="/concierge"
+            className="flex items-center gap-1.5 border-b border-rule px-4 py-3 text-fine font-semibold text-muted"
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+            Все заказы
+          </Link>
+          <div className="px-6 py-6">{detail}</div>
+          {overlayPanel}
+        </div>
+      </div>
     </ShellLayout>
   );
 }

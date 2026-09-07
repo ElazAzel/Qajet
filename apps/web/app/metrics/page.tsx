@@ -1,5 +1,5 @@
 import { Reveal, Stagger } from '@qajet/ui/motion';
-import { formatKzt } from '@qajet/ui/primitives';
+import { formatKzt, StatTile } from '@qajet/ui/primitives';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../lib/current-user';
@@ -50,12 +50,13 @@ export default async function MetricsPage() {
           startIndex={1}
           className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          <MetricTile
+          <StatTile
             title="Конверсия RFQ → сделка"
             value={conversionPct !== null ? `${conversionPct}%` : 'нет данных'}
             note={`${metrics.rfqConversion.requestsWithRfqAndOrder} из ${metrics.rfqConversion.requestsWithRfq} заявок с отправленным RFQ дошли до заказа`}
+            className="p-6"
           />
-          <MetricTile
+          <StatTile
             title="Точность калькулятора"
             value={
               metrics.estimatorMapePct !== null
@@ -63,59 +64,36 @@ export default async function MetricsPage() {
                 : 'нет данных'
             }
             note="Средняя ошибка оценки по категориям с историей наблюдений, последний прогон recalibrate()"
+            className="p-6"
           />
-          <MetricTile
+          <StatTile
             title="Компании с повторным заказом"
             value={repeatPct !== null ? `${repeatPct}%` : 'нет данных'}
             note={`${metrics.repeatCompanies.repeat} из ${metrics.repeatCompanies.total} компаний — главная метрика пилота`}
-            highlight
+            tone="highlight"
+            className="p-6"
           />
-          <MetricTile
+          <StatTile
             title="GMV закрытых заказов"
             value={formatKzt(metrics.gmv.totalKzt)}
             note={`${metrics.gmv.closedOrders} закрытых заказов · метрика масштаба, не прибыльности`}
+            className="p-6"
           />
-          <MetricTile
+          <StatTile
             title="Комиссия QAJET заработана"
             value={formatKzt(metrics.commission.totalKzt)}
             note={`${metrics.commission.closedOrders} заказов · в среднем ${formatKzt(metrics.commission.avgKzt)} на заказ`}
+            className="p-6"
           />
-          <MetricTile
+          <StatTile
             title="Активные часы на заказ"
             value={metrics.hasTimeEntries ? '—' : 'нет данных'}
             note="Автотаймер консьержа (agents.md §9) ещё не подключён к экрану заказа — time_entries пока не пишется"
-            muted
+            tone="muted"
+            className="p-6"
           />
         </Stagger>
       </div>
-    </div>
-  );
-}
-
-function MetricTile({
-  title,
-  value,
-  note,
-  highlight,
-  muted,
-}: {
-  title: string;
-  value: string;
-  note: string;
-  highlight?: boolean;
-  muted?: boolean;
-}) {
-  return (
-    <div
-      className={
-        highlight
-          ? 'rounded-card border border-purple bg-purple-10 p-6'
-          : 'rounded-card border border-rule bg-surface p-6'
-      }
-    >
-      <p className={`text-2xl font-extrabold ${muted ? 'text-muted' : 'text-ink'}`}>{value}</p>
-      <p className="mt-1.5 text-sm font-semibold text-ink">{title}</p>
-      <p className="mt-1 text-fine text-muted">{note}</p>
     </div>
   );
 }

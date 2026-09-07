@@ -1,59 +1,29 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useAsyncAction } from '@qajet/ui/hooks';
+import { Button } from '@qajet/ui/primitives';
 import { useState } from 'react';
 import { advanceOrderStage, approvePlan } from '../../../lib/actions/order-actions';
 
-/** Общая обёртка: кнопка + состояние pending/error, чтобы не повторять её трижды. */
-function useOrderAction(run: () => Promise<{ ok: boolean; error?: string }>) {
-  const router = useRouter();
-  const [state, setState] = useState<'idle' | 'pending' | 'error'>('idle');
-  const [error, setError] = useState<string | null>(null);
-
-  async function trigger() {
-    setState('pending');
-    setError(null);
-    const result = await run();
-    if (result.ok) {
-      router.refresh();
-      return;
-    }
-    setState('error');
-    setError(result.error ?? 'Не удалось выполнить действие');
-  }
-
-  return { trigger, pending: state === 'pending', error };
-}
-
 export function ApprovePlanCta({ orderId }: { orderId: string }) {
-  const { trigger, pending, error } = useOrderAction(() => approvePlan(orderId));
+  const { run, pending, error } = useAsyncAction(approvePlan);
   return (
     <div className="flex flex-col items-start gap-1.5">
-      <button
-        type="button"
-        onClick={trigger}
-        disabled={pending}
-        className="rounded-control bg-purple px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-[var(--duration-instant)] hover:bg-purple/90 disabled:opacity-50"
-      >
+      <Button variant="primary" loading={pending} onClick={() => run(orderId)}>
         {pending ? 'Утверждаю…' : 'Утвердить план'}
-      </button>
+      </Button>
       {error && <p className="text-fine text-signal">{error}</p>}
     </div>
   );
 }
 
 export function AcceptDeliveryCta({ orderId }: { orderId: string }) {
-  const { trigger, pending, error } = useOrderAction(() => advanceOrderStage(orderId, 'accepted'));
+  const { run, pending, error } = useAsyncAction((id: string) => advanceOrderStage(id, 'accepted'));
   return (
     <div className="flex flex-col items-start gap-1.5">
-      <button
-        type="button"
-        onClick={trigger}
-        disabled={pending}
-        className="rounded-control bg-purple px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-[var(--duration-instant)] hover:bg-purple/90 disabled:opacity-50"
-      >
+      <Button variant="primary" loading={pending} onClick={() => run(orderId)}>
         {pending ? 'Принимаю…' : 'Принять поставку'}
-      </button>
+      </Button>
       {error && <p className="text-fine text-signal">{error}</p>}
     </div>
   );
@@ -68,8 +38,8 @@ const SETTLEMENT_LABEL: Record<'exact', string> & Record<'refund' | 'surcharge',
 export function CloseOrderForm({ orderId }: { orderId: string }) {
   const [settlement, setSettlement] = useState<'refund' | 'surcharge' | 'exact'>('exact');
   const [amount, setAmount] = useState('');
-  const { trigger, pending, error } = useOrderAction(() =>
-    advanceOrderStage(orderId, 'closed', {
+  const { run, pending, error } = useAsyncAction((id: string) =>
+    advanceOrderStage(id, 'closed', {
       settlement,
       settlementAmountKzt: settlement === 'exact' ? 0 : Number(amount) || 0,
     }),
@@ -105,14 +75,14 @@ export function CloseOrderForm({ orderId }: { orderId: string }) {
           />
         </label>
       )}
-      <button
-        type="button"
-        onClick={trigger}
-        disabled={pending}
-        className="self-start rounded-control bg-purple px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-[var(--duration-instant)] hover:bg-purple/90 disabled:opacity-50"
+      <Button
+        variant="primary"
+        loading={pending}
+        className="self-start"
+        onClick={() => run(orderId)}
       >
         {pending ? 'Закрываю…' : 'Закрыть заказ'}
-      </button>
+      </Button>
       {error && <p className="text-fine text-signal">{error}</p>}
     </div>
   );
