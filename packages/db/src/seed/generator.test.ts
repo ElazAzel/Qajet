@@ -164,4 +164,34 @@ describe('generateSeedDataset', () => {
     const limits = new Set(buyerStaff.map((u) => u.approvalLimitKzt));
     expect(limits.size).toBe(2);
   });
+
+  it('переиспользует существующие компанию/аккаунты вместо дублирования (повторный прогон против непустой БД)', () => {
+    const existingBuyerCompanyId = 'aaaaaaaa-0000-0000-0000-000000000001';
+    const existingSupplierCompanyId = 'aaaaaaaa-0000-0000-0000-000000000002';
+    const existingBuyerUserId = 'aaaaaaaa-0000-0000-0000-000000000003';
+    const dataset = generateSeedDataset({
+      ...PARAMS,
+      existing: {
+        buyerCompanyId: existingBuyerCompanyId,
+        supplierCompanyId: existingSupplierCompanyId,
+        accountsByEmail: { 'buyer@demo.qajet.kz': existingBuyerUserId },
+      },
+    });
+
+    // Ни компания-покупатель, ни существующий аккаунт не вставляются заново.
+    expect(dataset.companies.some((c) => c.id === existingBuyerCompanyId)).toBe(false);
+    expect(dataset.users.some((u) => u.id === existingBuyerUserId)).toBe(false);
+
+    const buyerAccount = dataset.accounts.find((a) => a.seedKey === 'demo-buyer');
+    expect(buyerAccount?.userId).toBe(existingBuyerUserId);
+    expect(buyerAccount?.isNew).toBe(false);
+    expect(buyerAccount?.companyId).toBe(existingBuyerCompanyId);
+
+    const supplierAccount = dataset.accounts.find((a) => a.seedKey === 'demo-supplier');
+    expect(supplierAccount?.companyId).toBe(existingSupplierCompanyId);
+    expect(supplierAccount?.isNew).toBe(true);
+
+    // Все заявки покупателя ссылаются на переданный id, а не на новый сгенерированный.
+    expect(dataset.requests.every((r) => r.buyerCompanyId === existingBuyerCompanyId)).toBe(true);
+  });
 });

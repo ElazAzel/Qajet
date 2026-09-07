@@ -14,7 +14,12 @@ import type { OrderOutcome } from '@qajet/engine/learn';
 import { recalibrate } from '@qajet/engine/learn';
 import { roundKzt } from '@qajet/engine/money';
 import type * as schema from '../schema/index.js';
-import { SEED_ACCOUNTS, SEED_BUYER_COMPANY, SEED_SUPPLIER_COMPANIES } from './accounts.js';
+import {
+  DEMO_SUPPLIER_COMPANY_SEED_KEY,
+  SEED_ACCOUNTS,
+  SEED_BUYER_COMPANY,
+  SEED_SUPPLIER_COMPANIES,
+} from './accounts.js';
 import { type CatalogItem, catalogInCategory, SEED_CATALOG } from './catalog.js';
 import { createRng, pickMany, randInt } from './random.js';
 import type { SeedCategory } from './suppliers.js';
@@ -146,6 +151,8 @@ export interface SeedAccountLink {
   userId: string;
   companyId: string | null;
   isQuickLogin: boolean;
+  /** false → аккаунт уже существовал (переиспользован), auth/users-строку создавать не нужно. */
+  isNew: boolean;
 }
 
 export interface SeedDataset {
@@ -175,10 +182,26 @@ export interface SeedDataset {
   accounts: SeedAccountLink[];
 }
 
+export interface ExistingSeedState {
+  /** Компания-покупатель уже существует (ручной бутстрап до появления этого генератора) — не дублировать. */
+  buyerCompanyId?: string;
+  /** Компания, к которой уже привязан живой supplier@demo.qajet.kz — не одна из 15 генерируемых. */
+  supplierCompanyId?: string;
+  /** email → уже существующий auth/public.users id — не создавать аккаунт и не вставлять users-строку заново. */
+  accountsByEmail?: Record<string, string>;
+}
+
 export interface GenerateSeedParams {
   seed: number;
   /** ISO-дата "сейчас" — от неё считаются все относительные даты (agents.md §13). */
   referenceDateIso: string;
+  /**
+   * Повторный прогон против непустой базы (agents.md §13: "один и тот же
+   * pnpm db:seed" — не только против пустой): уже существующие компанию
+   * покупателя, компанию поставщика демо-логина и аккаунты нужно переиспользовать,
+   * а не дублировать второй раз с новыми id.
+   */
+  existing?: ExistingSeedState;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,19 +248,22 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
   );
 
   // --- Компании и аккаунты ---
-  const buyerCompanyId = randomUUID();
-  dataset.companies.push({
-    id: buyerCompanyId,
-    type: 'buyer',
-    name: SEED_BUYER_COMPANY.name,
-    bin: SEED_BUYER_COMPANY.bin,
-    taxMode: SEED_BUYER_COMPANY.taxMode,
-    vatStatus: SEED_BUYER_COMPANY.vatStatus,
-    verifiedAt: referenceDate,
-    verificationNote: 'Проверено вручную на регистрации в демо-режиме.',
-    city: SEED_BUYER_COMPANY.city,
-    isActive: true,
-  });
+  const existing = params.existing;
+  const buyerCompanyId = existing?.buyerCompanyId ?? randomUUID();
+  if (!existing?.buyerCompanyId) {
+    dataset.companies.push({
+      id: buyerCompanyId,
+      type: 'buyer',
+      name: SEED_BUYER_COMPANY.name,
+      bin: SEED_BUYER_COMPANY.bin,
+      taxMode: SEED_BUYER_COMPANY.taxMode,
+      vatStatus: SEED_BUYER_COMPANY.vatStatus,
+      verifiedAt: referenceDate,
+      verificationNote: 'Проверено вручную на регистрации в демо-режиме.',
+      city: SEED_BUYER_COMPANY.city,
+      isActive: true,
+    });
+  }
 
   const supplierCompanyIdBySeedKey = new Map<string, string>();
   for (const { seedKey, supplier } of SEED_SUPPLIER_COMPANIES) {
@@ -268,17 +294,27 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
   }
 
   for (const account of SEED_ACCOUNTS) {
-    const userId = randomUUID();
-    const companyId = account.companySeedKey === 'buyer-company' ? buyerCompanyId : null;
-    dataset.users.push({
-      id: userId,
-      companyId,
-      email: account.email,
-      fullName: account.fullName,
-      role: account.role,
-      approvalLimitKzt: account.approvalLimitKzt,
-      isActive: true,
-    });
+    const existingUserId = existing?.accountsByEmail?.[account.email];
+    const userId = existingUserId ?? randomUUID();
+    const companyId =
+      account.companySeedKey === 'buyer-company'
+        ? buyerCompanyId
+        : account.companySeedKey === 'supplier-company'
+          ? (existing?.supplierCompanyId ??
+            supplierCompanyIdBySeedKey.get(DEMO_SUPPLIER_COMPANY_SEED_KEY) ??
+            null)
+          : null;
+    if (!existingUserId) {
+      dataset.users.push({
+        id: userId,
+        companyId,
+        email: account.email,
+        fullName: account.fullName,
+        role: account.role,
+        approvalLimitKzt: account.approvalLimitKzt,
+        isActive: true,
+      });
+    }
     dataset.accounts.push({
       seedKey: account.seedKey,
       email: account.email,
@@ -287,6 +323,7 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
       userId,
       companyId,
       isQuickLogin: account.isQuickLogin,
+      isNew: !existingUserId,
     });
   }
 

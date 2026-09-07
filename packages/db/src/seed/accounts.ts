@@ -31,7 +31,7 @@ export interface SeedAccount {
   fullName: string;
   role: SeedAccountRole;
   /** null → сотрудник QAJET (concierge/admin), companyId не выставляется. */
-  companySeedKey: 'buyer-company' | null;
+  companySeedKey: 'buyer-company' | 'supplier-company' | null;
   approvalLimitKzt: number | null;
   /** Показывается кнопкой быстрого входа на /login в dev — agents.md §13. */
   isQuickLogin: boolean;
@@ -64,7 +64,7 @@ export const SEED_ACCOUNTS: readonly SeedAccount[] = [
     password: DEMO_PASSWORD,
     fullName: 'Ержан Тулегенов',
     role: 'owner',
-    companySeedKey: null,
+    companySeedKey: 'supplier-company',
     approvalLimitKzt: null,
     isQuickLogin: true,
   },
