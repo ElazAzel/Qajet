@@ -1,0 +1,28 @@
+{
+  "name": "@qajet/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./money": "./src/money/index.ts",
+    "./intake": "./src/intake/parse.ts",
+    "./estimate": "./src/estimate/estimate.ts",
+    "./match": "./src/match/match.ts",
+    "./combine": "./src/combine/combine.ts",
+    "./leadtime": "./src/leadtime/predict.ts",
+    "./tax": "./src/tax/snr.ts",
+    "./learn": "./src/learn/recalibrate.ts",
+    "./explain": "./src/explain/types.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf .turbo"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
