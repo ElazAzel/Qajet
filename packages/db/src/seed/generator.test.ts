@@ -1,0 +1,167 @@
+import { describe, expect, it } from 'vitest';
+import { generateSeedDataset } from './generator.js';
+import { SEED_SUPPLIERS } from './suppliers.js';
+
+/**
+ * Инварианты сида — agents.md §13. Без реальной БД: чистые функции,
+ * проверяем форму сгенерированного графа данных, а не побочные эффекты.
+ */
+
+const PARAMS = { seed: 42, referenceDateIso: '2026-09-07' };
+
+describe('generateSeedDataset', () => {
+  it('детерминирован — два прогона с одним зерном дают идентичный результат', () => {
+    // id — randomUUID(), заведомо разный между прогонами; детерминизм проверяем
+    // по содержимому, не зависящему от случайных идентификаторов.
+    const summarize = (d: ReturnType<typeof generateSeedDataset>) => ({
+      orderStates: d.orders.map((o) => o.state).sort(),
+      finalCosts: d.orders.map((o) => o.finalCostKzt).filter((v) => v !== null),
+      priceObservations: d.priceObservations.map((o) => [
+        o.category,
+        o.itemKey,
+        o.qty,
+        o.unitPriceKzt,
+      ]),
+      modelSnapshotMetrics: d.modelSnapshots.map((s) => [
+        s.model,
+        s.nSamples,
+        JSON.stringify(s.metrics),
+      ]),
+    });
+    const a = summarize(generateSeedDataset(PARAMS));
+    const b = summarize(generateSeedDataset(PARAMS));
+    expect(a).toEqual(b);
+  });
+
+  it('минимум 3 поставщика из 15 на упрощённой декларации (agents.md §13)', () => {
+    const simplified = SEED_SUPPLIERS.filter((s) => s.taxMode === 'simplified');
+    expect(simplified.length).toBeGreaterThanOrEqual(3);
+    expect(SEED_SUPPLIERS).toHaveLength(15);
+  });
+
+  it('ровно 24 закрытых заказа', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    const closed = dataset.orders.filter((o) => o.state === 'closed');
+    expect(closed).toHaveLength(24);
+  });
+
+  it('по заказу на каждой оставшейся стадии жизненного цикла', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    const states = [
+      'draft',
+      'estimated',
+      'prepaid',
+      'rfq_sent',
+      'plan_proposed',
+      'plan_approved',
+      'suppliers_paid',
+      'in_production',
+      'shipped',
+      'delivered',
+      'accepted',
+      'awaiting_internal_approval',
+      'on_hold',
+      'cancelled',
+      'disputed',
+    ] as const;
+    for (const state of states) {
+      const count = dataset.orders.filter((o) => o.state === state).length;
+      expect(count, `стадия ${state}`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('демо-заказ quotes_received: 6 позиций, 5 КП, 2 с пропущенными полями, 1 с невыполнимым сроком', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    const demoOrder = dataset.orders.find((o) => o.state === 'quotes_received');
+    expect(demoOrder).toBeDefined();
+    if (!demoOrder) return;
+
+    const items = dataset.requestItems.filter((ri) => ri.requestId === demoOrder.requestId);
+    expect(items).toHaveLength(6);
+
+    const rfqIds = new Set(
+      dataset.rfqs.filter((r) => r.requestId === demoOrder.requestId).map((r) => r.id),
+    );
+    const quotes = dataset.quotes.filter((q) => rfqIds.has(q.rfqId));
+    expect(quotes).toHaveLength(5);
+
+    const quoteIds = new Set(quotes.map((q) => q.id));
+    const lines = dataset.quoteLines.filter((l) => quoteIds.has(l.quoteId));
+
+    const linesWithMissingFields = lines.filter((l) => {
+      const flags = l.fieldFlags as { missing?: string[] } | null;
+      return flags && Array.isArray(flags.missing) && flags.missing.length > 0;
+    });
+    const quotesWithMissingLine = new Set(linesWithMissingFields.map((l) => l.quoteId));
+    expect(quotesWithMissingLine.size).toBe(2);
+
+    const impossibleLines = lines.filter((l) => l.leadTimeDays > 30);
+    expect(impossibleLines.length).toBeGreaterThan(0);
+
+    // Нет ни плана, ни принятого заказа — демо-сцена именно на этой точке.
+    expect(demoOrder.approvedPlanId).toBeDefined();
+    const plan = dataset.plans.find((pl) => pl.id === demoOrder.approvedPlanId);
+    expect(plan?.status).toBe('draft');
+  });
+
+  it('price_observations покрывают ~9 месяцев истории', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    expect(dataset.priceObservations.length).toBeGreaterThan(0);
+    const dates = dataset.priceObservations.map((o) =>
+      new Date(o.observedAt as unknown as string | Date).getTime(),
+    );
+    const spanDays = (Math.max(...dates) - Math.min(...dates)) / (24 * 60 * 60 * 1000);
+    expect(spanDays).toBeGreaterThan(200);
+  });
+
+  it('9 месячных снимков на каждую из трёх моделей', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    for (const model of ['estimator', 'matcher', 'leadtime'] as const) {
+      const count = dataset.modelSnapshots.filter((s) => s.model === model).length;
+      expect(count, `модель ${model}`).toBe(9);
+    }
+  });
+
+  it('запас (marginPct) в среднем снижается со временем — по всем трём категориям', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    const estimatorSnapshots = dataset.modelSnapshots
+      .filter((s) => s.model === 'estimator')
+      .sort(
+        (a, b) =>
+          new Date(a.trainedAt as unknown as string).getTime() -
+          new Date(b.trainedAt as unknown as string).getTime(),
+      );
+    expect(estimatorSnapshots).toHaveLength(9);
+
+    const avgMargin = (snap: (typeof estimatorSnapshots)[number]): number => {
+      const byCategory = (snap.metrics as { byCategory: { marginPct: number }[] }).byCategory;
+      return byCategory.reduce((s, c) => s + c.marginPct, 0) / byCategory.length;
+    };
+    // Первые 3 снимка (ранняя история) против последних 3 (зрелая история) —
+    // усреднение сглаживает шум отдельного месяца/категории с малым N, но
+    // сохраняет проверку самого тренда, требуемого agents.md §13.
+    const earlyAvg = estimatorSnapshots.slice(0, 3).reduce((s, snap) => s + avgMargin(snap), 0) / 3;
+    const lateAvg = estimatorSnapshots.slice(-3).reduce((s, snap) => s + avgMargin(snap), 0) / 3;
+    expect(lateAvg).toBeLessThan(earlyAvg);
+  });
+
+  it('изоляция поставщиков сохраняется на уровне данных: quote_lines ссылаются только на свой quote', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    const quoteById = new Map(dataset.quotes.map((q) => [q.id, q]));
+    for (const line of dataset.quoteLines) {
+      expect(quoteById.has(line.quoteId)).toBe(true);
+    }
+  });
+
+  it('5 демо-аккаунтов, 4 из них — быстрый вход, у 2 сотрудников покупателя разные лимиты согласования', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    expect(dataset.accounts).toHaveLength(5);
+    expect(dataset.accounts.filter((a) => a.isQuickLogin)).toHaveLength(4);
+    const buyerStaff = dataset.users.filter(
+      (u) => u.companyId === dataset.companies.find((c) => c.type === 'buyer')?.id,
+    );
+    expect(buyerStaff).toHaveLength(2);
+    const limits = new Set(buyerStaff.map((u) => u.approvalLimitKzt));
+    expect(limits.size).toBe(2);
+  });
+});

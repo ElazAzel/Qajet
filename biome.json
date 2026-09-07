@@ -49,7 +49,7 @@
   },
   "overrides": [
     {
-      "includes": ["tools/**", "**/*.config.*", "**/scripts/**", "packages/db/seed/**"],
+      "includes": ["tools/**", "**/*.config.*", "**/scripts/**", "packages/db/src/seed/**"],
       "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
     },
     {

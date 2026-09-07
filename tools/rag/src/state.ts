@@ -177,7 +177,7 @@ const PHASES: PhaseCheck[] = [
   {
     phase: 3,
     title: 'Сид: демо-данные, 15 поставщиков, 24 заказа',
-    evidencePaths: ['packages/db/seed'],
+    evidencePaths: ['packages/db/src/seed'],
   },
   {
     phase: 4,
