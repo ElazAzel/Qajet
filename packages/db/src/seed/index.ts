@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
+import { inArray } from 'drizzle-orm';
 import { createDbClient } from '../client.js';
 import * as schema from '../schema/index.js';
+import { SEED_ACCOUNTS } from './accounts.js';
 import { generateSeedDataset } from './generator.js';
 
 /**
@@ -42,16 +44,42 @@ async function main(): Promise<void> {
     return;
   }
 
+  const db = createDbClient(databaseUrl as string);
+
+  // Повторный прогон против непустой базы (например, демо-аккаунты уже были
+  // заведены вручную до появления этого генератора) — переиспользуем то, что
+  // уже есть, вместо того чтобы дублировать компанию-покупателя и аккаунты
+  // со свежими id. На пустой базе все поиски просто возвращают ничего.
+  const emails = SEED_ACCOUNTS.map((a) => a.email);
+  const existingUsers = await db
+    .select({ id: schema.users.id, email: schema.users.email, companyId: schema.users.companyId })
+    .from(schema.users)
+    .where(inArray(schema.users.email, emails));
+  const accountsByEmail = Object.fromEntries(existingUsers.map((u) => [u.email, u.id]));
+  const buyerUser = existingUsers.find((u) => u.email === 'buyer@demo.qajet.kz');
+  const supplierUser = existingUsers.find((u) => u.email === 'supplier@demo.qajet.kz');
+
   const referenceDateIso = new Date().toISOString().slice(0, 10);
   console.log(`Генерирую сид детерминированно (seed=1, дата отсчёта ${referenceDateIso})…`);
-  const dataset = generateSeedDataset({ seed: 1, referenceDateIso });
+  const dataset = generateSeedDataset({
+    seed: 1,
+    referenceDateIso,
+    existing: {
+      ...(buyerUser?.companyId ? { buyerCompanyId: buyerUser.companyId } : {}),
+      ...(supplierUser?.companyId ? { supplierCompanyId: supplierUser.companyId } : {}),
+      accountsByEmail,
+    },
+  });
 
   const auth = createClient(supabaseUrl as string, serviceRoleKey as string, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  console.log(`Создаю ${dataset.accounts.length} аккаунтов в auth.users…`);
-  for (const account of dataset.accounts) {
+  const newAccounts = dataset.accounts.filter((a) => a.isNew);
+  console.log(
+    `Создаю ${newAccounts.length} новых аккаунтов в auth.users (${dataset.accounts.length - newAccounts.length} уже существовали)…`,
+  );
+  for (const account of newAccounts) {
     // `id` — задокументированное расширение admin.createUser() именно для сидов
     // с заранее известным id (совпадающим с public.users.id, который уже
     // проставлен во всём сгенерированном графе как FK). Если конкретная версия
@@ -67,8 +95,6 @@ async function main(): Promise<void> {
       throw new Error(`Не удалось создать аккаунт ${account.email}: ${error.message}`);
     }
   }
-
-  const db = createDbClient(databaseUrl as string);
 
   console.log('Пишу строки в базу…');
   await insertBatched(db, schema.settings, dataset.settings);
