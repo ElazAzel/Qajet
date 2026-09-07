@@ -1,5 +1,5 @@
 import { AdminShell } from '@qajet/ui/shell';
-import { Inbox, LineChart, Scale, Settings, ShieldCheck } from 'lucide-react';
+import { Gauge, Inbox, LineChart, Scale, Settings, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
 
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
     label: 'Как система учится',
     icon: <LineChart size={18} />,
   },
+  { key: 'metrics', href: '/metrics', label: 'Метрики', icon: <Gauge size={18} /> },
   { key: 'disputes', href: '/admin/disputes', label: 'Споры', icon: <Scale size={18} /> },
   { key: 'outbox', href: '/admin/outbox', label: 'Outbox', icon: <Inbox size={18} /> },
 ];

@@ -2,12 +2,13 @@
 
 # Инвентарь маршрутов apps/web
 
-Найдено файлов маршрутизации: 21. Сегментов: 12.
+Найдено файлов маршрутизации: 23. Сегментов: 14.
 
 | Маршрут | Файлы |
 | --- | --- |
 | `/` | `apple-icon`, `icon`, `layout`, `manifest`, `page`, `sw` |
 | `/admin` | `layout`, `page` |
+| `/admin/learning` | `page` |
 | `/buyer` | `layout`, `page` |
 | `/buyer/messages` | `page` |
 | `/buyer/requests/new` | `page` |
@@ -17,4 +18,5 @@
 | `/concierge/orders/[id]` | `page` |
 | `/icons/[size]` | `route` |
 | `/login` | `page` |
+| `/metrics` | `page` |
 | `/supplier` | `layout`, `page` |

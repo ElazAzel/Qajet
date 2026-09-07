@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "2.115.0",
     "lucide-react": "1.41.0",
     "next": "catalog:",
+    "recharts": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "zod": "catalog:"
