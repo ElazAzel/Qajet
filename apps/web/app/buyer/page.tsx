@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerHome } from '../lib/buyer-home';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE } from '../lib/order-state';
+import { BuyerHero } from './_hero';
 
 const EVENT_LABEL: Record<string, string> = {
   draft: 'Заявка создана',
@@ -31,26 +32,8 @@ export default async function BuyerHome() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Reveal
-        className="relative flex flex-col items-start gap-6 overflow-hidden rounded-hero bg-ink p-10 sm:flex-row sm:items-center sm:justify-between"
-        from="up"
-      >
-        <div className="relative z-10 max-w-md">
-          <h1 className="text-3xl font-extrabold text-white">
-            Все ваши закупки.
-            <br />
-            <span className="text-lime">В одном месте.</span>
-          </h1>
-          <p className="mt-3 text-sm text-white/65">
-            Заявки, поставщики и заказы от идеи до доставки — под одним закупочным партнёром.
-          </p>
-          <Link
-            href="/buyer/requests/new"
-            className="mt-5 inline-flex items-center gap-2 rounded-control bg-lime px-4 py-2.5 text-sm font-semibold text-ink hover:bg-lime/90"
-          >
-            Новая заявка →
-          </Link>
-        </div>
+      <Reveal from="up">
+        <BuyerHero />
       </Reveal>
 
       <Stagger startIndex={1} className="grid grid-cols-1 gap-4 sm:grid-cols-3">
