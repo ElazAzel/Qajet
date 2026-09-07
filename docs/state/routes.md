@@ -2,7 +2,7 @@
 
 # Инвентарь маршрутов apps/web
 
-Найдено файлов маршрутизации: 23. Сегментов: 14.
+Найдено файлов маршрутизации: 24. Сегментов: 15.
 
 | Маршрут | Файлы |
 | --- | --- |
@@ -11,6 +11,7 @@
 | `/admin/learning` | `page` |
 | `/buyer` | `layout`, `page` |
 | `/buyer/messages` | `page` |
+| `/buyer/orders/[id]` | `page` |
 | `/buyer/requests/new` | `page` |
 | `/buyer/settings` | `page` |
 | `/buyer/suppliers` | `page` |

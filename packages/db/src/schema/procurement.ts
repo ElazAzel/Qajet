@@ -13,7 +13,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { authenticatedRole, serviceRole } from 'drizzle-orm/supabase';
+import { authenticatedRole, authUid, serviceRole } from 'drizzle-orm/supabase';
 import { id, timestamps } from './_columns.js';
 import {
   documentTypeEnum,
@@ -394,6 +394,35 @@ export const plans = pgTable(
       to: authenticatedRole,
       using: sql`${t.requestId} in (select id from ${requests})`,
     }),
+    // Пишет только движок сравнения через packages/engine order/transition() —
+    // agents.md §6: единственная функция переходов, прямых update из UI нет.
+    // Здесь — кто физически может дёрнуть запись: staff предлагает план
+    // (proposePlan), покупатель утверждает свой (approvePlan) — граница
+    // «допустимый ли это переход» проверяется в приложении, а не в policy.
+    pgPolicy('plans_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('plans_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('plans_update_buyer_own', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
+      withCheck: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
+    }),
     pgPolicy('plans_service_all', {
       as: 'permissive',
       for: 'all',
@@ -435,6 +464,12 @@ export const planLines = pgTable(
       to: authenticatedRole,
       using: sql`${t.planId} in (select id from ${plans})`,
     }),
+    pgPolicy('plan_lines_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
     pgPolicy('plan_lines_service_all', {
       as: 'permissive',
       for: 'all',
@@ -467,6 +502,12 @@ export const planRejections = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: sql`${t.requestId} in (select id from ${requests})`,
+    }),
+    pgPolicy('plan_rejections_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
     }),
     pgPolicy('plan_rejections_service_all', {
       as: 'permissive',
@@ -516,6 +557,30 @@ export const orders = pgTable(
         select plan_id from ${planLines} where supplier_company_id = ${currentCompanyIdSubquery}
       )`,
     }),
+    // Допустимость самого перехода (from → to по актёру) проверяет
+    // packages/engine order/transition() в server action ДО этого UPDATE;
+    // здесь — только «кто в принципе имеет право трогать эту строку».
+    // Триггер enforce_order_transition (см. миграцию) — второй, независимый
+    // барьер на уровне БД: запрещает переход, которого нет в графе, даже
+    // если бы кто-то обошёл приложение и написал UPDATE напрямую.
+    pgPolicy('orders_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('orders_update_buyer_own', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
+      withCheck: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
+    }),
     pgPolicy('orders_service_all', {
       as: 'permissive',
       for: 'all',
@@ -551,8 +616,26 @@ export const orderStageEvents = pgTable(
       to: authenticatedRole,
       using: sql`${t.orderId} in (select id from ${orders})`,
     }),
-    // Audit log только на вставку через движок — никаких direct update/delete
-    // даже для service_role, история необратима (agents.md §6).
+    // Audit log только на вставку — никаких policy на update/delete вообще,
+    // даже для service_role, история необратима (agents.md §6). Вставка
+    // разрешена authenticatedRole (не только сервису), потому что сами
+    // переходы теперь и правда происходят из браузера staff/покупателя, но
+    // строго от своего имени (actor_user_id = свой auth.uid()) и только
+    // по заказу, который этой роли и так виден (staff — любой, покупатель —
+    // только заказ своей же компании).
+    pgPolicy('order_stage_events_insert_actor', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${t.actorUserId} = ${authUid} and (
+        ${currentRoleSubquery} in ('concierge', 'admin')
+        or ${t.orderId} in (
+          select o.id from ${orders} o
+          join ${requests} r on r.id = o.request_id
+          where r.buyer_company_id = ${currentCompanyIdSubquery}
+        )
+      )`,
+    }),
     pgPolicy('order_stage_events_service_insert', {
       as: 'permissive',
       for: 'insert',
@@ -598,6 +681,12 @@ export const supplierPayouts = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: staffOnly,
+    }),
+    pgPolicy('supplier_payouts_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
     }),
     pgPolicy('supplier_payouts_service_all', {
       as: 'permissive',

@@ -12,13 +12,19 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
  */
 
 export type UserRole = 'owner' | 'manager' | 'concierge' | 'admin';
+export type CompanyType = 'buyer' | 'supplier';
+
+/** Кто физически совершает переход состояния заказа — agents.md §6, packages/engine/order. */
+export type OrderActor = 'buyer' | 'concierge' | 'supplier' | 'admin';
 
 export interface CurrentUser {
   id: string;
   fullName: string;
   email: string;
   role: UserRole;
+  companyId: string | null;
   companyName: string | null;
+  companyType: CompanyType | null;
 }
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -30,7 +36,8 @@ const ROLE_LABEL: Record<UserRole, string> = {
 
 interface RoleRow {
   role: UserRole;
-  companies: { name: string } | { name: string }[] | null;
+  company_id: string | null;
+  companies: { name: string; type: CompanyType } | { name: string; type: CompanyType }[] | null;
 }
 
 /** Редиректит на /login, если сессии нет или профиль не найден — те же
@@ -47,7 +54,7 @@ export async function requireCurrentUser(): Promise<CurrentUser> {
     pd.getUserContact(authUser.id),
     supabase
       .from('users')
-      .select('role, companies(name)')
+      .select('role, company_id, companies(name, type)')
       .eq('id', authUser.id)
       .maybeSingle<RoleRow>(),
   ]);
@@ -62,10 +69,24 @@ export async function requireCurrentUser(): Promise<CurrentUser> {
     fullName: contact.fullName,
     email: contact.email,
     role: roleResult.data.role,
+    companyId: roleResult.data.company_id,
     companyName: company?.name ?? null,
+    companyType: company?.type ?? null,
   };
 }
 
 export function shellUserFrom(user: CurrentUser): { name: string; meta: string } {
   return { name: user.fullName, meta: user.companyName ?? ROLE_LABEL[user.role] };
+}
+
+/**
+ * Роль в users (owner/manager/concierge/admin) не то же самое, что актёр
+ * машины состояний заказа (agents.md §6, packages/engine/order): owner и
+ * manager — это «buyer» ИЛИ «supplier» в зависимости от companies.type,
+ * а не отдельное значение enum'а. Concierge/admin — staff, у них нет
+ * company_id вообще.
+ */
+export function orderActorFor(user: CurrentUser): OrderActor {
+  if (user.role === 'concierge' || user.role === 'admin') return user.role;
+  return user.companyType === 'supplier' ? 'supplier' : 'buyer';
 }

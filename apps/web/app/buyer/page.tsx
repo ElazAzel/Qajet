@@ -88,14 +88,18 @@ export default async function BuyerHome() {
           </div>
           <div className="mt-3 flex flex-col gap-3">
             {orders.slice(0, 6).map((order) => (
-              <div key={order.id} className="flex items-center gap-3">
+              <Link
+                key={order.id}
+                href={`/buyer/orders/${order.id}`}
+                className="flex items-center gap-3 rounded-control -mx-2 px-2 py-1 hover:bg-page"
+              >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-ink">{order.title}</p>
                 </div>
                 <Stamp tone={ORDER_STATE_TONE[order.state]} className="shrink-0">
                   {ORDER_STATE_LABEL[order.state]}
                 </Stamp>
-              </div>
+              </Link>
             ))}
           </div>
         </Reveal>

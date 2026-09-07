@@ -1,10 +1,14 @@
 import type { CombinedPlan, PlanKind } from '@qajet/engine/combine';
+import { nextStatesFor } from '@qajet/engine/order';
 import { BarGrow, type BarSegment, Reveal, Stagger, Stamp } from '@qajet/ui/motion';
 import { formatKzt, Money } from '@qajet/ui/primitives';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadRequestComparison } from '../../../lib/comparison';
+import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE, type OrderState } from '../../../lib/order-state';
+import { ProposePlanButton } from './_propose-plan-button';
+import { StageAdvanceButton } from './_stage-advance-button';
 
 /**
  * Экран сравнения вариантов — agents.md §8D, §12, фаза 4: «сюда уходит
@@ -23,6 +27,9 @@ const PLAN_LABEL: Record<PlanKind, string> = {
 export default async function ConciergeOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
+  const user = await requireCurrentUser();
+  const actor = orderActorFor(user);
+  const canPropose = actor === 'concierge' || actor === 'admin';
 
   const { data: order } = await supabase
     .from('orders')
@@ -34,7 +41,8 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
   const state = order.state as OrderState;
 
   if (state !== 'quotes_received') {
-    return <NotComparableYet state={state} />;
+    const nextStates = nextStatesFor(state, actor);
+    return <NotComparableYet state={state} orderId={order.id} nextStates={nextStates} />;
   }
 
   const comparison = await loadRequestComparison(supabase, order.request_id);
@@ -67,7 +75,16 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
 
       <Stagger startIndex={1} className="mt-6 flex flex-col gap-4">
         {result.plans.map((plan) => (
-          <PlanCard key={plan.kind} plan={plan} maxTotalKzt={maxTotalKzt} />
+          <PlanCard
+            key={plan.kind}
+            plan={plan}
+            maxTotalKzt={maxTotalKzt}
+            action={
+              canPropose ? (
+                <ProposePlanButton requestId={order.request_id} kind={plan.kind} />
+              ) : null
+            }
+          />
         ))}
       </Stagger>
 
@@ -100,7 +117,15 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
   );
 }
 
-function PlanCard({ plan, maxTotalKzt }: { plan: CombinedPlan; maxTotalKzt: number }) {
+function PlanCard({
+  plan,
+  maxTotalKzt,
+  action,
+}: {
+  plan: CombinedPlan;
+  maxTotalKzt: number;
+  action?: React.ReactNode;
+}) {
   const segments: BarSegment[] = [
     {
       key: 'goods',
@@ -170,11 +195,23 @@ function PlanCard({ plan, maxTotalKzt }: { plan: CombinedPlan; maxTotalKzt: numb
           </div>
         )}
       </div>
+
+      {action}
     </div>
   );
 }
 
-function NotComparableYet({ state, note }: { state: OrderState; note?: string }) {
+function NotComparableYet({
+  state,
+  note,
+  orderId,
+  nextStates = [],
+}: {
+  state: OrderState;
+  note?: string;
+  orderId?: string;
+  nextStates?: OrderState[];
+}) {
   return (
     <Reveal className="flex max-w-md flex-col gap-3 py-16">
       <Stamp tone={ORDER_STATE_TONE[state]} className="w-fit">
@@ -187,6 +224,18 @@ function NotComparableYet({ state, note }: { state: OrderState; note?: string })
         {note ??
           'Этот заказ на другой стадии жизненного цикла — раскладка вариантов появляется один раз, сразу после получения предложений от поставщиков, и уже неактуальна после того, как план утверждён.'}
       </p>
+      {orderId && nextStates.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-start gap-3">
+          {nextStates.map((toState, i) => (
+            <StageAdvanceButton
+              key={toState}
+              orderId={orderId}
+              toState={toState}
+              primary={i === 0}
+            />
+          ))}
+        </div>
+      )}
     </Reveal>
   );
 }

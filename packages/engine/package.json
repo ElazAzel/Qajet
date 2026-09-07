@@ -11,6 +11,7 @@
     "./combine": "./src/combine/combine.ts",
     "./leadtime": "./src/leadtime/predict.ts",
     "./tax": "./src/tax/snr.ts",
+    "./order": "./src/order/transition.ts",
     "./learn": "./src/learn/recalibrate.ts",
     "./explain": "./src/explain/types.ts"
   },
