@@ -1,6 +1,7 @@
 import { AdminShell } from '@qajet/ui/shell';
 import { Inbox, LineChart, Scale, Settings, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
 
 /**
  * Админ получает ту же оболочку сайдбар+хедер, что и остальные роли, но
@@ -8,13 +9,7 @@ import type { ReactNode } from 'react';
  * инверсия тона во всём продукте.
  */
 const NAV_ITEMS = [
-  {
-    key: 'verification',
-    href: '/admin',
-    label: 'Верификация',
-    icon: <ShieldCheck size={18} />,
-    active: true,
-  },
+  { key: 'verification', href: '/admin', label: 'Верификация', icon: <ShieldCheck size={18} /> },
   { key: 'settings', href: '/admin/settings', label: 'Настройки', icon: <Settings size={18} /> },
   { key: 'finance', href: '/admin/finance', label: 'Финансы', icon: <LineChart size={18} /> },
   {
@@ -27,9 +22,10 @@ const NAV_ITEMS = [
   { key: 'outbox', href: '/admin/outbox', label: 'Outbox', icon: <Inbox size={18} /> },
 ];
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+export default async function AdminLayout({ children }: { children: ReactNode }) {
+  const user = await requireCurrentUser();
   return (
-    <AdminShell navItems={NAV_ITEMS} user={{ name: 'Админ', meta: 'admin@demo.qajet.kz' }}>
+    <AdminShell navItems={NAV_ITEMS} user={shellUserFrom(user)}>
       {children}
     </AdminShell>
   );

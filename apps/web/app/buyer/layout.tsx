@@ -1,9 +1,10 @@
 import { BuyerShell } from '@qajet/ui/shell';
 import { FilePlus, ListChecks, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
 
 const NAV_ITEMS = [
-  { key: 'orders', href: '/buyer', label: 'Заказы', icon: <ListChecks size={18} />, active: true },
+  { key: 'orders', href: '/buyer', label: 'Заказы', icon: <ListChecks size={18} /> },
   {
     key: 'new-request',
     href: '/buyer/requests/new',
@@ -13,9 +14,10 @@ const NAV_ITEMS = [
   { key: 'team', href: '/buyer/team', label: 'Команда', icon: <Users size={18} /> },
 ];
 
-export default function BuyerLayout({ children }: { children: ReactNode }) {
+export default async function BuyerLayout({ children }: { children: ReactNode }) {
+  const user = await requireCurrentUser();
   return (
-    <BuyerShell navItems={NAV_ITEMS} user={{ name: 'Покупатель', meta: 'buyer@demo.qajet.kz' }}>
+    <BuyerShell navItems={NAV_ITEMS} user={shellUserFrom(user)}>
       {children}
     </BuyerShell>
   );

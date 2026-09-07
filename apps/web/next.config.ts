@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
-  transpilePackages: ['@qajet/ui'],
+  transpilePackages: ['@qajet/ui', '@qajet/engine'],
 
   typedRoutes: true,
 
@@ -28,6 +28,19 @@ const nextConfig: NextConfig = {
   // Встроенная интеграция ESLint убрана из next.config в Next 16 — линт
   // ведёт Biome (biome.json в корне), отдельно от сборки Next.
   typescript: { ignoreBuildErrors: false },
+
+  // packages/engine — чистый ESM с explicit-.js относительными импортами
+  // (NodeNext-стиль: файл на диске .ts, импорт пишется как .js). tsc/vitest
+  // это понимают из коробки, а webpack — нет, даже под transpilePackages,
+  // без явного extensionAlias: он ищет буквальный ../money/index.js рядом
+  // с .ts-исходником и не находит.
+  webpack(config) {
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      '.js': ['.ts', '.tsx', '.js'],
+    };
+    return config;
+  },
 };
 
 export default withSerwist(nextConfig);

@@ -1,47 +1,184 @@
-import { ScreenLedger } from '../_components/screen-ledger';
+import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
+import { Clock3, FilePlus, ListChecks, Package, Search, Wrench } from 'lucide-react';
+import Link from 'next/link';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { loadBuyerHome } from '../lib/buyer-home';
+import { ORDER_STATE_LABEL, ORDER_STATE_TONE } from '../lib/order-state';
 
-export default function BuyerHome() {
+const EVENT_LABEL: Record<string, string> = {
+  draft: 'Заявка создана',
+  estimated: 'Оценка готова',
+  prepaid: 'Предоплата внесена',
+  rfq_sent: 'Запрос отправлен поставщикам',
+  quotes_received: 'Получены предложения',
+  plan_proposed: 'Предложен план',
+  plan_approved: 'План утверждён',
+  suppliers_paid: 'Поставщики оплачены',
+  in_production: 'Запущено производство',
+  shipped: 'Заказ отгружен',
+  delivered: 'Заказ доставлен',
+  accepted: 'Заказ принят',
+  closed: 'Заказ закрыт',
+  awaiting_internal_approval: 'Ждёт вашего согласования',
+  on_hold: 'Поставлен на паузу',
+  cancelled: 'Заказ отменён',
+  disputed: 'Открыт спор',
+};
+
+export default async function BuyerHome() {
+  const supabase = await createSupabaseServerClient();
+  const { orders, updates, stats } = await loadBuyerHome(supabase);
+
   return (
-    <ScreenLedger
-      roleName="Покупатель"
-      entries={[
-        {
-          name: 'Главная',
-          status: 'live',
-          note: 'Активные заказы, ближайшие даты, что ждёт действия — §10',
-        },
-        {
-          name: 'Мастер новой заявки',
-          status: 'planned',
-          note: 'Свободное описание → распознанная спецификация — фаза 5',
-        },
-        {
-          name: 'Счёт на предоплату',
-          status: 'planned',
-          note: 'Раскрытая оценка: основа, история, запас — фаза 5',
-        },
-        {
-          name: 'Сравнение вариантов',
-          status: 'planned',
-          note: 'Главный экран продукта, полосы вариантов — фаза 4',
-        },
-        { name: 'Журнал отбраковки', status: 'planned', note: 'Что не прошло и почему — фаза 4' },
-        {
-          name: 'Таймлайн заказа',
-          status: 'planned',
-          note: 'Ответственный за каждую стадию — фаза 5',
-        },
-        {
-          name: 'Закрытие заказа',
-          status: 'planned',
-          note: 'Сверка предоплаты с фактом, возврат/доплата — фаза 5',
-        },
-        {
-          name: 'Команда и доступы',
-          status: 'planned',
-          note: 'Приглашение, лимиты согласования, отзыв доступа — фаза 5',
-        },
-      ]}
-    />
+    <div className="flex flex-col gap-6">
+      <Reveal
+        className="relative flex flex-col items-start gap-6 overflow-hidden rounded-hero bg-ink p-10 sm:flex-row sm:items-center sm:justify-between"
+        from="up"
+      >
+        <div className="relative z-10 max-w-md">
+          <h1 className="text-3xl font-extrabold text-white">
+            Все ваши закупки.
+            <br />
+            <span className="text-lime">В одном месте.</span>
+          </h1>
+          <p className="mt-3 text-sm text-white/65">
+            Заявки, поставщики и заказы от идеи до доставки — под одним закупочным партнёром.
+          </p>
+          <Link
+            href="/buyer/requests/new"
+            className="mt-5 inline-flex items-center gap-2 rounded-control bg-lime px-4 py-2.5 text-sm font-semibold text-ink hover:bg-lime/90"
+          >
+            Новая заявка →
+          </Link>
+        </div>
+      </Reveal>
+
+      <Stagger startIndex={1} className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatTile icon={<Package size={18} />} value={stats.active} title="Активных заказов" />
+        <StatTile
+          icon={<Wrench size={18} />}
+          value={stats.inProduction}
+          title="В производстве/отгрузке"
+        />
+        <StatTile
+          icon={<Clock3 size={18} />}
+          value={stats.awaitingDecision}
+          title="Ждут вашего решения"
+        />
+      </Stagger>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.15fr_1fr]">
+        <Reveal className="rounded-card border border-rule bg-surface p-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-ink">Обновления по заказам</h3>
+          </div>
+          <div className="mt-3 flex flex-col">
+            {updates.length === 0 && <p className="py-6 text-sm text-muted">Пока нет событий.</p>}
+            {updates.map((update) => (
+              <div
+                key={`${update.orderId}-${update.at}`}
+                className="flex items-center justify-between gap-4 border-t border-rule py-3 first:border-t-0"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">
+                    {EVENT_LABEL[update.toState] ?? ORDER_STATE_LABEL[update.toState]}
+                  </p>
+                  <p className="mt-0.5 truncate text-fine text-muted">{update.orderTitle}</p>
+                </div>
+                <span className="shrink-0 text-fine text-muted">
+                  {new Date(update.at).toLocaleDateString('ru-RU', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Reveal>
+
+        <Reveal className="rounded-card border border-rule bg-surface p-6" from="up">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-ink">Мои заказы</h3>
+            <Link href="/buyer" className="text-fine font-semibold text-purple">
+              Все заказы →
+            </Link>
+          </div>
+          <div className="mt-3 flex flex-col gap-3">
+            {orders.slice(0, 6).map((order) => (
+              <div key={order.id} className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink">{order.title}</p>
+                </div>
+                <Stamp tone={ORDER_STATE_TONE[order.state]} className="shrink-0">
+                  {ORDER_STATE_LABEL[order.state]}
+                </Stamp>
+              </div>
+            ))}
+          </div>
+        </Reveal>
+      </div>
+
+      <Reveal className="flex flex-col gap-4 rounded-card border border-rule bg-surface p-6 sm:flex-row sm:items-center">
+        <h3 className="shrink-0 text-lg font-bold text-ink">Быстрые действия</h3>
+        <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3">
+          <QuickAction
+            href="/buyer/requests/new"
+            icon={<FilePlus size={16} />}
+            title="Создать заявку"
+            sub="Запустить новую закупку"
+          />
+          <QuickAction
+            href="/buyer/suppliers"
+            icon={<Search size={16} />}
+            title="Найти поставщика"
+            sub="Проверенные партнёры"
+          />
+          <QuickAction
+            href="/buyer"
+            icon={<ListChecks size={16} />}
+            title="Все заказы"
+            sub="Перейти к списку"
+          />
+        </div>
+      </Reveal>
+    </div>
+  );
+}
+
+function StatTile({ icon, value, title }: { icon: React.ReactNode; value: number; title: string }) {
+  return (
+    <div className="flex items-center gap-4 rounded-card border border-rule bg-surface p-5">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control bg-purple-10 text-purple">
+        {icon}
+      </span>
+      <div>
+        <p className="text-2xl font-extrabold text-ink">{value}</p>
+        <p className="text-fine font-medium text-muted">{title}</p>
+      </div>
+    </div>
+  );
+}
+
+function QuickAction({
+  href,
+  icon,
+  title,
+  sub,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <Link href={href} className="flex items-center gap-3 hover:opacity-80">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-purple-10 text-purple">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-bold text-ink">{title}</p>
+        <p className="truncate text-fine text-muted">{sub}</p>
+      </div>
+    </Link>
   );
 }
