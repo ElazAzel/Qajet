@@ -1,26 +1,34 @@
 import { ConciergeShell } from '@qajet/ui/shell';
-import Link from 'next/link';
+import { AlertTriangle, LayoutGrid, LayoutList } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-const RAIL_ITEMS = [
-  { href: '/concierge', label: 'Заказы', glyph: '☰' },
-  { href: '/concierge/exceptions', label: 'Исключения', glyph: '!' },
-  { href: '/concierge/templates', label: 'Шаблоны', glyph: '▤' },
+const NAV_ITEMS = [
+  {
+    key: 'orders',
+    href: '/concierge',
+    label: 'Заказы',
+    icon: <LayoutList size={18} />,
+    active: true,
+  },
+  {
+    key: 'exceptions',
+    href: '/concierge/exceptions',
+    label: 'Исключения',
+    icon: <AlertTriangle size={18} />,
+  },
+  {
+    key: 'templates',
+    href: '/concierge/templates',
+    label: 'Шаблоны',
+    icon: <LayoutGrid size={18} />,
+  },
 ];
 
 export default function ConciergeLayout({ children }: { children: ReactNode }) {
   return (
     <ConciergeShell
-      rail={RAIL_ITEMS.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          title={item.label}
-          className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] text-sm hover:bg-white/10"
-        >
-          {item.glyph}
-        </Link>
-      ))}
+      navItems={NAV_ITEMS}
+      user={{ name: 'Консьерж', meta: 'concierge@demo.qajet.kz' }}
       list={
         <div className="p-4">
           <p className="text-micro tracking-wide text-muted uppercase">Доска заказов</p>

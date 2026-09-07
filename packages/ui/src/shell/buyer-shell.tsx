@@ -1,25 +1,27 @@
 import type { ReactNode } from 'react';
-import { cn } from '../lib/cn';
+import { ShellLayout, type ShellNavItem, type ShellUser } from './shell-layout';
 
 /**
- * Оболочка покупателя — §10, §12: верхняя навигация, широкий контент,
- * без левого рельса. Покупатель заходит эпизодически и должен сразу
- * понять, где решение — поэтому воздух важнее плотности.
+ * Оболочка покупателя — §10, §12: сайдбар + хедер, как у остальных ролей.
+ * Единственная роль с поиском и ⌘K в хедере — покупатель ищет заказы и
+ * поставщиков чаще, чем переключает разделы.
  */
 export interface BuyerShellProps {
   children: ReactNode;
-  nav: ReactNode;
-  header?: ReactNode;
+  navItems: ShellNavItem[];
+  user: ShellUser;
+  promo?: ReactNode;
 }
 
-export function BuyerShell({ children, nav, header }: BuyerShellProps) {
+export function BuyerShell({ children, navItems, user, promo }: BuyerShellProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-paper">
-      <header className="border-b border-rule bg-surface">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">{nav}</div>
-      </header>
-      {header && <div className="border-b border-rule bg-surface">{header}</div>}
-      <main className={cn('mx-auto w-full max-w-6xl flex-1 px-6 py-8')}>{children}</main>
-    </div>
+    <ShellLayout
+      navItems={navItems}
+      user={user}
+      promo={promo}
+      search={{ placeholder: 'Заказ, поставщик, позиция…', shortcut: '⌘K' }}
+    >
+      {children}
+    </ShellLayout>
   );
 }

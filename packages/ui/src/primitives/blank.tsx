@@ -1,13 +1,13 @@
 import { cn } from '../lib/cn';
 
 /**
- * Прочерк на линии подчёркивания вместо серого плейсхолдера (§12).
+ * Незаполненное значение — приглушённое тире, а не пустая ячейка.
  * Используется для полей КП с needs_clarification и любых незаполненных
- * значений в ведомости.
+ * значений в списках/карточках.
  */
-export function Blank({ className, width = 'w-14' }: { className?: string; width?: string }) {
+export function Blank({ className }: { className?: string }) {
   return (
-    <span className={cn('blank-field', width, className)}>
+    <span className={cn('text-muted', className)}>
       <span aria-hidden="true">—</span>
       <span className="sr-only">данные отсутствуют</span>
     </span>

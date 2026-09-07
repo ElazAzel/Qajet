@@ -14,42 +14,50 @@
    QAJET — токены дизайна
    Источник истины: agents.md §12. Значения здесь менять нельзя без правки §12.
 
-   Концепция — «ведомость, которая думает»: аккуратный финансовый документ,
-   а не дашборд с карточками. Отсюда линии вместо теней, выравнивание цифр
-   по разряду и штампы вместо пилюль.
+   Светлый SaaS на фиолетовом с лаймом: плоские поверхности на тонких линиях
+   вместо теней, один явный акцент, статус — всегда цветная пилюля.
    ============================================================================ */
 
 @theme {
-  /* --- Палитра §12. Один акцент, и он означает выбор человека. --- */
-  --color-ink: #0c1b22; /* глубокий петроль-чёрный: текст и тёмные плоскости */
-  --color-paper: #edefea; /* холодная костяная бумага: фон приложения */
-  --color-surface: #ffffff; /* плоскость документа */
-  --color-rule: #c9cfc6; /* линии внутри данных */
-  --color-accent: #d9a521; /* шафран: выбрано или требует выбора. Больше нигде */
-  --color-signal: #a62b2b; /* ТОЛЬКО нарушение обязательного условия и просрочка */
-  --color-muted: #5c6b6e; /* вторичный текст */
+  /* --- Палитра §12 --- */
+  --color-ink: #14141a; /* текст, тёмный сайдбар админа, тёмные кнопки и hero-блоки */
+  --color-purple: #6c5dd3; /* основной акцент: CTA, активный пункт навигации */
+  --color-lime: #d6ff3f; /* акцент ТОЛЬКО на тёмном фоне */
+  --color-purple-10: #edebfb; /* заливка иконок-чипов, лёгкие пилюли */
+  --color-page: #f4f4f6; /* фон страницы */
+  --color-surface: #ffffff; /* карточки, поля, header, светлый сайдбар */
+  --color-rule: rgba(20, 20, 26, 0.08); /* границы карточек и разделители */
+  --color-muted: rgba(20, 20, 26, 0.5); /* вторичный текст */
+  --color-signal: #c23a3a; /* отклонено, спор, высокий приоритет — единственный блокер-цвет */
 
-  /* Производные. Считаются от базовых, отдельными цветами не являются. */
-  --color-rule-soft: color-mix(in oklab, var(--color-rule) 55%, var(--color-paper));
-  --color-ink-soft: color-mix(in oklab, var(--color-ink) 8%, transparent);
-  --color-accent-wash: color-mix(in oklab, var(--color-accent) 12%, var(--color-surface));
-  --color-signal-wash: color-mix(in oklab, var(--color-signal) 8%, var(--color-surface));
+  /* Статусные пары — agents.md §12, таблица "Статусные пары". */
+  --color-status-progress-bg: #edebfb;
+  --color-status-progress-fg: #6c5dd3;
+  --color-status-success-bg: #dff7e3;
+  --color-status-success-fg: #1f8a3b;
+  --color-status-pending-bg: #ffefd6;
+  --color-status-pending-fg: #b36a16;
+  --color-status-neutral-bg: #f0f0f2;
+  --color-status-neutral-fg: rgba(20, 20, 26, 0.6);
+  --color-status-done-bg: #eaf1ff;
+  --color-status-done-fg: #2a5fcb;
+  --color-status-danger-bg: #fde3e3;
+  --color-status-danger-fg: #c23a3a;
 
-  /* --- Типографика §12 --- */
-  /* Onest — единственное семейство интерфейса. Не Inter, не системный дефолт. */
-  --font-sans: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
-  /* IBM Plex Mono — ТОЛЬКО деньги, количества, номера документов, id. */
-  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  /* --- Типографика §12: Helvetica Neue, системный стек, ноль внешней загрузки --- */
+  --font-sans: "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
 
-  --text-micro: 0.6875rem; /* 11px — подписи под данными, единицы измерения */
+  --text-micro: 0.6875rem; /* 11px — капс-лейблы сайдбара и секций */
   --text-micro--line-height: 1rem;
-  --text-fine: 0.8125rem; /* 13px — плотные таблицы консьержа */
+  --text-fine: 0.8125rem; /* 13px — метаданные, плотные таблицы консьержа */
   --text-fine--line-height: 1.125rem;
 
-  /* --- Радиусы дифференцированы по смыслу §12. Один радиус на всё — шаблон. --- */
-  --radius-doc: 2px; /* документы, таблицы, строки данных */
-  --radius-control: 8px; /* интерактивные элементы */
-  --radius-overlay: 12px; /* модальные окна и шторки */
+  /* --- Радиусы по смыслу §12 --- */
+  --radius-pill: 100px; /* статусы, бейджи, поиск, аватары */
+  --radius-control: 10px; /* кнопки, поля ввода */
+  --radius-card: 16px; /* карточки */
+  --radius-card-sm: 14px; /* компактные карточки в списках */
+  --radius-hero: 20px; /* hero-баннер, экран сравнения */
 
   /* --- Движение §12. Те же значения читает packages/ui/motion/tokens.ts. --- */
   --duration-instant: 120ms;
@@ -63,9 +71,9 @@
 }
 
 /* ============================================================================
-   Единственная разрешённая тень во всём продукте — под оверлеем.
-   §12 прямо запрещает одинаковую мягкую тень под каждой карточкой:
-   разделение плоскостей делают линии --rule, а не размытие.
+   Единственная разрешённая тень во всём продукте — под оверлеем
+   (модальные окна, выпадающие меню). §12 запрещает одинаковую мягкую тень
+   под каждой карточкой: разделение плоскостей делают линии --rule.
    ============================================================================ */
 @utility shadow-overlay {
   box-shadow:
@@ -73,25 +81,13 @@
     0 12px 32px -8px color-mix(in oklab, var(--color-ink) 22%, transparent);
 }
 
-/* Денежные и числовые значения: моноширинный, цифры одной ширины,
-   выравнивание по разряду. Применяется только к числам, никогда к подписям. */
+/* Табличное выравнивание чисел в колонках (суммы, количества) —
+   без переключения на моноширинный шрифт (§12: деньги остаются в Helvetica Neue). */
 @utility numeric {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings:
     "tnum" 1,
     "zero" 1;
-  letter-spacing: -0.01em;
-}
-
-/* Незаполненное поле — прочерк на линии подчёркивания, как в бумажном бланке.
-   Не серый плейсхолдер (§12). */
-@utility blank-field {
-  display: inline-block;
-  min-width: 3.5rem;
-  border-bottom: 1px solid var(--color-rule);
-  color: var(--color-muted);
-  text-align: center;
 }
 
 @layer base {
@@ -107,45 +103,41 @@
   }
 
   body {
-    background-color: var(--color-paper);
+    background-color: var(--color-page);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    font-feature-settings: "ss01" 1;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
-  /* Заголовки — предложенным регистром. Никаких ALL-CAPS-эйрбоу (§12). */
+  /* Заголовки — предложенным регистром, без ALL-CAPS (§12). */
   h1,
   h2,
   h3,
   h4 {
-    font-weight: 500;
-    letter-spacing: -0.015em;
+    font-weight: 800;
+    letter-spacing: -0.01em;
     text-wrap: balance;
   }
 
-  /* Длина строки в тексте — до 80 знаков (§12). */
   p {
     text-wrap: pretty;
   }
 
-  /* Видимый фокус клавиатуры — требование планки качества §12.
-     Обводка шафрановая: фокус это «здесь ты сейчас выбираешь». */
+  /* Видимый фокус клавиатуры — требование планки качества §12. */
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-purple);
     outline-offset: 2px;
-    border-radius: var(--radius-doc);
+    border-radius: var(--radius-control);
   }
 
-  /* Таблицы — это ведомость. Цифры по правому краю, линии тонкие. */
   table {
     border-collapse: collapse;
     width: 100%;
   }
 
   ::selection {
-    background-color: var(--color-accent-wash);
+    background-color: var(--color-purple-10);
     color: var(--color-ink);
   }
 }
@@ -184,7 +176,7 @@
     overscroll-behavior-y: none;
   }
 
-  /* Мобильная оболочка поставщика: учёт вырезов и домашней полосы. */
+  /* Мобильная оболочка: учёт вырезов и домашней полосы. */
   :root {
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);

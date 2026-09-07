@@ -2,24 +2,26 @@ import { type ButtonHTMLAttributes, forwardRef } from 'react';
 import { cn } from '../lib/cn';
 
 /**
- * Базовая кнопка QAJET. Перекрашена под токены с нуля, не «shadcn Button
- * с новым цветом» — поэтому здесь нет ни одной ссылки на дефолтные классы
- * shadcn. primary использует акцент и поэтому означает «утвердить/выбрать»;
- * других мест для шафрана в интерфейсе нет.
+ * Базовая кнопка QAJET (§12): primary — фиолетовый, означает основное
+ * действие/CTA; dark — тёмная кнопка на светлом фоне (второй по значимости
+ * акцент, используется как «Новый проект» рядом с primary); lime — только
+ * на тёмных поверхностях (hero-баннер, промо-карточка сайдбара).
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive';
+export type ButtonVariant = 'primary' | 'dark' | 'lime' | 'secondary' | 'ghost' | 'destructive';
 export type ButtonSize = 'sm' | 'md';
 
 const base =
-  'inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium ' +
+  'inline-flex items-center justify-center gap-2 rounded-control font-semibold ' +
   'transition-colors duration-[var(--duration-instant)] disabled:pointer-events-none disabled:opacity-40';
 
 const variantClass: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-ink hover:bg-accent/90',
-  secondary: 'border border-rule bg-surface text-ink hover:bg-paper',
-  ghost: 'text-ink hover:bg-ink-soft',
-  destructive: 'border border-signal text-signal hover:bg-signal-wash',
+  primary: 'bg-purple text-white hover:bg-purple/90',
+  dark: 'bg-ink text-white hover:bg-ink/90',
+  lime: 'bg-lime text-ink hover:bg-lime/90',
+  secondary: 'border border-rule bg-surface text-ink hover:bg-page',
+  ghost: 'text-ink hover:bg-page',
+  destructive: 'border border-signal text-signal hover:bg-status-danger-bg',
 };
 
 const sizeClass: Record<ButtonSize, string> = {

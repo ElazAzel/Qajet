@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { onest, plexMono } from './fonts';
 import { Providers } from './providers';
 import './globals.css';
 
@@ -24,15 +23,12 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#edefea' },
-    { media: '(prefers-color-scheme: dark)', color: '#0c1b22' },
-  ],
+  themeColor: '#f4f4f6',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru" className={`${onest.variable} ${plexMono.variable}`} suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning>
       <body>
         <Providers>{children}</Providers>
       </body>

@@ -46,7 +46,7 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
           onClick={() => setOpen(false)}
         >
           <motion.div
-            className="shadow-overlay w-full max-w-lg overflow-hidden rounded-[var(--radius-overlay)] bg-surface"
+            className="shadow-overlay w-full max-w-lg overflow-hidden rounded-card bg-surface"
             initial={{ opacity: 0, scale: 0.97, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: -8 }}
@@ -76,7 +76,7 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
                           item.onSelect();
                           setOpen(false);
                         }}
-                        className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-2 py-2 text-sm data-[selected=true]:bg-accent-wash"
+                        className="flex cursor-pointer items-center justify-between rounded-control px-2 py-2 text-sm data-[selected=true]:bg-purple-10"
                       >
                         <span>{item.label}</span>
                         {item.hint && (

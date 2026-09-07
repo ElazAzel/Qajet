@@ -15,9 +15,9 @@ export function LoginForm() {
   const [error, formAction, isPending] = useActionState(signIn, null);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-paper px-6">
-      <Reveal className="w-full max-w-sm rounded-[var(--radius-overlay)] border border-rule bg-surface p-6">
-        <h1 className="text-lg font-medium">Вход в QAJET</h1>
+    <div className="flex min-h-screen items-center justify-center bg-page px-6">
+      <Reveal className="w-full max-w-sm rounded-card border border-rule bg-surface p-6">
+        <h1 className="text-lg font-extrabold text-ink">Вход в QAJET</h1>
         <p className="mt-1 text-fine text-muted">Один закупочный партнёр. Один вход.</p>
 
         <form action={formAction} className="mt-6 space-y-3">
@@ -28,7 +28,7 @@ export function LoginForm() {
               name="email"
               required
               placeholder="buyer@demo.qajet.kz"
-              className="mt-1 w-full rounded-[var(--radius-control)] border border-rule bg-paper px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-control border border-rule bg-page px-3 py-2 text-sm"
             />
           </label>
           <label className="block">
@@ -38,7 +38,7 @@ export function LoginForm() {
               name="password"
               required
               placeholder="••••••••"
-              className="mt-1 w-full rounded-[var(--radius-control)] border border-rule bg-paper px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-control border border-rule bg-page px-3 py-2 text-sm"
             />
           </label>
 
@@ -47,7 +47,7 @@ export function LoginForm() {
           <button
             type="submit"
             disabled={isPending}
-            className="w-full rounded-[var(--radius-control)] bg-accent px-4 py-2 text-sm font-medium text-ink disabled:opacity-60"
+            className="w-full rounded-control bg-purple px-4 py-2 text-sm font-semibold text-white hover:bg-purple/90 disabled:opacity-60"
           >
             {isPending ? 'Входим…' : 'Войти'}
           </button>
@@ -61,7 +61,7 @@ export function LoginForm() {
                 <form key={account.email} action={quickSignIn.bind(null, account.email)}>
                   <button
                     type="submit"
-                    className="w-full rounded-[var(--radius-control)] border border-rule px-3 py-1.5 text-fine hover:bg-paper"
+                    className="w-full rounded-control border border-rule px-3 py-1.5 text-fine hover:bg-page"
                   >
                     {account.label}
                   </button>

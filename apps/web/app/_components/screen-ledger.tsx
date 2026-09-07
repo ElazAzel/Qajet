@@ -29,7 +29,7 @@ export function ScreenLedger({ roleName, entries }: { roleName: string; entries:
                 <p className="text-sm font-medium text-ink">{entry.name}</p>
                 <p className="mt-0.5 text-fine text-muted">{entry.note}</p>
               </div>
-              <Stamp tone={entry.status === 'live' ? 'accent' : 'neutral'} className="shrink-0">
+              <Stamp tone={entry.status === 'live' ? 'progress' : 'neutral'} className="shrink-0">
                 {entry.status === 'live' ? 'готово' : 'план'}
               </Stamp>
             </Reveal>

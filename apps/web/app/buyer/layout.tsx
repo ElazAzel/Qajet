@@ -1,33 +1,21 @@
 import { BuyerShell } from '@qajet/ui/shell';
-import Link from 'next/link';
+import { FilePlus, ListChecks, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 const NAV_ITEMS = [
-  { href: '/buyer', label: 'Заказы' },
-  { href: '/buyer/requests/new', label: 'Новая заявка' },
-  { href: '/buyer/team', label: 'Команда' },
+  { key: 'orders', href: '/buyer', label: 'Заказы', icon: <ListChecks size={18} />, active: true },
+  {
+    key: 'new-request',
+    href: '/buyer/requests/new',
+    label: 'Новая заявка',
+    icon: <FilePlus size={18} />,
+  },
+  { key: 'team', href: '/buyer/team', label: 'Команда', icon: <Users size={18} /> },
 ];
 
 export default function BuyerLayout({ children }: { children: ReactNode }) {
   return (
-    <BuyerShell
-      nav={
-        <>
-          <span className="text-sm font-medium">QAJET</span>
-          <div className="flex items-center gap-6">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-fine text-muted hover:text-ink"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </>
-      }
-    >
+    <BuyerShell navItems={NAV_ITEMS} user={{ name: 'Покупатель', meta: 'buyer@demo.qajet.kz' }}>
       {children}
     </BuyerShell>
   );

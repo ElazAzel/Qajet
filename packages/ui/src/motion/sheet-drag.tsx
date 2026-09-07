@@ -55,7 +55,7 @@ export function SheetDrag({ open, onClose, children, title }: SheetDragProps) {
             aria-modal="true"
             aria-label={title}
             className={cn(
-              'fixed inset-x-0 bottom-0 z-50 rounded-t-[var(--radius-overlay)] bg-surface',
+              'fixed inset-x-0 bottom-0 z-50 rounded-t-hero bg-surface',
               'shadow-overlay flex max-h-[85vh] flex-col',
             )}
             style={{ paddingBottom: 'var(--safe-bottom)' }}

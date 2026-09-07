@@ -8,12 +8,14 @@ import {
   Separator,
   useDefaultLayout,
 } from 'react-resizable-panels';
+import { ShellLayout, type ShellNavItem, type ShellUser } from './shell-layout';
 
 /**
- * Оболочка консьержа — §10, §12: плотный рабочий стол с левым рельсом,
- * профессиональный инструмент для ежедневного использования. Раскладка
- * панелей запоминается в localStorage (useDefaultLayout) — консьерж не
- * должен каждый день заново раздвигать список заказов и карточку.
+ * Оболочка консьержа — §10, §12: тот же сайдбар + хедер, что у покупателя
+ * и поставщика (структурно роли не различаются). Отличие консьержа не
+ * структурное, а плотностное: внутри `main` — список заказов и карточка
+ * заказа в изменяемом по ширине split view, а не единая колонка контента.
+ * Раскладка панелей запоминается в localStorage (useDefaultLayout).
  *
  * react-resizable-panels v4 переписал API на примитивы Group/Panel/Separator
  * (раньше — PanelGroup/PanelResizeHandle). Читать это как факт версии,
@@ -33,43 +35,48 @@ const noopStorage: LayoutStorage = {
   getItem: () => null,
   setItem: () => {},
 };
+
 export interface ConciergeShellProps {
-  rail: ReactNode;
+  navItems: ShellNavItem[];
+  user: ShellUser;
   list: ReactNode;
   detail: ReactNode;
   /** Показывается поверх detail при открытии панели подбора/сведения КП. */
   overlayPanel?: ReactNode;
 }
 
-export function ConciergeShell({ rail, list, detail, overlayPanel }: ConciergeShellProps) {
+export function ConciergeShell({
+  navItems,
+  user,
+  list,
+  detail,
+  overlayPanel,
+}: ConciergeShellProps) {
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: 'qajet-concierge-layout',
     storage: typeof window === 'undefined' ? noopStorage : window.localStorage,
   });
 
   return (
-    <div className="flex h-screen bg-paper text-ink">
-      <nav className="flex w-14 flex-col items-center gap-1 border-r border-rule bg-ink py-3 text-paper">
-        {rail}
-      </nav>
+    <ShellLayout navItems={navItems} user={user}>
       <Group
         orientation="horizontal"
         id="concierge-columns"
         defaultLayout={defaultLayout}
         onLayoutChanged={onLayoutChanged}
-        className="flex-1"
+        className="-m-6 h-[calc(100%+3rem)]"
       >
         <Panel id="list" defaultSize="32" minSize="22%" maxSize="48%">
           <div className="h-full overflow-y-auto border-r border-rule bg-surface">{list}</div>
         </Panel>
-        <Separator className="w-px bg-rule transition-colors data-[active]:bg-accent hover:bg-accent" />
+        <Separator className="w-px bg-rule transition-colors hover:bg-purple data-[active]:bg-purple" />
         <Panel id="detail" minSize="40%">
-          <div className="relative h-full overflow-y-auto">
+          <div className="relative h-full overflow-y-auto bg-page">
             {detail}
             {overlayPanel}
           </div>
         </Panel>
       </Group>
-    </div>
+    </ShellLayout>
   );
 }

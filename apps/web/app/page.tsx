@@ -39,7 +39,7 @@ const heroVariants = [
         key: 'commission',
         label: 'Комиссия QAJET',
         fraction: 0.12,
-        color: 'accent' as const,
+        color: 'purple' as const,
         amountLabel: '142 000 ₸',
       },
       {
@@ -80,7 +80,7 @@ const heroVariants = [
         key: 'commission',
         label: 'Комиссия QAJET',
         fraction: 0.1,
-        color: 'accent' as const,
+        color: 'purple' as const,
         amountLabel: '124 000 ₸',
       },
       {
@@ -96,10 +96,10 @@ const heroVariants = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-paper">
-      <header className="border-b border-rule">
+    <div className="min-h-screen bg-page">
+      <header className="border-b border-rule bg-surface">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-6">
-          <span className="text-sm font-medium tracking-wide">QAJET</span>
+          <span className="text-sm font-extrabold tracking-wide">QAJET</span>
           <Link href="/login" className="text-fine text-muted hover:text-ink">
             Войти
           </Link>
@@ -108,7 +108,7 @@ export default function LandingPage() {
 
       <main className="mx-auto max-w-4xl px-6 py-16">
         <Reveal>
-          <h1 className="max-w-xl text-3xl font-medium text-ink">
+          <h1 className="max-w-xl text-3xl font-extrabold text-ink">
             Одна задача. Согласованный бюджет. Один закупочный партнёр.
           </h1>
         </Reveal>
@@ -134,9 +134,9 @@ export default function LandingPage() {
         <Reveal delay={0.1} className="mt-10 flex gap-3">
           <Link
             href="/login"
-            className="inline-flex h-10 items-center justify-center rounded-[var(--radius-control)] bg-accent px-4 text-sm font-medium text-ink hover:bg-accent/90"
+            className="inline-flex h-10 items-center justify-center rounded-control bg-purple px-4 text-sm font-semibold text-white hover:bg-purple/90"
           >
-            Войти в систему
+            Войти в систему →
           </Link>
         </Reveal>
 
