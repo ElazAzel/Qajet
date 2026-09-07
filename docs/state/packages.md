@@ -10,6 +10,7 @@
 
 - `@qajet/db` — `packages/db`
 - `@qajet/engine` — `packages/engine`
+- `@qajet/pd` — `packages/pd`
 - `@qajet/ui` — `packages/ui`
 
 ## tools/

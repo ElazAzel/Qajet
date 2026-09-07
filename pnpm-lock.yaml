@@ -65,6 +65,9 @@ importers:
       '@qajet/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@qajet/pd':
+        specifier: workspace:*
+        version: link:../../packages/pd
       '@qajet/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -153,6 +156,22 @@ importers:
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
 
   packages/engine:
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+
+  packages/pd:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: 2.115.0
+        version: 2.115.0
     devDependencies:
       '@types/node':
         specifier: 22.20.1

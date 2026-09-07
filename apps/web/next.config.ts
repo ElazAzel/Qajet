@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
-  transpilePackages: ['@qajet/ui', '@qajet/engine'],
+  transpilePackages: ['@qajet/ui', '@qajet/engine', '@qajet/pd'],
 
   typedRoutes: true,
 

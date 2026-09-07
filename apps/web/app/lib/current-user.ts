@@ -1,3 +1,4 @@
+import { createPdClient } from '@qajet/pd';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -5,6 +6,9 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
  * Текущий пользователь для оболочек ролей — единая точка, откуда
  * layout.tsx каждой роли берёт данные для хедера (agents.md §12: аватар +
  * имя + компания/роль), вместо хардкода placeholder-строки.
+ *
+ * Имя и email — персональные данные (agents.md §11.1): читаются через
+ * @qajet/pd, а не прямым запросом к users, как роль и компания ниже.
  */
 
 export type UserRole = 'owner' | 'manager' | 'concierge' | 'admin';
@@ -24,10 +28,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   admin: 'Админ QAJET',
 };
 
-interface ProfileRow {
-  id: string;
-  full_name: string;
-  email: string;
+interface RoleRow {
   role: UserRole;
   companies: { name: string } | { name: string }[] | null;
 }
@@ -41,20 +42,26 @@ export async function requireCurrentUser(): Promise<CurrentUser> {
   } = await supabase.auth.getUser();
   if (!authUser) redirect('/login');
 
-  const { data } = await supabase
-    .from('users')
-    .select('id, full_name, email, role, companies(name)')
-    .eq('id', authUser.id)
-    .maybeSingle<ProfileRow>();
-  if (!data) redirect('/login');
+  const pd = createPdClient(supabase);
+  const [contact, roleResult] = await Promise.all([
+    pd.getUserContact(authUser.id),
+    supabase
+      .from('users')
+      .select('role, companies(name)')
+      .eq('id', authUser.id)
+      .maybeSingle<RoleRow>(),
+  ]);
+  if (!contact || !roleResult.data) redirect('/login');
 
-  const company = Array.isArray(data.companies) ? data.companies[0] : data.companies;
+  const company = Array.isArray(roleResult.data.companies)
+    ? roleResult.data.companies[0]
+    : roleResult.data.companies;
 
   return {
-    id: data.id,
-    fullName: data.full_name,
-    email: data.email,
-    role: data.role,
+    id: contact.id,
+    fullName: contact.fullName,
+    email: contact.email,
+    role: roleResult.data.role,
     companyName: company?.name ?? null,
   };
 }
