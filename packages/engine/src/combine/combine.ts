@@ -199,6 +199,7 @@ function evaluateAssembly(
   assignments: readonly Assignment[],
   commissionRatePct: number,
 ): AssemblyCost {
+  __debugStats.evaluateAssemblyCalls += 1;
   const perSupplierProduct = new Map<string, number>();
   for (const a of assignments) {
     const lineAmount = a.offer.unitPriceKzt * a.qty;
@@ -255,6 +256,15 @@ function evaluateAssembly(
 function totalCostOf(assembly: AssemblyCost): Kzt {
   return assembly.totalSupplierKzt + assembly.deliveryKzt + assembly.commissionKzt;
 }
+
+/**
+ * Счётчик вызовов `evaluateAssembly` за время выполнения одного `combine()`
+ * — только для тестов (проверка, что кросс-подмножественное отсечение в
+ * `solveSubsetExact` реально сокращает перебор, а не просто существует в
+ * коде). Не влияет на поведение: обычный инкремент счётчика, обнуляется в
+ * начале каждого вызова `combine()`.
+ */
+export const __debugStats = { evaluateAssemblyCalls: 0 };
 
 // ---------------------------------------------------------------------------
 // Точный путь — перебор подмножеств поставщиков + DFS с ветвями и границами
@@ -333,6 +343,7 @@ function twoOptImprove(
 // ---------------------------------------------------------------------------
 
 export function combine(input: CombineInput): CombineResult {
+  __debugStats.evaluateAssemblyCalls = 0;
   const { byItem, rejections } = filterAdmissible(input);
   const itemQtyById = new Map(input.items.map((i) => [i.id, i.qty]));
   const itemIds = input.items.map((i) => i.id);
@@ -357,6 +368,25 @@ export function combine(input: CombineInput): CombineResult {
 
   if (useExact) {
     const subsets = enumerateNonEmptySubsets(supplierIds);
+    // Отсечение между подмножествами: подмножество №200 не должно
+    // пересчитывать границу с нуля, зная, что подмножество №50 уже нашло
+    // дешевле. `globalBest` — минимальная стоимость среди уже обработанных
+    // подмножеств; solveSubsetExact() использует `globalBest.cost × 1.1`
+    // (тот же MORE_SLACK_COST_TOLERANCE, что и у варианта "больше запаса")
+    // как дополнительную (но не единственную) границу отсечения ветвей —
+    // не как замену локальной. Она включается только после того, как
+    // подмножество уже нашло хотя бы одно допустимое назначение, поэтому
+    // solveSubsetExact() никогда не возвращает null для подмножества,
+    // у которого есть допустимая сборка (см. комментарий там же).
+    //
+    // Честная оговорка: это отсечение не гарантированно бит-в-бит
+    // идентично полному перебору в редком крайнем случае, когда win в
+    // `moreSlack` зависит от подмножества, чья истинная минимальная
+    // стоимость лежит строго между `globalBest на момент обработки × 1.1`
+    // и итоговым `recommended.totalKzt × 1.1` (последний известен только
+    // после обработки всех подмножеств, а не в процессе). Существующий
+    // набор тестов (§15, три варианта, кейс с СНР) этот случай не задевает.
+    let globalBest: { cost: number } | null = null;
     for (const subset of subsets) {
       if (Date.now() > deadlineAt) break;
       const subsetSet = new Set(subset);
@@ -373,8 +403,12 @@ export function combine(input: CombineInput): CombineResult {
         itemQtyById,
         input.commissionRatePct,
         deadlineAt,
+        globalBest,
       );
-      if (result) candidates.push({ assignments: result, method: 'exact' });
+      if (result) {
+        candidates.push({ assignments: result.assignments, method: 'exact' });
+        if (!globalBest || result.cost < globalBest.cost) globalBest = { cost: result.cost };
+      }
     }
   }
 
@@ -456,7 +490,8 @@ function solveSubsetExact(
   itemQtyById: ReadonlyMap<string, number>,
   commissionRatePct: number,
   deadlineAt: number,
-): Assignment[] | null {
+  globalBest: { cost: number } | null,
+): { assignments: Assignment[]; cost: number } | null {
   for (const id of itemIds) {
     if ((offersByItemInSubset.get(id) ?? []).length === 0) return null;
   }
@@ -481,6 +516,16 @@ function solveSubsetExact(
     remainingMinCost[i] = prev + cheapestLine;
   }
 
+  // Внешняя граница (от уже обработанных подмножеств) действует только
+  // ПОСЛЕ того, как это подмножество нашло хотя бы одно своё допустимое
+  // назначение (`best !== null`) — иначе она могла бы отсечь вообще все
+  // ветви и solveSubsetExact() вернул бы null для подмножества, у
+  // которого на самом деле есть допустимая сборка (регрессия §15: план
+  // потерян там, где он обязан быть найден). ×MORE_SLACK_COST_TOLERANCE —
+  // запас на случай, если позже выбранный `recommended` окажется дороже
+  // текущего globalBest (variant "больше запаса" уже допускает до +10%).
+  const externalBound = globalBest !== null ? globalBest.cost * MORE_SLACK_COST_TOLERANCE : null;
+
   let best: { assignments: Assignment[]; cost: number } | null = null;
   const current: Assignment[] = [];
 
@@ -494,10 +539,13 @@ function solveSubsetExact(
 
     const remainingBound = remainingMinCost[index + 1] ?? 0;
     const optimisticRemaining = remainingBound * (1 - maxDiscountPct / 100);
-    if (
-      best !== null &&
-      accumulatedProductCost + optimisticRemaining >= (best as { cost: number }).cost
-    ) {
+    const pruneBound =
+      best !== null
+        ? externalBound !== null
+          ? Math.min(best.cost, externalBound)
+          : best.cost
+        : null;
+    if (pruneBound !== null && accumulatedProductCost + optimisticRemaining >= pruneBound) {
       return;
     }
 
@@ -514,5 +562,5 @@ function solveSubsetExact(
   }
 
   dfs(0, 0);
-  return best === null ? null : (best as { assignments: Assignment[]; cost: number }).assignments;
+  return best === null ? null : (best as { assignments: Assignment[]; cost: number });
 }

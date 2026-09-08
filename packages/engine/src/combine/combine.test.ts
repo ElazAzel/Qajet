@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CombineInput, combine, type QuoteOffer } from './combine.js';
+import { __debugStats, type CombineInput, combine, type QuoteOffer } from './combine.js';
 
 const TODAY = '2026-09-01T00:00:00Z';
 
@@ -198,6 +198,46 @@ describe('combine — три варианта', () => {
     expect(cheaper?.lines[0]?.supplierId).toBe('supplier-p');
     expect(cheaper?.slackDays).toBeLessThan(3);
     expect(recommended?.slackDays).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('combine — отсечение между подмножествами (Волна B.1)', () => {
+  it('глобальная граница режет перебор на дорогих подмножествах, план остаётся верным', () => {
+    const items = Array.from({ length: 6 }, (_, i) => ({ id: `item-${i}`, qty: 5 }));
+    const supplierIds = Array.from({ length: 8 }, (_, i) => `supplier-${i}`);
+
+    const offers: QuoteOffer[] = [];
+    for (const item of items) {
+      for (const [si, supplierId] of supplierIds.entries()) {
+        // supplier-0 доминирует по цене на каждой позиции — его собственное
+        // подмножество (обрабатывается первым, единственный элемент в
+        // supplierIds) должно быстро дать сильную глобальную границу.
+        const unitPriceKzt = si === 0 ? 100 : 1000 + si * 50;
+        offers.push(
+          offer({
+            id: `${supplierId}-${item.id}`,
+            requestItemId: item.id,
+            supplierId,
+            unitPriceKzt,
+          }),
+        );
+      }
+    }
+
+    const input: CombineInput = { ...baseInput, items, offers, timeBudgetMs: 5000 };
+    const result = combine(input);
+
+    const recommended = result.plans.find((p) => p.kind === 'recommended');
+    expect(recommended?.lines.every((l) => l.supplierId === 'supplier-0')).toBe(true);
+
+    // Регрессионный потолок: на этом входе (8 поставщиков × 6 позиций)
+    // с отсечением между подмножествами — около 1300 вызовов
+    // evaluateAssembly; без него (globalBest никогда не обновляется) —
+    // около 940 000, то есть на два с лишним порядка больше. Если кто-то
+    // в будущем уберёт globalBest из solveSubsetExact, этот тест должен
+    // покраснеть, а не молча остаться зелёным на честном "правильный
+    // ответ, но перебор снова полный".
+    expect(__debugStats.evaluateAssemblyCalls).toBeLessThan(5000);
   });
 });
 
