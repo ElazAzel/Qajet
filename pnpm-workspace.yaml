@@ -8,6 +8,8 @@ onlyBuiltDependencies:
   - "@biomejs/biome"
   - "@tailwindcss/oxide"
   - esbuild
+  - onnxruntime-node
+  - protobufjs
   - sharp
 
 # Версии зафиксированы явно (ADR-0001). Каталог не даёт разъехаться
@@ -25,3 +27,4 @@ catalog:
   "@vitejs/plugin-react": 6.1.1
   tailwindcss: 4.3.3
   "@tailwindcss/postcss": 4.3.3
+  recharts: 3.9.0

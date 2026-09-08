@@ -1,0 +1,25 @@
+{
+  "name": "@qajet/pd",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rls": "vitest run postgres-backend-rls --passWithNoTests",
+    "clean": "rm -rf .turbo"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.115.0",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

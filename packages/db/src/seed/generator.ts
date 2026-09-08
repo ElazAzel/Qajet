@@ -245,6 +245,9 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
     { key: 'cit_rate_pct', value: CIT_RATE_PCT },
     { key: 'logistics_buffer_days_almaty', value: LOGISTICS_BUFFER_ALMATY_DAYS },
     { key: 'logistics_buffer_days_intercity', value: LOGISTICS_BUFFER_INTERCITY_DAYS },
+    // Подбор поставщиков под RFQ (agents.md §8C) — apps/web/app/lib/actions/order-actions.ts
+    { key: 'rfq_batch_size_per_item', value: 5 },
+    { key: 'rfq_exploration_every_n', value: 4 },
   );
 
   // --- Компании и аккаунты ---

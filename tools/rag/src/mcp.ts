@@ -26,16 +26,17 @@ server.registerTool(
   {
     title: 'Поиск по спецификации и решениям QAJET',
     description:
-      'Ключевой поиск (BM25) по agents.md, ADR (docs/decisions) и журналу разработки ' +
-      '(docs/journal). Используй перед тем, как менять логику заказов, оплат, ролей ' +
-      'или поставщиков — agents.md остаётся источником истины проекта.',
+      'Гибридный поиск (BM25 + векторная семантическая близость) по agents.md, ' +
+      'ADR (docs/decisions) и журналу разработки (docs/journal). Используй перед тем, ' +
+      'как менять логику заказов, оплат, ролей или поставщиков — agents.md остаётся ' +
+      'источником истины проекта.',
     inputSchema: {
       query: z.string().describe('Что искать, обычным языком — не нужен синтаксис FTS5'),
       limit: z.number().int().min(1).max(20).optional(),
     },
   },
   async ({ query, limit }) => {
-    const hits = searchCorpus(query, limit ?? 8);
+    const hits = await searchCorpus(query, limit ?? 8);
     if (hits.length === 0) {
       return {
         content: [

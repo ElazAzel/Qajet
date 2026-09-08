@@ -13,7 +13,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { authenticatedRole, serviceRole } from 'drizzle-orm/supabase';
+import { authenticatedRole, authUid, serviceRole } from 'drizzle-orm/supabase';
 import { id, timestamps } from './_columns.js';
 import {
   documentTypeEnum,
@@ -26,7 +26,13 @@ import {
   rfqStatusEnum,
   settlementEnum,
 } from './enums.js';
-import { companies, currentCompanyIdSubquery, currentRoleSubquery, users } from './identity.js';
+import {
+  companies,
+  currentCompanyIdSubquery,
+  currentRoleSubquery,
+  rfqRequestIdsForCurrentSupplierSubquery,
+  users,
+} from './identity.js';
 
 /**
  * Закупочный цикл — agents.md §5. Изоляция поставщиков (§3.4, тест §15):
@@ -36,6 +42,24 @@ import { companies, currentCompanyIdSubquery, currentRoleSubquery, users } from 
  */
 
 const staffOnly = sql`${currentRoleSubquery} in ('concierge', 'admin')`;
+
+/**
+ * Видимость строки, привязанной к requests через request_id — покупателю
+ * своей заявки и staff. НЕ через "id in (select id from requests)": до
+ * requests_select_supplier_via_rfq так делали почти все select_via_request
+ * policy ниже, и это молча предполагало, что requests видна ТОЛЬКО
+ * покупателю — как только requests стала видна ещё и поставщику (по его
+ * RFQ), это давало утечку: поставщик получал доступ к estimates/prepayments/
+ * plans/plan_rejections чужой заявки только потому, что мог прочитать саму
+ * requests. Явная проверка buyer_company_id/staff не зависит от того, кому
+ * ещё видна requests.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: accepts any pgTable's requestId column for the sql`` template below
+function visibleToBuyerOrStaff(requestIdColumn: any) {
+  return sql`${requestIdColumn} in (
+    select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+  ) or ${staffOnly}`;
+}
 
 export const requests = pgTable(
   'requests',
@@ -78,6 +102,25 @@ export const requests = pgTable(
       to: authenticatedRole,
       withCheck: sql`${t.buyerCompanyId} = ${currentCompanyIdSubquery}`,
     }),
+    pgPolicy('requests_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
+    }),
+    // Поставщик видит заявку, только если ему по ней отправили RFQ — не
+    // раньше. Через SECURITY DEFINER-функцию (identity.ts,
+    // rfqRequestIdsForCurrentSupplierSubquery), а не прямой подзапрос в
+    // "rfqs": rfqs_select_buyer_of_request (миграция 0000) сама подзапрашивает
+    // requests, и прямой подзапрос здесь замкнул бы requests↔rfqs в
+    // ERROR 42P17 (см. identity.ts у объявления константы).
+    pgPolicy('requests_select_supplier_via_rfq', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: sql`${t.id} in (select ${rfqRequestIdsForCurrentSupplierSubquery})`,
+    }),
     pgPolicy('requests_service_all', {
       as: 'permissive',
       for: 'all',
@@ -110,11 +153,25 @@ export const requestItems = pgTable(
   },
   (t) => [
     index('request_items_request_id_idx').on(t.requestId),
+    // Позиции нужны и поставщику с RFQ по этой заявке (без них нечего
+    // оценивать в форме ответа) — единственная из этой группы policy, где
+    // видимость сознательно шире buyer+staff.
     pgPolicy('request_items_select_via_request', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.requestId} in (select id from ${requests})`,
+      using: sql`${visibleToBuyerOrStaff(t.requestId)} or ${t.requestId} in (select ${rfqRequestIdsForCurrentSupplierSubquery})`,
+    }),
+    // Мастер заявки (agents.md §10 «Покупатель») пишет позиции сам, от
+    // своей же компании — единственная точка входа для request_items,
+    // orders для этой заявки появится позже, отдельным действием концьержа.
+    pgPolicy('request_items_insert_buyer_own', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
     }),
     pgPolicy('request_items_service_all', {
       as: 'permissive',
@@ -146,7 +203,13 @@ export const estimates = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.requestId} in (select id from ${requests})`,
+      using: visibleToBuyerOrStaff(t.requestId),
+    }),
+    pgPolicy('estimates_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
     }),
     pgPolicy('estimates_service_all', {
       as: 'permissive',
@@ -178,7 +241,13 @@ export const prepayments = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.requestId} in (select id from ${requests})`,
+      using: visibleToBuyerOrStaff(t.requestId),
+    }),
+    pgPolicy('prepayments_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
     }),
     pgPolicy('prepayments_service_all', {
       as: 'permissive',
@@ -223,11 +292,21 @@ export const rfqs = pgTable(
       to: authenticatedRole,
       using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
     }),
+    // Внимание: раньше здесь было "request_id in (select id from requests)",
+    // положившееся на то, что видимость requests сама всё отфильтрует. Это
+    // держалось, пока requests был виден ТОЛЬКО покупателю. Как только
+    // requests_select_supplier_via_rfq сделал заявку видимой ещё и
+    // поставщику (у которого есть RFQ по ней), это давало утечку между
+    // поставщиками: поставщик A видел ВСЕ rfqs той же заявки, включая
+    // строку поставщика B — нарушение agents.md §3.4 (обязательный тест
+    // изоляции). Явная проверка buyer_company_id возвращает policy к её
+    // исходному смыслу — «покупатель видит RFQ своей заявки» — не завися
+    // от того, кому ещё видна сама requests.
     pgPolicy('rfqs_select_buyer_of_request', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.requestId} in (select id from ${requests})`,
+      using: sql`${t.requestId} in (select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery})`,
     }),
     pgPolicy('rfqs_select_staff', {
       as: 'permissive',
@@ -241,6 +320,12 @@ export const rfqs = pgTable(
       to: authenticatedRole,
       using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
       withCheck: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
+    }),
+    pgPolicy('rfqs_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
     }),
     pgPolicy('rfqs_service_all', {
       as: 'permissive',
@@ -277,11 +362,19 @@ export const quotes = pgTable(
       to: authenticatedRole,
       using: sql`${t.rfqId} in (select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery})`,
     }),
+    // Тот же риск утечки между поставщиками, что и у rfqs_select_buyer_of_request
+    // (см. комментарий там): "request_id in (select id from requests)" молча
+    // предполагал requests видной только покупателю. Явная проверка
+    // buyer_company_id — обязательна, quotes держат цены ДРУГИХ поставщиков.
     pgPolicy('quotes_select_buyer_of_request', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.rfqId} in (select id from ${rfqs} where request_id in (select id from ${requests}))`,
+      using: sql`${t.rfqId} in (
+        select id from ${rfqs} where request_id in (
+          select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+        )
+      )`,
     }),
     pgPolicy('quotes_select_staff', {
       as: 'permissive',
@@ -337,13 +430,17 @@ export const quoteLines = pgTable(
         )
       )`,
     }),
+    // Тот же риск, что у quotes_select_buyer_of_request — явная проверка
+    // buyer_company_id, а не "requests её всё равно отфильтрует".
     pgPolicy('quote_lines_select_buyer_of_request', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
       using: sql`${t.quoteId} in (
         select id from ${quotes} where rfq_id in (
-          select id from ${rfqs} where request_id in (select id from ${requests})
+          select id from ${rfqs} where request_id in (
+            select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+          )
         )
       )`,
     }),
@@ -352,6 +449,16 @@ export const quoteLines = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: staffOnly,
+    }),
+    pgPolicy('quote_lines_insert_own_supplier', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${t.quoteId} in (
+        select id from ${quotes} where rfq_id in (
+          select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery}
+        )
+      )`,
     }),
     pgPolicy('quote_lines_service_all', {
       as: 'permissive',
@@ -392,7 +499,36 @@ export const plans = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.requestId} in (select id from ${requests})`,
+      using: visibleToBuyerOrStaff(t.requestId),
+    }),
+    // Пишет только движок сравнения через packages/engine order/transition() —
+    // agents.md §6: единственная функция переходов, прямых update из UI нет.
+    // Здесь — кто физически может дёрнуть запись: staff предлагает план
+    // (proposePlan), покупатель утверждает свой (approvePlan) — граница
+    // «допустимый ли это переход» проверяется в приложении, а не в policy.
+    pgPolicy('plans_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('plans_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('plans_update_buyer_own', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
+      withCheck: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
     }),
     pgPolicy('plans_service_all', {
       as: 'permissive',
@@ -435,6 +571,12 @@ export const planLines = pgTable(
       to: authenticatedRole,
       using: sql`${t.planId} in (select id from ${plans})`,
     }),
+    pgPolicy('plan_lines_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
     pgPolicy('plan_lines_service_all', {
       as: 'permissive',
       for: 'all',
@@ -466,7 +608,13 @@ export const planRejections = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.requestId} in (select id from ${requests})`,
+      using: visibleToBuyerOrStaff(t.requestId),
+    }),
+    pgPolicy('plan_rejections_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
     }),
     pgPolicy('plan_rejections_service_all', {
       as: 'permissive',
@@ -505,7 +653,7 @@ export const orders = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.requestId} in (select id from ${requests})`,
+      using: visibleToBuyerOrStaff(t.requestId),
     }),
     // Заказ виден и поставщикам, чьи строки вошли в утверждённый план.
     pgPolicy('orders_select_supplier_in_plan', {
@@ -514,6 +662,39 @@ export const orders = pgTable(
       to: authenticatedRole,
       using: sql`${t.approvedPlanId} in (
         select plan_id from ${planLines} where supplier_company_id = ${currentCompanyIdSubquery}
+      )`,
+    }),
+    // Допустимость самого перехода (from → to по актёру) проверяет
+    // packages/engine order/transition() в server action ДО этого UPDATE;
+    // здесь — только «кто в принципе имеет право трогать эту строку».
+    // Триггер enforce_order_transition (см. миграцию) — второй, независимый
+    // барьер на уровне БД: запрещает переход, которого нет в графе, даже
+    // если бы кто-то обошёл приложение и написал UPDATE напрямую.
+    // Заказ физически появляется, когда концьерж берёт заявку в работу
+    // (intakeRequest — плейсхолдер-план + orders на state='draft') — до
+    // этого момента заявка существует сама по себе, без orders-строки.
+    pgPolicy('orders_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('orders_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('orders_update_buyer_own', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
+      withCheck: sql`${t.requestId} in (
+        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
       )`,
     }),
     pgPolicy('orders_service_all', {
@@ -551,8 +732,26 @@ export const orderStageEvents = pgTable(
       to: authenticatedRole,
       using: sql`${t.orderId} in (select id from ${orders})`,
     }),
-    // Audit log только на вставку через движок — никаких direct update/delete
-    // даже для service_role, история необратима (agents.md §6).
+    // Audit log только на вставку — никаких policy на update/delete вообще,
+    // даже для service_role, история необратима (agents.md §6). Вставка
+    // разрешена authenticatedRole (не только сервису), потому что сами
+    // переходы теперь и правда происходят из браузера staff/покупателя, но
+    // строго от своего имени (actor_user_id = свой auth.uid()) и только
+    // по заказу, который этой роли и так виден (staff — любой, покупатель —
+    // только заказ своей же компании).
+    pgPolicy('order_stage_events_insert_actor', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${t.actorUserId} = ${authUid} and (
+        ${currentRoleSubquery} in ('concierge', 'admin')
+        or ${t.orderId} in (
+          select o.id from ${orders} o
+          join ${requests} r on r.id = o.request_id
+          where r.buyer_company_id = ${currentCompanyIdSubquery}
+        )
+      )`,
+    }),
     pgPolicy('order_stage_events_service_insert', {
       as: 'permissive',
       for: 'insert',
@@ -598,6 +797,12 @@ export const supplierPayouts = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: staffOnly,
+    }),
+    pgPolicy('supplier_payouts_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
     }),
     pgPolicy('supplier_payouts_service_all', {
       as: 'permissive',

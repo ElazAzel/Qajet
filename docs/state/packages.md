@@ -4,12 +4,15 @@
 
 ## apps/
 
+- `@qajet/desktop` — `apps/desktop` (нет src/)
+- `@qajet/mobile` — `apps/mobile` (нет src/)
 - `@qajet/web` — `apps/web` (нет src/)
 
 ## packages/
 
 - `@qajet/db` — `packages/db`
 - `@qajet/engine` — `packages/engine`
+- `@qajet/pd` — `packages/pd`
 - `@qajet/ui` — `packages/ui`
 
 ## tools/

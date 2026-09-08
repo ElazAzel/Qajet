@@ -73,6 +73,85 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @qajet/web build
 
+  e2e:
+    name: Сквозной сценарий (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # NEXT_PUBLIC_SUPABASE_URL/ANON_KEY как secrets репозитория — открытый
+      # пункт (README «Известные ограничения»), тот же класс, что и
+      # DATABASE_URL для теста изоляции поставщиков. Без них
+      # playwright.config.ts не находит .env.local, e2e/*.spec.ts пропускают
+      # себя сами (test.skip) — джоба не падает, просто ничего не проверяет.
+      - name: Playwright Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm --filter @qajet/web build
+
+      - name: pnpm e2e
+        working-directory: apps/web
+        run: pnpm e2e
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+  rls-isolation:
+    name: Тест изоляции поставщиков (RLS, реальный Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Только Postgres — auth.users/auth.uid() и роли authenticated/anon/
+      # service_role идут из образа supabase/postgres, не из GoTrue/Kong,
+      # поэтому HTTP-сервисы для этого теста не нужны и только замедлили бы CI.
+      - name: supabase start (только Postgres 17 + схема auth)
+        run: >
+          supabase start
+          --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Применить миграции packages/db
+        run: pnpm --filter @qajet/db db:migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+      - name: Тест изоляции поставщиков (agents.md §3.4, §15)
+        run: pnpm --filter @qajet/db test:rls
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+      - name: PD_BACKEND=postgres против реального RLS (ADR-0005)
+        run: pnpm --filter @qajet/pd test:rls
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
   rag-freshness:
     name: RAG-индекс не отстал от кода
     runs-on: ubuntu-latest

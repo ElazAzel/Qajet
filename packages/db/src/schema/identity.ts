@@ -19,10 +19,12 @@ import { companyTypeEnum, taxModeEnum, userRoleEnum, vatStatusEnum } from './enu
  * Идентичность и компании — agents.md §5, §3.
  *
  * Изоляция поставщиков (agents.md §3.4, обязательный тест §15) начинается
- * здесь: policies ниже читают `company_id` текущего пользователя через
- * подзапрос в `users`, обёрнутый как `(select ...)` — это тот самый приём
- * из drizzle-orm/supabase для производительности (auth.uid() кэшируется
- * планировщиком Postgres на подзапрос, а не пересчитывается на строку).
+ * здесь: policies ниже читают `company_id`/`role` текущего пользователя через
+ * `currentCompanyIdSubquery`/`currentRoleSubquery` (см. ниже) — оба
+ * определены как `(select public.current_*())`, не голый вызов функции.
+ * Обёртка в `(select ...)` — приём из drizzle-orm/supabase для
+ * производительности: STABLE-функция внутри вычисляется планировщиком один
+ * раз на statement (InitPlan), а не на каждой просканированной строке.
  */
 
 export const companies = pgTable(
@@ -56,6 +58,20 @@ export const companies = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: sql`${currentRoleSubquery} in ('concierge', 'admin')`,
+    }),
+    // Поставщик видит карточку компании-покупателя только если ему по её
+    // заявке отправили RFQ — иначе он не узнал бы, кому отвечает. Через
+    // SECURITY DEFINER-функцию (buyerCompanyIdsForCurrentSupplierSubquery,
+    // объявлена ниже в этом файле), а не подзапрос напрямую в "requests"/
+    // "rfqs": requests_select_supplier_via_rfq и rfqs_select_buyer_of_request
+    // (procurement.ts) сами транзитивно проходят друг через друга, и прямой
+    // подзапрос отсюда замкнул бы цикл через них в ERROR 42P17 (см. комментарий
+    // у самой константы).
+    pgPolicy('companies_select_supplier_via_rfq', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: sql`id in (select ${buyerCompanyIdsForCurrentSupplierSubquery})`,
     }),
     pgPolicy('companies_service_all', {
       as: 'permissive',
@@ -251,5 +267,23 @@ export const supplierStats = pgTable(
  * своей же сессии не секрет для аутентифицированного пользователя, но не
  * должен быть открыт анониму).
  */
-export const currentCompanyIdSubquery = sql`public.current_company_id()`;
-export const currentRoleSubquery = sql`public.current_role()`;
+export const currentCompanyIdSubquery = sql`(select public.current_company_id())`;
+export const currentRoleSubquery = sql`(select public.current_role())`;
+
+/**
+ * Тот же цикл, что описан выше для `users`, но между `requests` и `rfqs`:
+ * `requests_select_supplier_via_rfq` (requests → rfqs) и
+ * `rfqs_select_buyer_of_request` (rfqs → requests, миграция 0000) взаимно
+ * подзапрашивали друг друга под ролью `authenticated` →
+ * `ERROR 42P17: infinite recursion detected in policy for relation
+ * "requests"` — ловилось на любом запросе, который тянет `companies` вместе
+ * с ролью/компанией пользователя (`current-user.ts`), то есть буквально на
+ * каждом заходе после логина. `SECURITY DEFINER`-функции ниже читают
+ * `rfqs`/`requests` в обход их RLS, разрывая цикл — тот же приём, что и для
+ * `current_company_id()`. Определены как сырой SQL прямо в сгенерированной
+ * миграции (см. `packages/db/migrations/*.sql`, блок `CREATE OR REPLACE
+ * FUNCTION public.rfq_request_ids_for_current_supplier` и соседний
+ * `buyer_company_ids_for_current_supplier`), а не через Drizzle-схему.
+ */
+export const rfqRequestIdsForCurrentSupplierSubquery = sql`public.rfq_request_ids_for_current_supplier()`;
+export const buyerCompanyIdsForCurrentSupplierSubquery = sql`public.buyer_company_ids_for_current_supplier()`;

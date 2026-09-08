@@ -31,7 +31,7 @@ export interface BarSegment {
   /** Доля от общей ширины шкалы (0..1), уже посчитанная относительно
    *  максимума среди ВСЕХ сравниваемых вариантов — не только своего. */
   fraction: number;
-  color: 'ink' | 'muted' | 'accent' | 'signal';
+  color: 'ink' | 'muted' | 'purple' | 'signal';
   /** Показывается при раскрытии декомпозиции, не на самой полосе. */
   amountLabel: string;
 }
@@ -39,7 +39,7 @@ export interface BarSegment {
 const segmentColor: Record<BarSegment['color'], string> = {
   ink: 'bg-ink',
   muted: 'bg-muted',
-  accent: 'bg-accent',
+  purple: 'bg-purple',
   signal: 'bg-signal',
 };
 
@@ -61,11 +61,7 @@ export function BarGrow({ segments, index, className, heightClassName = 'h-8' }:
   return (
     <div
       ref={ref}
-      className={cn(
-        'flex w-full overflow-hidden rounded-[var(--radius-doc)]',
-        heightClassName,
-        className,
-      )}
+      className={cn('flex w-full overflow-hidden rounded-card-sm', heightClassName, className)}
       role="img"
       aria-label={segments.map((s) => `${s.label}: ${s.amountLabel}`).join(', ')}
     >
@@ -76,7 +72,7 @@ export function BarGrow({ segments, index, className, heightClassName = 'h-8' }:
           style={{
             width: `${segment.fraction * 100}%`,
             // Тонкий разделитель между сегментами одной полосы — не тень.
-            borderLeft: i > 0 ? '1px solid var(--color-paper)' : undefined,
+            borderLeft: i > 0 ? '1px solid var(--color-page)' : undefined,
           }}
           initial={reduced ? false : { scaleX: 0 }}
           animate={inView || reduced ? { scaleX: 1 } : false}

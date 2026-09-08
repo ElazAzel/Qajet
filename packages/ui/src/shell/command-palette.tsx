@@ -33,6 +33,23 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Одна и та же страница открывается и в браузере, и в оболочке Tauri
+  // (apps/desktop) — глобальный хоткей там ловит нативный слой ОС (браузер
+  // физически не может зарегистрировать хоткей вне своей вкладки) и
+  // пересылает команду через Tauri IPC. `@tauri-apps/api` в браузере без
+  // моста `window.__TAURI_INTERNALS__` не грузим вовсе — обычный веб-визит
+  // не должен тянуть и не тянет этот код.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+    let unlisten: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('global-shortcut:command-palette', () => setOpen(true)).then((fn) => {
+        unlisten = fn;
+      });
+    });
+    return () => unlisten?.();
+  }, []);
+
   const groups = groupBy(items, (item) => item.group);
 
   return (
@@ -46,7 +63,7 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
           onClick={() => setOpen(false)}
         >
           <motion.div
-            className="shadow-overlay w-full max-w-lg overflow-hidden rounded-[var(--radius-overlay)] bg-surface"
+            className="shadow-overlay w-full max-w-lg overflow-hidden rounded-card bg-surface"
             initial={{ opacity: 0, scale: 0.97, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: -8 }}
@@ -76,7 +93,7 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
                           item.onSelect();
                           setOpen(false);
                         }}
-                        className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-2 py-2 text-sm data-[selected=true]:bg-accent-wash"
+                        className="flex cursor-pointer items-center justify-between rounded-control px-2 py-2 text-sm data-[selected=true]:bg-purple-10"
                       >
                         <span>{item.label}</span>
                         {item.hint && (
@@ -95,7 +112,8 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
   );
 }
 
-function groupBy<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
+/** Группировка команд по заголовку секции — вынесена наружу для юнит-теста. */
+export function groupBy<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
   const result: Record<string, T[]> = {};
   for (const item of items) {
     const k = key(item);

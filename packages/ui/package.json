@@ -5,6 +5,7 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    "./hooks": "./src/hooks/index.ts",
     "./motion": "./src/motion/index.ts",
     "./primitives": "./src/primitives/index.ts",
     "./shell": "./src/shell/index.ts",
@@ -17,6 +18,7 @@
     "clean": "rm -rf .turbo"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.11.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "lucide-react": "1.41.0",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "next": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "typescript": "catalog:",

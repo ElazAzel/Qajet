@@ -9,11 +9,12 @@
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/seed/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "test:rls": "vitest run rls --passWithNoTests",
+    "test:rls": "vitest run supplier-isolation --passWithNoTests",
     "clean": "rm -rf .turbo"
   },
   "dependencies": {
