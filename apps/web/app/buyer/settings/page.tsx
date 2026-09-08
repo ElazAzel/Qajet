@@ -1,6 +1,7 @@
 import { cn } from '@qajet/ui/lib/cn';
 import { Reveal } from '@qajet/ui/motion';
 import { Button } from '@qajet/ui/primitives';
+import { requireCurrentUser } from '../../lib/current-user';
 
 /**
  * Настройки покупателя — профиль сотрудника и уведомления. Лимиты
@@ -8,6 +9,19 @@ import { Button } from '@qajet/ui/primitives';
  * доступы») не реализованы — экран /buyer/team не существует, пункт нав
  * убран (apps/web/app/buyer/layout.tsx), здесь пока только личный профиль
  * и оповещения.
+ *
+ * Раньше форма профиля была на 100% захардкожена вымышленным человеком
+ * («Айгерим Сатпаева, ТОО Nomad Tech») — при этом шапка оболочки рядом
+ * показывала настоящего залогиненного пользователя. Найдено при UI-
+ * аудите. Имя/email/компания теперь из requireCurrentUser() (тот же
+ * источник, что у шапки). «Сохранить изменения» пока не пишет в БД —
+ * на users нет ни одной policy на UPDATE вообще (только own/staff SELECT,
+ * см. packages/db/src/schema/identity.ts), а смена email — отдельный
+ * поток через Supabase Auth API, не прямой UPDATE строки. Заводить то и
+ * другое — отдельная задача, не подмена вымышленных данных на реальные.
+ * Поле «Телефон» убрано, а не оставлено пустым — в схеме users нет
+ * такой колонки вообще, пустой ввод без единого шанса когда-либо
+ * сохраниться был бы так же вводящим в заблуждение, как и вымысел.
  */
 
 const TABS = [
@@ -27,9 +41,22 @@ const TOGGLES = [
   { title: 'Новости продукта', sub: 'Обновления и советы от QAJET', on: false },
 ];
 
+const ROLE_LABEL: Record<string, string> = {
+  owner: 'Владелец компании',
+  manager: 'Менеджер',
+};
+
 const inputClass = 'w-full rounded-control bg-page px-4 py-3 text-sm text-ink';
 
-export default function BuyerSettingsPage() {
+function splitName(fullName: string): { first: string; last: string } {
+  const [first = '', ...rest] = fullName.trim().split(/\s+/);
+  return { first, last: rest.join(' ') };
+}
+
+export default async function BuyerSettingsPage() {
+  const user = await requireCurrentUser();
+  const { first, last } = splitName(user.fullName);
+
   return (
     <div className="grid grid-cols-1 gap-8 md:grid-cols-[200px_1fr]">
       <nav className="flex gap-1 overflow-x-auto md:flex-col">
@@ -53,8 +80,8 @@ export default function BuyerSettingsPage() {
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 shrink-0 rounded-full bg-page" aria-hidden="true" />
             <div className="flex-1">
-              <p className="text-sm font-semibold">Айгерим Сатпаева</p>
-              <p className="text-fine text-muted">ТОО «Nomad Tech»</p>
+              <p className="text-sm font-semibold">{user.fullName}</p>
+              <p className="text-fine text-muted">{user.companyName ?? '—'}</p>
             </div>
             <Button variant="secondary" size="sm">
               Изменить фото
@@ -67,21 +94,26 @@ export default function BuyerSettingsPage() {
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-fine font-semibold">Имя</span>
-              <input type="text" defaultValue="Айгерим" className={inputClass} />
+              <input type="text" defaultValue={first} className={inputClass} />
             </label>
             <label className="block">
               <span className="mb-2 block text-fine font-semibold">Фамилия</span>
-              <input type="text" defaultValue="Сатпаева" className={inputClass} />
+              <input type="text" defaultValue={last} className={inputClass} />
             </label>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-fine font-semibold">Email</span>
-              <input type="email" defaultValue="aigerim@nomadtech.kz" className={inputClass} />
+              <input type="email" defaultValue={user.email} className={inputClass} />
             </label>
             <label className="block">
-              <span className="mb-2 block text-fine font-semibold">Телефон</span>
-              <input type="tel" defaultValue="+7 701 234 56 78" className={inputClass} />
+              <span className="mb-2 block text-fine font-semibold">Роль</span>
+              <input
+                type="text"
+                defaultValue={ROLE_LABEL[user.role] ?? user.role}
+                disabled
+                className={cn(inputClass, 'text-muted')}
+              />
             </label>
           </div>
         </section>
