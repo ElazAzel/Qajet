@@ -1,5 +1,12 @@
 'use client';
 
+import {
+  type CatalogEntry,
+  extractBudget,
+  extractDeadline,
+  extractQuantity,
+  matchNomenclature,
+} from '@qajet/engine/intake';
 import { useAsyncAction } from '@qajet/ui/hooks';
 import { Reveal, Stagger } from '@qajet/ui/motion';
 import { Button, Card } from '@qajet/ui/primitives';
@@ -11,10 +18,65 @@ import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../lib/cata
 /**
  * Мастер новой заявки — agents.md §10 «Покупатель». Реальная форма:
  * пишет requests+request_items (apps/web/app/lib/actions/request-actions.ts),
- * не мок. Позиции — выбор из фиксированного каталога
- * (apps/web/app/lib/catalog.ts), не свободный текст: полноценный
- * NLP-интейк (agents.md §14) — отдельный, ещё не собранный кусок движка.
+ * не мок. Позиции по-прежнему пишутся только из фиксированного каталога
+ * (apps/web/app/lib/catalog.ts) — это осознанно, RFQ подбирает поставщиков
+ * по requiredCapabilities каталожной позиции, свободный текст в базу не
+ * попадает никогда. Но количество/срок/бюджет и сама позиция теперь можно
+ * получить из свободного текста через @qajet/engine/intake (agents.md
+ * §8A) — «Быстрое добавление» ниже: парсинг только ПРЕДЛАГАЕТ значения,
+ * человек всегда видит и подтверждает результат перед добавлением строки.
  */
+
+const CATALOG_ENTRIES: CatalogEntry[] = CATALOG.map((c) => ({ key: c.itemKey, label: c.name }));
+
+interface QuickParsePreview {
+  itemKey: string | null;
+  itemLabel: string | null;
+  itemConfidence: number;
+  qty: number | null;
+  deadline: string | null;
+  budget: number | null;
+}
+
+// matchNomenclature (agents.md §8A) сравнивает строку целиком с коротким
+// каталожным названием — «120 футболок с логотипом до 20 октября» против
+// «Футболка с логотипом» триграммами/Дамерау-Левенштейном даёт заведомо
+// заниженное сходство просто из-за длины строки, а не из-за реального
+// несовпадения позиции. Убираем количество/срок/валюту перед сравнением
+// номенклатуры — сам движок не трогаем, это исключительно подготовка
+// текста для одного конкретного вызова здесь.
+// Не \b: в JS-регулярках без юникодных классов Cyrillic не входит в \w,
+// поэтому \b вокруг кириллических слов не срабатывает вовсе (граница
+// требует, чтобы хотя бы одна сторона была \w). Явные lookaround вместо.
+const NOISE_RE =
+  /(?<![a-zа-яё])(\d[\d\s]*|шт\.?|штук|коробок|уп\.?|упаковок|компл\.?|комплектов|пар|наборов|до|к|через|дн(?:ей|я|ь)|недел[юия]|месяц[аеы]?|млн|тг|тенге|₸|января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?![a-zа-яё])/gi;
+
+function stripNoiseForMatching(text: string): string {
+  const stripped = text.replace(NOISE_RE, ' ').replace(/\s+/g, ' ').trim();
+  return stripped || text;
+}
+
+function parseQuickText(text: string): QuickParsePreview {
+  const nomenclature = matchNomenclature(stripNoiseForMatching(text), CATALOG_ENTRIES);
+  const quantity = extractQuantity(text);
+  const deadline = extractDeadline(text, new Date());
+  const budget = extractBudget(text);
+  // Ниже порога уверенности (agents.md §8A) — не подставляем молча, даже
+  // если matchNomenclature вернул лучший кандидат: needsClarification уже
+  // несёт этот сигнал, используем его, а не игнорируем ради удобства.
+  const matchedItem =
+    nomenclature.value && !nomenclature.needsClarification
+      ? CATALOG.find((c) => c.itemKey === nomenclature.value)
+      : null;
+  return {
+    itemKey: matchedItem?.itemKey ?? null,
+    itemLabel: matchedItem?.name ?? null,
+    itemConfidence: nomenclature.confidence,
+    qty: quantity.value?.qty ?? null,
+    deadline: deadline.value,
+    budget: budget.value,
+  };
+}
 
 const CATEGORIES: CatalogCategory[] = ['merch', 'corporate-gifts', 'printing'];
 
@@ -70,6 +132,8 @@ export default function NewRequestPage() {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [items, setItems] = useState<ItemRow[]>([firstItemRow()]);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
+  const [quickText, setQuickText] = useState('');
+  const [quickPreview, setQuickPreview] = useState<QuickParsePreview | null>(null);
 
   const { run, pending, error } = useAsyncAction(createRequest, (result) => {
     if (result.requestId) setCreatedRequestId(result.requestId);
@@ -83,6 +147,30 @@ export default function NewRequestPage() {
   }
   function updateItem(rowId: number, patch: Partial<ItemRow>) {
     setItems((prev) => prev.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
+  }
+
+  function handleQuickParse() {
+    if (!quickText.trim()) return;
+    setQuickPreview(parseQuickText(quickText));
+  }
+
+  function acceptQuickPreview() {
+    if (!quickPreview) return;
+    const catalogItem = quickPreview.itemKey
+      ? (CATALOG.find((c) => c.itemKey === quickPreview.itemKey) ?? DEFAULT_CATALOG_ITEM)
+      : DEFAULT_CATALOG_ITEM;
+    const qty = quickPreview.qty
+      ? Math.min(Math.max(quickPreview.qty, catalogItem.qtyMin), catalogItem.qtyMax)
+      : catalogItem.qtyMin;
+    setItems((prev) => [...prev, { rowId: nextRowId++, itemKey: catalogItem.itemKey, qty }]);
+    if (quickPreview.deadline && !deadlineDate) setDeadlineDate(quickPreview.deadline);
+    if (quickPreview.budget && !budget) setBudget(String(quickPreview.budget));
+    setQuickText('');
+    setQuickPreview(null);
+  }
+
+  function dismissQuickPreview() {
+    setQuickPreview(null);
   }
 
   function handleSubmit() {
@@ -209,6 +297,62 @@ export default function NewRequestPage() {
                   className={inputClass}
                 />
               </Field>
+            </div>
+
+            <div className="mb-6">
+              <p className="mb-2 text-fine font-semibold">Быстрое добавление из текста</p>
+              <div className="flex flex-col gap-2 rounded-control border border-rule bg-page p-3 sm:flex-row">
+                <input
+                  type="text"
+                  value={quickText}
+                  onChange={(e) => setQuickText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleQuickParse();
+                    }
+                  }}
+                  placeholder="Например: 100 футболок с логотипом до 15 октября"
+                  className={`${inputClass} bg-surface sm:flex-1`}
+                />
+                <Button variant="secondary" size="sm" onClick={handleQuickParse}>
+                  Разобрать
+                </Button>
+              </div>
+              {quickPreview && (
+                <div className="mt-2 rounded-control border border-purple/40 bg-purple-10 p-3 text-fine">
+                  <p className="font-semibold text-ink">
+                    {quickPreview.itemLabel ? (
+                      <>
+                        Похоже на «{quickPreview.itemLabel}»{' '}
+                        <span className="font-normal text-muted">
+                          ({Math.round(quickPreview.itemConfidence * 100)}% совпадение)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted">
+                        Не удалось уверенно распознать позицию — будет добавлена первая позиция
+                        каталога, поправьте вручную
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-1 text-muted">
+                    Количество: {quickPreview.qty ?? 'не распознано'} · Срок:{' '}
+                    {quickPreview.deadline ?? 'не распознан'} · Бюджет:{' '}
+                    {quickPreview.budget
+                      ? `${quickPreview.budget.toLocaleString('ru-RU')} ₸`
+                      : 'не распознан'}
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <Button variant="primary" size="sm" onClick={acceptQuickPreview}>
+                      Добавить
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={dismissQuickPreview}>
+                      Не добавлять
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mb-6">
