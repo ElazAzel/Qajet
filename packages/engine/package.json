@@ -12,6 +12,7 @@
     "./leadtime": "./src/leadtime/predict.ts",
     "./tax": "./src/tax/snr.ts",
     "./order": "./src/order/transition.ts",
+    "./completeness": "./src/completeness/check.ts",
     "./learn": "./src/learn/recalibrate.ts",
     "./explain": "./src/explain/types.ts"
   },

@@ -1,6 +1,7 @@
 'use server';
 
 import type { PlanKind } from '@qajet/engine/combine';
+import { checkRequestCompleteness } from '@qajet/engine/completeness';
 import { estimate as engineEstimate } from '@qajet/engine/estimate';
 import {
   isExplorationSlot,
@@ -321,6 +322,8 @@ export async function advanceOrderStage(
     if (prepaymentError) return { ok: false, error: prepaymentError };
   }
   if (toState === 'rfq_sent') {
+    const completenessError = await checkCompletenessBeforeRfq(supabase, order);
+    if (completenessError) return { ok: false, error: completenessError };
     const rfqError = await createRfqsForOrder(supabase, order);
     if (rfqError) return { ok: false, error: rfqError };
   }
@@ -518,6 +521,45 @@ function featuresFor(s: SupplierCandidateRow): ScoringFeatures {
  *   minOrderKzt, см. комментарий у orderValueKzt ниже), а +∞, чтобы
  *   отсутствие бюджета не отсекало никого по минимальной сумме заказа.
  */
+/**
+ * Completeness Engine — agents.md §7.4/§8. Гейт СЕРВЕРНЫЙ, не только
+ * визуальный: вызывается здесь, до createRfqsForOrder, а не только
+ * скрывает/показывает кнопку в UI — иначе его можно обойти прямым
+ * вызовом server action. packages/engine/src/completeness/check.ts —
+ * почему блокер именно на deadline_date, а не на needs_clarification
+ * позиций (последнее сегодня почти никогда не срабатывает, каталожные
+ * позиции полны по построению — станет живым, когда появится
+ * split/merge позиций).
+ */
+async function checkCompletenessBeforeRfq(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  order: OrderRow,
+): Promise<string | null> {
+  const { data: requestRow } = await supabase
+    .from('requests')
+    .select('deadline_date, budget_kzt')
+    .eq('id', order.request_id)
+    .maybeSingle();
+  const { data: itemRows } = await supabase
+    .from('request_items')
+    .select('id, name, needs_clarification, clarification_reason')
+    .eq('request_id', order.request_id);
+
+  const completeness = checkRequestCompleteness({
+    deadlineDate: requestRow?.deadline_date ?? null,
+    budgetKzt: requestRow?.budget_kzt ?? null,
+    items: (itemRows ?? []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      needsClarification: item.needs_clarification,
+      clarificationReason: item.clarification_reason,
+    })),
+  });
+
+  if (completeness.blockers.length === 0) return null;
+  return completeness.blockers.map((b) => b.humanReason).join(' ');
+}
+
 async function createRfqsForOrder(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   order: OrderRow,
