@@ -10,6 +10,19 @@ import { type ReactNode, useEffect, useRef } from 'react';
  * между теми же ссылками на один шаг быстрее, чем Tab, а активация
  * (переход) остаётся нативным поведением фокусированной ссылки.
  */
+/**
+ * Индекс строки после нажатия `j`/`k`, зажатый в границы списка.
+ * Вынесено из обработчика keydown как чистая функция — она же покрыта
+ * юнит-тестом (keyboard-list-nav.test.ts), а обработчик остаётся тонкой
+ * DOM-обвязкой вокруг неё.
+ */
+export function nextRowIndex(currentIndex: number, key: 'j' | 'k', rowCount: number): number {
+  if (rowCount === 0) return -1;
+  if (currentIndex === -1) return 0;
+  const direction = key === 'j' ? 1 : -1;
+  return Math.min(Math.max(currentIndex + direction, 0), rowCount - 1);
+}
+
 export function KeyboardListNav({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -25,10 +38,7 @@ export function KeyboardListNav({ children }: { children: ReactNode }) {
       if (rows.length === 0) return;
 
       const currentIndex = rows.indexOf(document.activeElement as HTMLAnchorElement);
-      const nextIndex =
-        currentIndex === -1
-          ? 0
-          : Math.min(Math.max(currentIndex + (event.key === 'j' ? 1 : -1), 0), rows.length - 1);
+      const nextIndex = nextRowIndex(currentIndex, event.key as 'j' | 'k', rows.length);
 
       event.preventDefault();
       rows[nextIndex]?.focus();

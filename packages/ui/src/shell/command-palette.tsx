@@ -112,7 +112,8 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
   );
 }
 
-function groupBy<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
+/** Группировка команд по заголовку секции — вынесена наружу для юнит-теста. */
+export function groupBy<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
   const result: Record<string, T[]> = {};
   for (const item of items) {
     const k = key(item);
