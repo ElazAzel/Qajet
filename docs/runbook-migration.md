@@ -51,10 +51,12 @@ pg_restore --no-owner --no-privileges -d "$DATABASE_URL" qajet.dump
 (`--schema=public` намеренно) — это внутренние схемы Supabase, они не
 часть прикладных данных QAJET. Что с ними делать — см. следующий раздел.
 
-После восстановления — накатить RLS-политики из
-`packages/db/policies/*.ts` (той же командой, которой они накатывались
-на Supabase — Drizzle-миграции переносимы буквально, RLS не привязана к
-облаку).
+После восстановления — накатить миграции `packages/db/migrations/*.sql`
+(RLS-политики инлайн в них, отдельного файла политик нет) той же
+командой, которой они накатывались на Supabase —
+`pnpm --filter @qajet/db db:migrate` (`packages/db/src/scripts/migrate.ts`,
+`DATABASE_URL`) — Drizzle-миграции переносимы буквально, RLS не
+привязана к облаку.
 
 ## 3. Auth/REST — то, что перенос Postgres НЕ решает
 
@@ -73,16 +75,41 @@ REST поверх схемы и RLS). Перенос **только** Postgres, 
    `docker-compose.yml` используется только под `PD_BACKEND=postgres`
    (персональные данные, п.4) или простаивает. Меньше всего работы,
    больше всего зависимости от Supabase Cloud остаётся.
-2. **Поднять официальный self-hosted Supabase** рядом с этим
-   `docker-compose.yml`, поверх ТОГО ЖЕ Postgres (не своего
-   изобретения — `github.com/supabase/supabase/tree/master/docker`,
-   MIT, реально поддерживаемый проект: Kong, GoTrue, PostgREST, Storage).
-   `NEXT_PUBLIC_SUPABASE_URL` переключается на свой домен. Это НЕ
-   реализовано и не проверено в этой сессии — трудоёмкость (управление
-   JWT-секретом, шаблоны писем GoTrue, конфигурация Kong) заслуживает
-   отдельной сессии, не довеска к докер-компоузу.
-3. **Писать свой auth/REST-шлюз.** Не рассматривается — agents.md §2 уже
-   выбрал Supabase именно затем, чтобы не изобретать эту часть заново.
+2. **Self-hosted Supabase рядом с этим `docker-compose.yml`.**
+   `docker-compose.supabase.yml` — минимальный набор под фактическое
+   использование кода (`db`/`auth`/`rest` + свой маленький шлюз, не
+   `realtime`/`storage`/`imgproxy`/`meta`/`functions`/`supavisor`/`studio`
+   — обоснование в `docs/decisions/0008-self-hosted-supabase-minimal-services.md`).
+   `NEXT_PUBLIC_SUPABASE_URL` переключается на адрес шлюза (по умолчанию
+   `http://<хост>:8000`). Запуск:
+
+   ```bash
+   # 1. Секреты и ключи в .env (см. .env.docker.example) — POSTGRES_USER/DB
+   #    ОБЯЗАНЫ быть postgres/postgres при этом варианте, JWT_SECRET
+   #    минимум 32 символа:
+   JWT_SECRET=$(openssl rand -base64 32) node docker/supabase-init/generate-keys.mjs
+   # вывод (ANON_KEY/SERVICE_ROLE_KEY) — скопировать в .env вместе с JWT_SECRET
+
+   # 2. Поднять стек:
+   docker compose -f docker-compose.yml -f docker-compose.supabase.yml up -d
+
+   # 3. Дождаться, пока `auth` станет healthy (GoTrue проводит СВОЮ
+   #    миграцию схемы auth под свою версию при первом старте — команда
+   #    ниже просто показывает статус, дожидаться нужно вручную/скриптом
+   #    healthcheck-опроса) и только затем катить схему приложения:
+   docker compose -f docker-compose.yml -f docker-compose.supabase.yml ps auth
+   pnpm --filter @qajet/db db:migrate
+   ```
+
+   Это НЕ проверено живым запуском в сессии, где написано — Docker-демон
+   недоступен в песочнице разработки (см. таблицу ниже и ADR-0008).
+   Конфиг подготовлен к первому реальному прогону, не выдаётся за готовый.
+3. **Писать свой auth/REST-шлюз (полностью, включая сам GoTrue/PostgREST).**
+   Не рассматривается — agents.md §2 уже выбрал Supabase именно затем,
+   чтобы не изобретать эту часть заново. (Маленький HTTP-шлюз ПЕРЕД
+   готовыми GoTrue/PostgREST в варианте 2 выше — не то же самое: сама
+   логика авторизации/данных остаётся на Supabase, переизобретён только
+   маршрутизирующий слой, и обоснованно — см. ADR-0008.)
 
 ## 4. Персональные данные → казахстанский ДЦ (agents.md §11.1, ADR-0005)
 
@@ -100,7 +127,7 @@ PD_DATABASE_URL=postgresql://<пользователь>:<пароль>@<хост
 сам решает, какая реализация `PdBackend` активна.
 
 **Обязательное условие**, не опция: та же RLS-политика, применённая к
-базе в РК, что и к основной (`packages/db/policies/*.ts`).
+базе в РК, что и к основной (миграции `packages/db/migrations/*.sql`).
 `createPostgresPdBackend()` подключается под ролью `authenticated` и
 подставляет `sub` текущего пользователя в `request.jwt.claims` на
 каждый вызов — без RLS на целевой базе это было бы равносильно доступу
@@ -123,5 +150,5 @@ PD_DATABASE_URL=postgresql://<пользователь>:<пароль>@<хост
 | `PD_BACKEND=postgres` переключает бэкенд ПД | ✅ Юнит-тестами (фейковый `Sql`) — контракт (какая claim, какой SQL) проверен |
 | `PD_BACKEND=postgres` против РЕАЛЬНОГО Postgres с RLS | 🔧 Интеграционный тест написан (`packages/pd/src/__tests__/postgres-backend-rls.test.ts` — два покупателя в разных компаниях, `getDeliveryAddress` чужой заявки отдаёт `null`) и включён в ту же CI-джобу `rls-isolation`, что и `supplier-isolation.test.ts`. Не прогнан целиком в этой песочнице (тот же класс ограничения, что у A.2 — `dockerd` не поднимается без systemd) — первый реальный прогон в GitHub Actions остаётся открытой проверкой |
 | `pg_dump`/`pg_restore` схемы `public` | ❌ Не проверено — команды стандартные для Postgres 17, но не прогонялись против реального Supabase-проекта в этой сессии |
-| Self-hosted Supabase (Auth/REST) рядом с docker-compose.yml | ❌ Не реализовано — раздел 3, вариант 2, сознательно вне скоупа этой сессии |
+| Self-hosted Supabase (Auth/REST) рядом с docker-compose.yml | 🔧 Конфиг написан, не запущен — Docker недоступен в песочнице разработки (раздел 3, вариант 2; `docker-compose.supabase.yml`, ADR-0008) |
 | Физический перенос ПД в ДЦ на территории РК | ❌ Не реализовано — организационный вопрос (провайдер, SLA), не код |

@@ -201,6 +201,18 @@ docs/
   отдельности (генерация/применение миграции к боевой БД через MCP,
   сам тест синтаксически корректен и раньше проходил вручную). Первый
   реальный прогон этой CI-джобы на GitHub Actions — открытая проверка.
+- **Self-hosted Supabase (Auth/REST) — конфиг написан, не запущен.**
+  `docker-compose.supabase.yml` поднимает минимальный набор (`db` на
+  образе `supabase/postgres`, `auth`/GoTrue, `rest`/PostgREST и
+  маленький собственный шлюз, не Envoy апстрима — обоснование в
+  [ADR-0008](./docs/decisions/0008-self-hosted-supabase-minimal-services.md))
+  рядом с основным `docker-compose.yml`. `docker compose ... config`
+  (мердж/синтаксис) и генератор ключей (`docker/supabase-init/generate-keys.mjs`
+  — HS256 JWT, подпись независимо перепроверена) реально прогнаны в
+  этой сессии; сам `docker compose ... up` и живой вход через шлюз —
+  нет, тот же Docker-недоступен-в-песочнице лимит, что у `rls-isolation`
+  выше. Таблица «Проверено vs не проверено» —
+  [runbook переезда](./docs/runbook-migration.md).
 - **Учёт времени.** `time_entries` в схеме есть, но автотаймер консьержа
   (agents.md §9: старт по стадии, пауза после 60с бездействия) не
   подключён к UI — таблица пустая. `/metrics` честно показывает «часы на

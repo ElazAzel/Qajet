@@ -12,9 +12,12 @@
 #   1. Оставить Supabase Cloud только для Auth/PostgREST, данные —
 #      физически в этом Postgres (репликация/перенос — see
 #      docs/runbook-migration.md);
-#   2. Поднять официальный self-hosted Supabase рядом
-#      (github.com/supabase/supabase/tree/master/docker) поверх ЭТОГО ЖЕ
-#      Postgres — тогда `postgres` ниже не нужен отдельно, один инстанс;
+#   2. Поднять self-hosted Supabase рядом — docker-compose.supabase.yml
+#      (`docker compose -f docker-compose.yml -f docker-compose.supabase.yml
+#      up -d`), меняет образ `postgres` ниже на `supabase/postgres` через
+#      оверлей, не редактируя эту секцию. Написано, не запущено в сессии,
+#      где это добавлено — см. docs/decisions/0008-self-hosted-supabase-minimal-services.md
+#      и таблицу «Проверено vs не проверено» в docs/runbook-migration.md;
 #   3. Написать собственный auth/REST-шлюз — не рассматривается, Supabase
 #      уже решает эту задачу, реализовывать заново незачем (agents.md §2).
 # `docs/runbook-migration.md` — пошагово, какой из трёх путей когда выбрать.
