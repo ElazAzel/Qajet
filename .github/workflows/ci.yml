@@ -147,6 +147,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
 
+      - name: PD_BACKEND=postgres против реального RLS (ADR-0005)
+        run: pnpm --filter @qajet/pd test:rls
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
   rag-freshness:
     name: RAG-индекс не отстал от кода
     runs-on: ubuntu-latest

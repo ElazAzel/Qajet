@@ -121,7 +121,7 @@ PD_DATABASE_URL=postgresql://<пользователь>:<пароль>@<хост
 | `docker build` собирает образ apps/web | ✅ Проверено — реальный контейнер, реальные `200` на `/`, `/login` |
 | `docker-compose.yml` поднимает postgres+minio+web | ✅ Проверено — healthcheck'и зелёные, бакет создан, Postgres принимает `select 1` |
 | `PD_BACKEND=postgres` переключает бэкенд ПД | ✅ Юнит-тестами (фейковый `Sql`) — контракт (какая claim, какой SQL) проверен |
-| `PD_BACKEND=postgres` против РЕАЛЬНОГО Postgres с RLS | ❌ Не проверено — нужен `DATABASE_URL` к базе с накаченными миграциями, тот же открытый пункт, что и у `packages/db/src/__tests__/supplier-isolation.test.ts` |
+| `PD_BACKEND=postgres` против РЕАЛЬНОГО Postgres с RLS | 🔧 Интеграционный тест написан (`packages/pd/src/__tests__/postgres-backend-rls.test.ts` — два покупателя в разных компаниях, `getDeliveryAddress` чужой заявки отдаёт `null`) и включён в ту же CI-джобу `rls-isolation`, что и `supplier-isolation.test.ts`. Не прогнан целиком в этой песочнице (тот же класс ограничения, что у A.2 — `dockerd` не поднимается без systemd) — первый реальный прогон в GitHub Actions остаётся открытой проверкой |
 | `pg_dump`/`pg_restore` схемы `public` | ❌ Не проверено — команды стандартные для Postgres 17, но не прогонялись против реального Supabase-проекта в этой сессии |
 | Self-hosted Supabase (Auth/REST) рядом с docker-compose.yml | ❌ Не реализовано — раздел 3, вариант 2, сознательно вне скоупа этой сессии |
 | Физический перенос ПД в ДЦ на территории РК | ❌ Не реализовано — организационный вопрос (провайдер, SLA), не код |

@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:rls": "vitest run postgres-backend-rls --passWithNoTests",
     "clean": "rm -rf .turbo"
   },
   "dependencies": {
