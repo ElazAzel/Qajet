@@ -1,0 +1,143 @@
+# Self-hosted Supabase Auth/REST — оверлей поверх docker-compose.yml
+# (agents.md фаза 8, docs/decisions/0008-self-hosted-supabase-minimal-services.md,
+# docs/runbook-migration.md §3, вариант 2). НЕ запущен и не проверен живым
+# `docker compose up` в сессии, где это написано — Docker-демон недоступен
+# в песочнице разработки (см. ADR-0008). Написано и подготовлено к первому
+# реальному прогону, честно помечено как такое, не как «готово».
+#
+# Запуск:
+#   docker compose -f docker-compose.yml -f docker-compose.supabase.yml up -d
+#
+# Обязательно перед первым запуском (см. .env.docker.example):
+#   1. POSTGRES_USER=postgres и POSTGRES_DB=postgres в .env — supabase/postgres
+#      и его bootstrap-скрипты (docker/supabase-init/) жёстко рассчитаны на
+#      суперпользователя и базу данных с этими именами, не на кастомные.
+#   2. JWT_SECRET — минимум 32 случайных символа (`openssl rand -base64 32`).
+#   3. ANON_KEY/SERVICE_ROLE_KEY — сгенерировать через
+#      `JWT_SECRET=<тот же секрет> node docker/supabase-init/generate-keys.mjs`,
+#      скопировать вывод в .env.
+#
+# Порядок запуска и почему: postgres (образ supabase/postgres — уже несёт
+# схему auth/её SQL-функции auth.uid()/auth.role() из СВОЕЙ собственной
+# инициализации, не из docker/supabase-init/) → auth дожидается своего
+# healthcheck (GoTrue проводит СОБСТВЕННУЮ миграцию схемы auth — создаёт
+# auth.users и другие таблицы конкретно под свою версию) → только после
+# этого имеет смысл гонять `pnpm --filter @qajet/db db:migrate` (наши RLS-
+# политики ссылаются на auth.uid()/auth.role(), это готово раньше, но
+# дожидаться healthy auth перед миграцией — простое и надёжное правило,
+# не полагающееся на то, что именно уже готово в схеме auth конкретно на
+# момент миграции) → rest/gateway — последними, PostgREST должен увидеть
+# уже готовую схему `public`.
+
+services:
+  postgres:
+    image: supabase/postgres:17.6.1.136
+    volumes:
+      - ./docker/supabase-init/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./docker/supabase-init/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - ./docker/supabase-init/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro
+      - ./docker/supabase-init/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:ro
+      - ./docker/supabase-init/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:ro
+      - ./docker/supabase-init/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:ro
+      - ./docker/supabase-init/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:ro
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-postgres}
+      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в .env}
+      JWT_EXP: ${JWT_EXPIRY:-3600}
+    command:
+      [
+        'postgres',
+        '-c', 'config_file=/etc/postgresql/postgresql.conf',
+        '-c', 'log_min_messages=fatal',
+      ]
+
+  auth:
+    image: supabase/gotrue:v2.189.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:9999/health']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL:?задайте API_EXTERNAL_URL в .env}
+
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-postgres}
+
+      GOTRUE_SITE_URL: ${SITE_URL:?задайте SITE_URL в .env}
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
+
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${JWT_EXPIRY:-3600}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в .env}
+      GOTRUE_JWT_ISSUER: ${API_EXTERNAL_URL:?задайте API_EXTERNAL_URL в .env}
+
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP:-true}
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: 'false'
+      GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM:-false}
+
+      # SMTP пуст по умолчанию — деградирует без писем (подтверждение
+      # регистрации/сброс пароля не уйдут), та же конвенция «опционально,
+      # деградирует», что у RESEND_API_KEY в основном docker-compose.yml.
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-QAJET}
+
+      GOTRUE_EXTERNAL_PHONE_ENABLED: 'false'
+
+  rest:
+    image: postgrest/postgrest:v14.12
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'postgrest', '--ready']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-postgres}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public}
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_USE_LEGACY_GUCS: 'false'
+      PGRST_JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в .env}
+    command: ['postgrest']
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      auth:
+        condition: service_healthy
+      rest:
+        condition: service_healthy
+    ports:
+      - '${SUPABASE_GATEWAY_PORT:-8000}:8000'
+    environment:
+      ANON_KEY: ${ANON_KEY:?задайте ANON_KEY в .env — см. docker/supabase-init/generate-keys.mjs}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:?задайте SERVICE_ROLE_KEY в .env — см. docker/supabase-init/generate-keys.mjs}
+    volumes:
+      - ./docker/supabase-gateway/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:8000/rest/v1/']
+      interval: 5s
+      timeout: 5s
+      retries: 10

@@ -1,0 +1,102 @@
+# Минимальный шлюз для self-hosted Supabase — НЕ вендоренный официальный
+# Envoy-конфиг (docker-compose.supabase.yml, docs/decisions/0008-*.md
+# объясняют почему). Официальный `docker/volumes/api/envoy/lds.template.yaml`
+# — 1101 строка маршрутов под ПОЛНЫЙ стек из 8 сервисов (studio, realtime,
+# storage, functions, meta и т.д.); безопасно обрезать его вручную под
+# минимальный набор (только auth+rest) без реального прогона Envoy —
+# неоправданный риск: не на чем это здесь проверить эмпирически.
+#
+# Вместо этого — маленький, полностью читаемый шлюз ровно под то, что
+# приложение реально вызывает (apps/web/lib/supabase/server.ts):
+# `/auth/v1/*` → GoTrue, `/rest/v1/*` → PostgREST. Прямой аналог
+# `prefix_rewrite: /` из оригинального маршрута — `proxy_pass` с завершающим
+# `/` делает то же самое (убирает совпавший префикс).
+#
+# apikey-проверка сохранена — это реальная логика оригинального Envoy-шлюза
+# (Lua-фильтр, сверяет заголовок apikey с ANON_KEY/SERVICE_ROLE_KEY), не
+# просто мелочь для отбрасывания. Не реализована опциональная asymmetric
+# sb_-key трансляция (SUPABASE_PUBLISHABLE_KEY/SECRET_KEY) — сам апстрим
+# по умолчанию тоже её не включает (активируется только если заданы все 4
+# доп. переменные — см. docker-entrypoint.sh апстрима), это не урезание
+# реально используемой функциональности.
+#
+# apps/web ходит сюда ТОЛЬКО с сервера (createServerClient в server.ts,
+# не браузерный клиент) — поэтому CORS-заголовки намеренно не настроены,
+# они не нужны для server-to-server вызовов.
+
+# Это фрагмент conf.d, не полный nginx.conf: официальный образ
+# nginx:1.27-alpine монтирует его как /etc/nginx/templates/default.conf.template,
+# сам гоняет envsubst и кладёт результат в /etc/nginx/conf.d/default.conf —
+# файл уже подключается ВНУТРИ http{} базового /etc/nginx/nginx.conf образа
+# (стандартный include /etc/nginx/conf.d/*.conf;), поэтому здесь не нужны
+# и НЕЛЬЗЯ добавлять worker_processes/events{}/http{} — они уже заданы
+# базовым конфигом образа снаружи этого файла.
+#
+# ANON_KEY/SERVICE_ROLE_KEY подставляются envsubst'ом при старте контейнера.
+#
+# supabase-js всегда шлёт apikey заголовком; если клиент передал его
+# только query-параметром — переносим в заголовок тем же приёмом, что
+# и оригинальный Envoy-фильтр.
+map $arg_apikey $apikey_from_query {
+  default "";
+  "~^(?<key>.+)$" $key;
+}
+
+server {
+  listen 8000;
+
+  # Единая точка входа под приложение — HTTP/1.1 upstream, keepalive
+  # к бэкендам не настраивается отдельно (низкий трафик self-hosted
+  # деплоя, не оптимизация по умолчанию).
+  resolver 127.0.0.11 valid=10s;
+
+  location /auth/v1/ {
+    set $key $http_apikey;
+    if ($key = "") {
+      set $key $apikey_from_query;
+    }
+    set $valid 0;
+    if ($key = "${ANON_KEY}") {
+      set $valid 1;
+    }
+    if ($key = "${SERVICE_ROLE_KEY}") {
+      set $valid 1;
+    }
+    if ($valid = 0) {
+      return 401 '{"message":"No apikey found in request","hint":"No `apikey` request header or url param was found."}';
+    }
+
+    proxy_set_header apikey $key;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass http://auth:9999/;
+  }
+
+  location /rest/v1/ {
+    set $key $http_apikey;
+    if ($key = "") {
+      set $key $apikey_from_query;
+    }
+    set $valid 0;
+    if ($key = "${ANON_KEY}") {
+      set $valid 1;
+    }
+    if ($key = "${SERVICE_ROLE_KEY}") {
+      set $valid 1;
+    }
+    if ($valid = 0) {
+      return 401 '{"message":"No apikey found in request","hint":"No `apikey` request header or url param was found."}';
+    }
+
+    proxy_set_header apikey $key;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass http://rest:3000/;
+  }
+
+  location / {
+    return 404 '{"message":"unknown route"}';
+  }
+}
