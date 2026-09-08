@@ -50,6 +50,20 @@
       "when": 1788886318447,
       "tag": "0006_loving_puppet_master",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788901325556,
+      "tag": "0007_shallow_shadow_king",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788901325557,
+      "tag": "0008_deactivated_staff_lose_access",
+      "breakpoints": true
     }
   ]
 }

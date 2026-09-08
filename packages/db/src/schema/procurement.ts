@@ -842,11 +842,15 @@ export const documents = pgTable(
   },
   (t) => [
     index('documents_order_id_idx').on(t.orderId),
+    // supplier_invoice — внутренний документ на исполнителя, покупателю не
+    // адресован и раскрыл бы его личность (agents.md §10 «Покупатель»).
+    // Остальные типы (prepay_invoice/act/final_invoice/refund_confirmation/
+    // spec) адресованы покупателю и видны как обычно.
     pgPolicy('documents_select_via_order', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.orderId} in (select id from ${orders})`,
+      using: sql`${t.orderId} in (select id from ${orders}) and (${t.type} <> 'supplier_invoice' or ${staffOnly})`,
     }),
     pgPolicy('documents_service_all', {
       as: 'permissive',
