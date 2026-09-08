@@ -1,6 +1,6 @@
 import { Stamp } from '@qajet/ui/motion';
 import { ConciergeShell, KeyboardListNav } from '@qajet/ui/shell';
-import { AlertTriangle, LayoutGrid, LayoutList } from 'lucide-react';
+import { LayoutList } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -13,20 +13,11 @@ import {
 } from '../lib/order-state';
 import { IntakeButton } from './_intake-button';
 
+// «Исключения»/«Шаблоны» убраны из навигации — /concierge/exceptions,
+// /concierge/templates не реализованы, вели на 404. При реализации вернуть
+// пункты сюда, не создавать новые.
 const NAV_ITEMS = [
   { key: 'orders', href: '/concierge', label: 'Заказы', icon: <LayoutList size={18} /> },
-  {
-    key: 'exceptions',
-    href: '/concierge/exceptions',
-    label: 'Исключения',
-    icon: <AlertTriangle size={18} />,
-  },
-  {
-    key: 'templates',
-    href: '/concierge/templates',
-    label: 'Шаблоны',
-    icon: <LayoutGrid size={18} />,
-  },
 ];
 
 interface BoardRow {

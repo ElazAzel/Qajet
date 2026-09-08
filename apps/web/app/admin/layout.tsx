@@ -1,5 +1,5 @@
 import { AdminShell } from '@qajet/ui/shell';
-import { Gauge, Inbox, LineChart, Scale, Settings, ShieldCheck } from 'lucide-react';
+import { Gauge, LineChart, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
 
@@ -7,11 +7,13 @@ import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
  * Админ получает ту же оболочку сайдбар+хедер, что и остальные роли, но
  * с тёмным сайдбаром и лаймовым активным пунктом (§12) — единственная
  * инверсия тона во всём продукте.
+ *
+ * «Настройки»/«Финансы»/«Споры»/«Outbox» убраны из навигации — соответствующие
+ * маршруты не реализованы, вели на 404. При реализации экранов вернуть
+ * пункты сюда, не создавать новые.
  */
 const NAV_ITEMS = [
   { key: 'verification', href: '/admin', label: 'Верификация', icon: <ShieldCheck size={18} /> },
-  { key: 'settings', href: '/admin/settings', label: 'Настройки', icon: <Settings size={18} /> },
-  { key: 'finance', href: '/admin/finance', label: 'Финансы', icon: <LineChart size={18} /> },
   {
     key: 'learning',
     href: '/admin/learning',
@@ -19,8 +21,6 @@ const NAV_ITEMS = [
     icon: <LineChart size={18} />,
   },
   { key: 'metrics', href: '/metrics', label: 'Метрики', icon: <Gauge size={18} /> },
-  { key: 'disputes', href: '/admin/disputes', label: 'Споры', icon: <Scale size={18} /> },
-  { key: 'outbox', href: '/admin/outbox', label: 'Outbox', icon: <Inbox size={18} /> },
 ];
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
