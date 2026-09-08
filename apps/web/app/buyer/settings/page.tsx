@@ -22,14 +22,15 @@ import { requireCurrentUser } from '../../lib/current-user';
  * Поле «Телефон» убрано, а не оставлено пустым — в схеме users нет
  * такой колонки вообще, пустой ввод без единого шанса когда-либо
  * сохраниться был бы так же вводящим в заблуждение, как и вымысел.
+ *
+ * Прежняя навигация «Профиль/Организация/Уведомления/Безопасность» была
+ * рядом строк без onClick — переключала только цвет активного пункта,
+ * содержимое всегда было одно и то же (в том числе секция уведомлений
+ * рендерилась независимо от того, какой пункт «активен»). «Организация»
+ * и «Безопасность» не имеют вообще никакого экрана за собой. Убрана —
+ * обещание переключения контента, которого нет, хуже отсутствия
+ * навигации. Что реально есть на странице — обычные разделы ниже.
  */
-
-const TABS = [
-  { label: 'Профиль', active: true },
-  { label: 'Организация' },
-  { label: 'Уведомления' },
-  { label: 'Безопасность' },
-];
 
 const TOGGLES = [
   {
@@ -58,23 +59,9 @@ export default async function BuyerSettingsPage() {
   const { first, last } = splitName(user.fullName);
 
   return (
-    <div className="grid grid-cols-1 gap-8 md:grid-cols-[200px_1fr]">
-      <nav className="flex gap-1 overflow-x-auto md:flex-col">
-        {TABS.map((tab) => (
-          <span
-            key={tab.label}
-            className={cn(
-              'shrink-0 rounded-control px-3.5 py-2.5 text-fine font-semibold',
-              tab.active ? 'bg-purple-10 text-purple' : 'text-muted',
-            )}
-          >
-            {tab.label}
-          </span>
-        ))}
-      </nav>
-
+    <div>
       <Reveal className="max-w-xl">
-        <h1 className="mb-6 text-2xl font-extrabold">Профиль</h1>
+        <h1 className="mb-6 text-2xl font-extrabold">Настройки</h1>
 
         <section className="mb-5 rounded-card border border-rule bg-surface p-6">
           <div className="flex items-center gap-4">
