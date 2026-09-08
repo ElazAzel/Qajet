@@ -4,11 +4,14 @@ import {
   ArrowUpRight,
   Check,
   Gift,
+  Link as LinkIcon,
   Megaphone,
+  MessageCircle,
   Package,
   Users,
 } from 'lucide-react';
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import styles from './startupbattle.module.css';
 import { Comparison, ProductTour } from './startupbattle-client';
@@ -30,6 +33,8 @@ export const metadata: Metadata = {
 };
 
 const contact = 'https://www.instagram.com/qajet.io/';
+const whatsapp = 'https://wa.me/77000204791';
+const linkedin = 'https://www.linkedin.com/in/elazart?utm_source=vizitkastartup';
 const pitch = '/startupbattle/QAJET-pitch.pdf';
 
 export default function StartupBattlePage() {
@@ -320,7 +325,13 @@ export default function StartupBattlePage() {
               </h2>
               <div className={styles.founders}>
                 <div>
-                  <span className={styles.initials}>ИА</span>
+                  <Image
+                    className={styles.avatar}
+                    src="/startupbattle/founder-ilyas.webp"
+                    alt=""
+                    width={46}
+                    height={46}
+                  />
                   <div>
                     <h3>Ильяс Азелханов</h3>
                     <p>Сооснователь</p>
@@ -328,7 +339,13 @@ export default function StartupBattlePage() {
                   </div>
                 </div>
                 <div>
-                  <span className={styles.initials}>АК</span>
+                  <Image
+                    className={styles.avatar}
+                    src="/startupbattle/founder-aruzhan.webp"
+                    alt=""
+                    width={46}
+                    height={46}
+                  />
                   <div>
                     <h3>Аружан Каримова</h3>
                     <p>Сооснователь</p>
@@ -353,6 +370,16 @@ export default function StartupBattlePage() {
                 Написать @qajet.io <ArrowUpRight size={18} aria-hidden="true" />
                 <span className={styles.srOnly}> (Instagram, новая вкладка)</span>
               </a>
+              <div className={styles.contactLinks}>
+                <a href={whatsapp} target="_blank" rel="noreferrer" className={styles.contactLink}>
+                  <MessageCircle size={16} aria-hidden="true" /> +7 700 020 47 91
+                  <span className={styles.srOnly}> (WhatsApp, новая вкладка)</span>
+                </a>
+                <a href={linkedin} target="_blank" rel="noreferrer" className={styles.contactLink}>
+                  <LinkIcon size={16} aria-hidden="true" /> LinkedIn
+                  <span className={styles.srOnly}> (новая вкладка)</span>
+                </a>
+              </div>
               <a className={styles.download} href={pitch} download="QAJET-pitch.pdf">
                 <ArrowDownToLine size={17} aria-hidden="true" /> Скачать презентацию · PDF
               </a>
