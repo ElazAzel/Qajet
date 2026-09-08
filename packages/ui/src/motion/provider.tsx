@@ -2,6 +2,7 @@
 
 import { MotionConfig, useReducedMotion as useMotionReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
+import { useSyncExternalStore } from 'react';
 
 /**
  * Единая точка, где движение выключается целиком.
@@ -18,11 +19,14 @@ export function MotionProvider({ children }: { children: ReactNode }) {
   return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 }
 
-/**
- * Обёртка над хуком Motion. Тот возвращает null, пока значение неизвестно
- * (сервер и первый рендер) — здесь это приводится к false, чтобы вызывающий
- * код не разбирался с третьим состоянием.
- */
+const subscribeHydration = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
+
+// Motion can read matchMedia on the first client render. Keep that render
+// identical to SSR, then apply the user's preference immediately after hydration.
 export function usePrefersReducedMotion(): boolean {
-  return useMotionReducedMotion() ?? false;
+  const hydrated = useSyncExternalStore(subscribeHydration, clientSnapshot, serverSnapshot);
+  const reduced = useMotionReducedMotion();
+  return hydrated && (reduced ?? false);
 }

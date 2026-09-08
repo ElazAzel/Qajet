@@ -74,12 +74,12 @@ export function BarGrow({ segments, index, className, heightClassName = 'h-8' }:
             // Тонкий разделитель между сегментами одной полосы — не тень.
             borderLeft: i > 0 ? '1px solid var(--color-page)' : undefined,
           }}
-          initial={reduced ? false : { scaleX: 0 }}
+          initial={{ scaleX: 0 }}
           animate={inView || reduced ? { scaleX: 1 } : false}
           transition={{
-            duration: seconds('deliberate'),
+            duration: reduced ? 0 : seconds('deliberate'),
             ease: [0.16, 1, 0.3, 1],
-            delay: delay + i * 0.015,
+            delay: reduced ? 0 : delay + i * 0.015,
           }}
         />
       ))}

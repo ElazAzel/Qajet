@@ -1,0 +1,2 @@
+# Keep the original pitch deck byte-for-byte intact across Windows and Linux.
+*.pdf binary
