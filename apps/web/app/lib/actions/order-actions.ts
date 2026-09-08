@@ -2,6 +2,13 @@
 
 import type { PlanKind } from '@qajet/engine/combine';
 import { estimate as engineEstimate } from '@qajet/engine/estimate';
+import {
+  isExplorationSlot,
+  passesHardFilters,
+  pickExplorationCandidate,
+  type ScoringFeatures,
+  scoreSupplier,
+} from '@qajet/engine/match';
 import { roundKzt } from '@qajet/engine/money';
 import { transition } from '@qajet/engine/order';
 import { revalidatePath } from 'next/cache';
@@ -15,6 +22,10 @@ import type { OrderState } from '../order-state';
  *  для заявок, созданных через createRequest, — только защита от старых данных). */
 const FALLBACK_BASE_RATE_KZT = 5000;
 const RFQ_RESPOND_WINDOW_DAYS = 5;
+/** Сколько поставщиков на позицию рассылаются по умолчанию, если в settings нет rfq_batch_size_per_item. */
+const FALLBACK_RFQ_BATCH_SIZE = 5;
+/** «Один слот исследования из каждых N» (agents.md §8C) по умолчанию, если в settings нет rfq_exploration_every_n. */
+const FALLBACK_RFQ_EXPLORATION_EVERY_N = 4;
 
 /**
  * Единственная точка, откуда состояние заказа реально меняется в БД —
@@ -438,26 +449,74 @@ interface SupplierCandidateRow {
   id: string;
   categories: string[];
   capabilities: string[];
+  minOrderKzt: number | null;
+  isVerified: boolean;
+  stats: {
+    ordersTotal: number;
+    ordersOnTime: number;
+    ordersDisputed: number;
+    rfqSent: number;
+    rfqAnswered: number;
+    medianResponseHours: number | null;
+  };
 }
 
-function supplierCoversItem(
-  supplier: SupplierCandidateRow,
-  item: { category: string; required_capabilities: string[] | null },
-): boolean {
-  return (
-    supplier.categories.includes(item.category) &&
-    (item.required_capabilities ?? []).every((cap) => supplier.capabilities.includes(cap))
-  );
+/** Поставщик без единого закрытого заказа или отправленного RFQ — кандидат в слот исследования (agents.md §8C). */
+const LOW_HISTORY_THRESHOLD = 3;
+/** «Медленный» ориентир для нормировки скорости ответа в 0..1 — нет отдельного бенчмарка, 48ч выбрано как явный аутсайдер относительно RFQ_RESPOND_WINDOW_DAYS=5 суток. */
+const SLOW_RESPONSE_HOURS_REFERENCE = 48;
+
+function clamp01(x: number): number {
+  return Math.min(1, Math.max(0, x));
 }
 
 /**
- * Подбор поставщиков под RFQ — та же простая модель, что в
- * packages/db/src/seed/generator.ts (совпадение по category+
- * requiredCapabilities с гарантией покрытия каждой позиции хотя бы одним
- * поставщиком), а не online-скоринг/Thompson sampling из
- * packages/engine/match — то обучается на историю кликов, которой для
- * новой живой заявки просто ещё нет. Честно: слот исследования тоже не
- * заводится здесь.
+ * Признаки матчера из накопленной статистики поставщика (agents.md §8C).
+ * У нового поставщика (нет строки в supplier_stats или ordersTotal=0)
+ * признаки на истории — нейтральные 0.5, не 0: ноль наказывал бы за
+ * отсутствие данных так же, как за подтверждённо плохую историю, а это
+ * ровно то искажение, которое и должен закрывать слот исследования.
+ * currentLoad и freshnessScore здесь всегда нейтральны — учёт текущей
+ * загрузки поставщика и давности последней сделки в это подключение не
+ * вошёл (нужен отдельный live-запрос числа открытых заказов), честно
+ * оставлено на потом, а не подделано правдоподобным числом.
+ */
+function featuresFor(s: SupplierCandidateRow): ScoringFeatures {
+  const { stats } = s;
+  return {
+    categoryMatch: 1, // уже гарантировано passesHardFilters ниже по вызову
+    onTimeRate: stats.ordersTotal > 0 ? stats.ordersOnTime / stats.ordersTotal : 0.5,
+    noDisputeRate: stats.ordersTotal > 0 ? 1 - stats.ordersDisputed / stats.ordersTotal : 0.5,
+    responseSpeedScore:
+      stats.medianResponseHours !== null
+        ? clamp01(1 - stats.medianResponseHours / SLOW_RESPONSE_HOURS_REFERENCE)
+        : 0.5,
+    winRate: stats.rfqSent > 0 ? stats.ordersTotal / stats.rfqSent : 0.5,
+    freshnessScore: 0.5,
+    currentLoad: 0,
+  };
+}
+
+/**
+ * Подбор и ранжирование поставщиков под RFQ — agents.md §8C: жёсткие
+ * фильтры (packages/engine/match/passesHardFilters), затем скоринг
+ * (scoreSupplier по стартовым весам DEFAULT_WEIGHTS) с отбором топ-N на
+ * позицию, и слот исследования (Thompson sampling) для поставщиков без
+ * истории — обязательный пункт чек-листа §15.
+ *
+ * Честно про то, что подключено не целиком:
+ * - веса матчера — DEFAULT_WEIGHTS, не дообученные онлайн: model_snapshots
+ *   уже хранит модель 'matcher' (packages/engine/learn/recalibrate.ts
+ *   производит нужную форму — MatchWeightsSnapshot), но ничто в apps/web
+ *   пока не пишет туда снапшоты при закрытии заказа и не читает последний
+ *   перед скорингом здесь — обучающий контур остаётся отдельной задачей;
+ * - servesCities всегда null (= обслуживает любой город): в
+ *   supplier_profiles нет колонки под географию поставщика, добавлять её
+ *   ради этого подключения — расширение схемы за рамками задачи;
+ * - orderValueKzt берётся из requests.budget_kzt, но если бюджет не
+ *   указан — не 0 (0 отсекал бы буквально всех поставщиков с ненулевым
+ *   minOrderKzt, см. комментарий у orderValueKzt ниже), а +∞, чтобы
+ *   отсутствие бюджета не отсекало никого по минимальной сумме заказа.
  */
 async function createRfqsForOrder(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
@@ -469,32 +528,145 @@ async function createRfqsForOrder(
     .eq('request_id', order.request_id);
   if (!items || items.length === 0) return 'В заявке нет позиций';
 
+  const { data: requestRow } = await supabase
+    .from('requests')
+    .select('city, budget_kzt')
+    .eq('id', order.request_id)
+    .maybeSingle();
+  const city = requestRow?.city ?? '';
+  // budget_kzt в заявке необязателен (agents.md: покупатель может его не
+  // указать). passesHardFilters() трактует below_min_order буквально —
+  // 0 здесь означал бы «заказ на нулевую сумму» и отсёк бы ЛЮБОГО
+  // поставщика с ненулевым minOrderKzt, то есть почти всех. Неизвестный
+  // бюджет обязан не отсекать по минимальной сумме заказа, а не отсекать
+  // максимально жёстко — отсюда Infinity, а не 0.
+  const orderValueKzt = requestRow?.budget_kzt ?? Number.POSITIVE_INFINITY;
+
   const { data: supplierRows } = await supabase
     .from('companies')
-    .select('id, supplier_profiles(categories, capabilities)')
+    .select(
+      'id, verified_at, supplier_profiles(categories, capabilities, min_order_kzt), supplier_stats(orders_total, orders_on_time, orders_disputed, rfq_sent, rfq_answered, median_response_hours)',
+    )
     .eq('type', 'supplier')
     .eq('is_active', true);
+
+  const { data: settingsRows } = await supabase
+    .from('settings')
+    .select('key, value')
+    .in('key', ['rfq_batch_size_per_item', 'rfq_exploration_every_n']);
+  const settingsMap = new Map((settingsRows ?? []).map((s) => [s.key, s.value as number]));
+  const batchSizePerItem = settingsMap.get('rfq_batch_size_per_item') ?? FALLBACK_RFQ_BATCH_SIZE;
+  const explorationEveryN =
+    settingsMap.get('rfq_exploration_every_n') ?? FALLBACK_RFQ_EXPLORATION_EVERY_N;
 
   const candidates: SupplierCandidateRow[] = (supplierRows ?? [])
     .map((row) => {
       const profile = Array.isArray(row.supplier_profiles)
         ? row.supplier_profiles[0]
         : row.supplier_profiles;
+      const stats = Array.isArray(row.supplier_stats) ? row.supplier_stats[0] : row.supplier_stats;
       return {
         id: row.id,
         categories: (profile?.categories ?? []) as string[],
         capabilities: (profile?.capabilities ?? []) as string[],
+        minOrderKzt: profile?.min_order_kzt ?? null,
+        isVerified: row.verified_at !== null,
+        stats: {
+          ordersTotal: stats?.orders_total ?? 0,
+          ordersOnTime: stats?.orders_on_time ?? 0,
+          ordersDisputed: stats?.orders_disputed ?? 0,
+          rfqSent: stats?.rfq_sent ?? 0,
+          rfqAnswered: stats?.rfq_answered ?? 0,
+          medianResponseHours: stats?.median_response_hours ?? null,
+        },
       };
     })
     .filter((s) => s.categories.length > 0);
 
-  const chosen = candidates.filter((s) => items.some((item) => supplierCoversItem(s, item)));
-  for (const item of items) {
-    if (chosen.some((s) => supplierCoversItem(s, item))) continue;
-    const backup = candidates.find((s) => supplierCoversItem(s, item) && !chosen.includes(s));
-    if (backup) chosen.push(backup);
+  if (candidates.length === 0) {
+    return 'Не нашлось ни одного поставщика по категории и техпроцессам этой заявки';
   }
-  if (chosen.length === 0) {
+
+  const chosenIds = new Set<string>();
+  const explorationIds = new Set<string>();
+  const selectionReasonById = new Map<string, Record<string, unknown>>();
+
+  items.forEach((item, itemIndex) => {
+    const passing = candidates.filter(
+      (c) =>
+        passesHardFilters(
+          {
+            id: c.id,
+            isActive: true, // уже отфильтровано в запросе (.eq('is_active', true))
+            isVerified: c.isVerified,
+            isBlocked: false, // в схеме нет отдельного признака блокировки поставщика
+            categories: c.categories,
+            capabilities: c.capabilities,
+            minOrderKzt: c.minOrderKzt,
+            servesCities: null,
+          },
+          {
+            category: item.category,
+            requiredCapabilities: item.required_capabilities ?? [],
+            orderValueKzt,
+            city,
+          },
+        ).passes,
+    );
+    if (passing.length === 0) return;
+
+    const scored = passing
+      .map((c) => ({ candidate: c, score: scoreSupplier(featuresFor(c)) }))
+      .sort((a, b) => b.score - a.score);
+
+    const picked = scored.slice(0, batchSizePerItem).map((s) => s.candidate);
+
+    if (isExplorationSlot(itemIndex, explorationEveryN)) {
+      const explorationPool = passing.filter(
+        (c) => c.stats.ordersTotal + c.stats.rfqSent < LOW_HISTORY_THRESHOLD,
+      );
+      const explorationPickId = pickExplorationCandidate(
+        explorationPool.map((c) => ({
+          id: c.id,
+          successCount: c.stats.ordersTotal,
+          failCount: Math.max(c.stats.rfqSent - c.stats.ordersTotal, 0),
+        })),
+      );
+      // is_exploration отмечается только когда слот реально добавил
+      // кандидата сверх обычного топ-N по скору — если Thompson sampling
+      // выбрал того же поставщика, что и так вошёл бы по счёту, это не
+      // «вырощенный сетью» поставщик (agents.md §8C), а совпадение, и
+      // считать его в метрику слотов исследования было бы нечестно.
+      if (explorationPickId && !picked.some((c) => c.id === explorationPickId)) {
+        const explorer = explorationPool.find((c) => c.id === explorationPickId);
+        if (explorer) {
+          picked.push(explorer);
+          explorationIds.add(explorationPickId);
+          if (!selectionReasonById.has(explorationPickId)) {
+            selectionReasonById.set(explorationPickId, {
+              reason: 'exploration_slot',
+              category: item.category,
+            });
+          }
+        }
+      }
+    }
+
+    for (const { candidate, score } of scored) {
+      if (!picked.some((p) => p.id === candidate.id)) continue;
+      chosenIds.add(candidate.id);
+      if (!selectionReasonById.has(candidate.id)) {
+        selectionReasonById.set(candidate.id, {
+          reason: 'scored',
+          category: item.category,
+          score,
+          features: featuresFor(candidate),
+        });
+      }
+    }
+  });
+
+  if (chosenIds.size === 0) {
     return 'Не нашлось ни одного поставщика по категории и техпроцессам этой заявки';
   }
 
@@ -503,14 +675,15 @@ async function createRfqsForOrder(
   respondBy.setUTCDate(respondBy.getUTCDate() + RFQ_RESPOND_WINDOW_DAYS);
 
   const { error } = await supabase.from('rfqs').insert(
-    chosen.map((s) => ({
+    [...chosenIds].map((supplierId) => ({
       request_id: order.request_id,
-      supplier_company_id: s.id,
+      supplier_company_id: supplierId,
       token: crypto.randomUUID(),
       sent_at: sentAt.toISOString(),
       respond_by: respondBy.toISOString(),
       status: 'sent',
-      selection_reason: { reason: 'category_and_capability_match' },
+      is_exploration: explorationIds.has(supplierId),
+      selection_reason: selectionReasonById.get(supplierId) ?? { reason: 'scored' },
     })),
   );
   return error?.message ?? null;
