@@ -65,6 +65,15 @@ export const ORDER_STATE_TONE: Record<OrderState, StampTone> = {
   disputed: 'signal',
 };
 
+/**
+ * Стадии, на которых разрешена правка позиций заявки (просмотр/split/merge/
+ * коррекция категории — волна 1, шаги 2-3-6-7-8). После rfq_sent
+ * quote_lines/plan_lines уже могут ссылаться на request_items с
+ * onDelete:'restrict' — split/merge стал бы небезопасен, поэтому единое
+ * окно редактирования для всех этих действий, не разное для каждого.
+ */
+export const ITEMS_EDITABLE_STATES: readonly OrderState[] = ['draft', 'estimated', 'prepaid'];
+
 /** Порядок приоритета для доски консьержа — что горит, всплывает наверх. */
 export const ORDER_STATE_PRIORITY: Record<OrderState, number> = {
   disputed: 0,

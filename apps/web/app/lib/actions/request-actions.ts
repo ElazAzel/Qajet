@@ -27,6 +27,10 @@ export interface ActionResult {
 export interface CreateRequestItemInput {
   itemKey: string;
   qty: number;
+  /** Исходная фраза, если позиция добавлена через быстрый разбор текста
+   *  (@qajet/engine/intake) — сохраняется в specs.sourceText, чтобы
+   *  концьерж видел, из чего резолвнута позиция, при правке категории. */
+  sourceText?: string | undefined;
 }
 
 export interface CreateRequestInput {
@@ -56,14 +60,18 @@ export async function createRequest(
     return { ok: false, error: 'Добавьте хотя бы одну позицию' };
   }
 
-  const resolvedItems: { catalogItem: CatalogItem; qty: number }[] = [];
+  const resolvedItems: {
+    catalogItem: CatalogItem;
+    qty: number;
+    sourceText?: string | undefined;
+  }[] = [];
   for (const item of input.items) {
     const catalogItem = CATALOG_BY_KEY.get(item.itemKey);
     if (!catalogItem) return { ok: false, error: `Неизвестная позиция каталога: ${item.itemKey}` };
     if (!Number.isFinite(item.qty) || item.qty <= 0) {
       return { ok: false, error: `Некорректное количество для «${catalogItem.name}»` };
     }
-    resolvedItems.push({ catalogItem, qty: Math.round(item.qty) });
+    resolvedItems.push({ catalogItem, qty: Math.round(item.qty), sourceText: item.sourceText });
   }
 
   const supabase = await createSupabaseServerClient();
@@ -88,13 +96,15 @@ export async function createRequest(
   }
 
   const { error: itemsError } = await supabase.from('request_items').insert(
-    resolvedItems.map(({ catalogItem, qty }) => ({
+    resolvedItems.map(({ catalogItem, qty, sourceText }) => ({
       request_id: request.id,
       name: catalogItem.name,
       category: catalogItem.category,
       qty,
       unit: catalogItem.unit,
-      specs: { itemKey: catalogItem.itemKey },
+      specs: sourceText
+        ? { itemKey: catalogItem.itemKey, sourceText }
+        : { itemKey: catalogItem.itemKey },
       required_capabilities: catalogItem.requiredCapabilities,
     })),
   );

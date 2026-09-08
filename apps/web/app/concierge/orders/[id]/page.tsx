@@ -2,11 +2,17 @@ import type { CombinedPlan, PlanKind } from '@qajet/engine/combine';
 import { nextStatesFor } from '@qajet/engine/order';
 import { BarGrow, type BarSegment, Reveal, Stagger, Stamp } from '@qajet/ui/motion';
 import { Card, formatKzt, Money } from '@qajet/ui/primitives';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadRequestComparison } from '../../../lib/comparison';
 import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
-import { ORDER_STATE_LABEL, ORDER_STATE_TONE, type OrderState } from '../../../lib/order-state';
+import {
+  ITEMS_EDITABLE_STATES,
+  ORDER_STATE_LABEL,
+  ORDER_STATE_TONE,
+  type OrderState,
+} from '../../../lib/order-state';
 import { supplierCountLabel } from '../../../lib/pluralize';
 import { ProposePlanButton } from './_propose-plan-button';
 import { StageAdvanceButton } from './_stage-advance-button';
@@ -236,6 +242,14 @@ function NotComparableYet({
             />
           ))}
         </div>
+      )}
+      {orderId && ITEMS_EDITABLE_STATES.includes(state) && (
+        <Link
+          href={`/concierge/orders/${orderId}/items`}
+          className="mt-1 text-fine font-medium text-purple hover:underline"
+        >
+          Проверить позиции заявки →
+        </Link>
       )}
     </Reveal>
   );

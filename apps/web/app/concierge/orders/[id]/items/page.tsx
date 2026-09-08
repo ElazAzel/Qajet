@@ -1,0 +1,160 @@
+import { checkRequestCompleteness } from '@qajet/engine/completeness';
+import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
+import { Card } from '@qajet/ui/primitives';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { CATEGORY_LABEL, type CatalogCategory } from '../../../../lib/catalog';
+import {
+  ITEMS_EDITABLE_STATES,
+  ORDER_STATE_LABEL,
+  type OrderState,
+} from '../../../../lib/order-state';
+
+/**
+ * Экран позиций заявки для консьержа — agents.md §8A/§7.4, шаг 2 волны 1.
+ * Раньше такого экрана не было вообще: путь консьержа от «взял в работу»
+ * до «RFQ отправлен» — цепочка одиночных кнопок без единого промежуточного
+ * просмотра/правки request_items. Пока только просмотр (правка категории —
+ * следующий шаг волны); показывает баннер Completeness Engine — тот же
+ * checkRequestCompleteness, что и серверный гейт в advanceOrderStage.
+ *
+ * Доступен только до отправки RFQ: quote_lines/plan_lines ссылаются на
+ * request_items с onDelete:'restrict', так что split/merge (следующие шаги
+ * волны) безопасны лишь в этом окне — единая модель редактирования для
+ * всего экрана, не только для ещё не написанных split/merge-действий.
+ */
+
+const secondaryLinkClass =
+  'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-rule bg-surface px-4 text-sm font-medium text-ink transition-colors duration-[var(--duration-instant)] hover:bg-page';
+
+export default async function ConciergeOrderItemsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const supabase = await createSupabaseServerClient();
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, state, request_id')
+    .eq('id', id)
+    .maybeSingle();
+  if (!order) notFound();
+
+  const state = order.state as OrderState;
+  const editable = ITEMS_EDITABLE_STATES.includes(state);
+
+  const [{ data: requestRow }, { data: itemRows }] = await Promise.all([
+    supabase
+      .from('requests')
+      .select('title, deadline_date, budget_kzt')
+      .eq('id', order.request_id)
+      .maybeSingle(),
+    supabase
+      .from('request_items')
+      .select(
+        'id, name, category, qty, unit, required_capabilities, specs, needs_clarification, clarification_reason',
+      )
+      .eq('request_id', order.request_id)
+      .order('created_at', { ascending: true }),
+  ]);
+
+  const items = itemRows ?? [];
+  const completeness = checkRequestCompleteness({
+    deadlineDate: requestRow?.deadline_date ?? null,
+    budgetKzt: requestRow?.budget_kzt ?? null,
+    items: items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      needsClarification: item.needs_clarification,
+      clarificationReason: item.clarification_reason,
+    })),
+  });
+
+  return (
+    <div className="max-w-3xl">
+      <p className="mb-4 text-fine text-muted">
+        <Link href={`/concierge/orders/${order.id}`} className="hover:text-ink">
+          Заказ
+        </Link>
+        <span className="mx-1.5">›</span>
+        <span className="font-medium text-ink">Позиции заявки</span>
+      </p>
+
+      <Reveal className="mb-6">
+        <p className="text-micro tracking-wide text-muted uppercase">{ORDER_STATE_LABEL[state]}</p>
+        <h1 className="mt-1 text-2xl font-extrabold text-ink">{requestRow?.title ?? 'Заявка'}</h1>
+      </Reveal>
+
+      {!editable && (
+        <Reveal className="mb-6">
+          <Card padding="sm" className="border-rule bg-page text-fine text-muted">
+            Позиции доступны для просмотра/правки только до отправки RFQ — эта заявка уже прошла эту
+            стадию.
+          </Card>
+        </Reveal>
+      )}
+
+      <Reveal delay={0.06} className="mb-6">
+        {completeness.blockers.length === 0 ? (
+          <Card padding="sm" className="bg-status-success-bg text-fine text-status-success-fg">
+            Заявка готова к RFQ — блокеров нет.
+          </Card>
+        ) : (
+          <Card padding="sm" className="bg-status-danger-bg text-fine">
+            <p className="font-semibold text-status-danger-fg">Перед RFQ нужно устранить:</p>
+            <ul className="mt-2 flex flex-col gap-1 text-ink">
+              {completeness.blockers.map((issue, i) => (
+                <li key={`${issue.code}-${i}`}>· {issue.humanReason}</li>
+              ))}
+            </ul>
+          </Card>
+        )}
+        {completeness.warnings.length > 0 && (
+          <p className="mt-2 text-fine text-muted">
+            {completeness.warnings.map((w) => w.humanReason).join(' ')}
+          </p>
+        )}
+      </Reveal>
+
+      <Stagger startIndex={2} className="flex flex-col gap-3">
+        {items.map((item) => {
+          const sourceText = (item.specs as { sourceText?: string } | null)?.sourceText;
+          const categoryLabel = CATEGORY_LABEL[item.category as CatalogCategory] ?? item.category;
+          return (
+            <Card key={item.id} padding="sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink">{item.name}</p>
+                  <p className="mt-0.5 text-fine text-muted">
+                    {categoryLabel} · {item.qty} {item.unit}
+                    {item.required_capabilities.length > 0 &&
+                      ` · ${item.required_capabilities.join(', ')}`}
+                  </p>
+                  {sourceText && (
+                    <p className="mt-1.5 text-fine text-muted italic">«{sourceText}»</p>
+                  )}
+                </div>
+                {item.needs_clarification && (
+                  <Stamp tone="signal" className="shrink-0">
+                    требует уточнения
+                  </Stamp>
+                )}
+              </div>
+              {item.needs_clarification && item.clarification_reason && (
+                <p className="mt-2 text-fine text-status-danger-fg">{item.clarification_reason}</p>
+              )}
+            </Card>
+          );
+        })}
+        {items.length === 0 && <p className="text-fine text-muted">В заявке нет позиций.</p>}
+      </Stagger>
+
+      <Link href={`/concierge/orders/${order.id}`} className={`${secondaryLinkClass} mt-6`}>
+        Назад к заказу
+      </Link>
+    </div>
+  );
+}
