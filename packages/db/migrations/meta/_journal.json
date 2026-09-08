@@ -36,6 +36,13 @@
       "when": 1788827364080,
       "tag": "0004_abandoned_raider",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788853076499,
+      "tag": "0005_flimsy_spiral",
+      "breakpoints": true
     }
   ]
 }

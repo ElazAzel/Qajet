@@ -19,10 +19,12 @@ import { companyTypeEnum, taxModeEnum, userRoleEnum, vatStatusEnum } from './enu
  * Идентичность и компании — agents.md §5, §3.
  *
  * Изоляция поставщиков (agents.md §3.4, обязательный тест §15) начинается
- * здесь: policies ниже читают `company_id` текущего пользователя через
- * подзапрос в `users`, обёрнутый как `(select ...)` — это тот самый приём
- * из drizzle-orm/supabase для производительности (auth.uid() кэшируется
- * планировщиком Postgres на подзапрос, а не пересчитывается на строку).
+ * здесь: policies ниже читают `company_id`/`role` текущего пользователя через
+ * `currentCompanyIdSubquery`/`currentRoleSubquery` (см. ниже) — оба
+ * определены как `(select public.current_*())`, не голый вызов функции.
+ * Обёртка в `(select ...)` — приём из drizzle-orm/supabase для
+ * производительности: STABLE-функция внутри вычисляется планировщиком один
+ * раз на statement (InitPlan), а не на каждой просканированной строке.
  */
 
 export const companies = pgTable(
@@ -265,8 +267,8 @@ export const supplierStats = pgTable(
  * своей же сессии не секрет для аутентифицированного пользователя, но не
  * должен быть открыт анониму).
  */
-export const currentCompanyIdSubquery = sql`public.current_company_id()`;
-export const currentRoleSubquery = sql`public.current_role()`;
+export const currentCompanyIdSubquery = sql`(select public.current_company_id())`;
+export const currentRoleSubquery = sql`(select public.current_role())`;
 
 /**
  * Тот же цикл, что описан выше для `users`, но между `requests` и `rfqs`:
