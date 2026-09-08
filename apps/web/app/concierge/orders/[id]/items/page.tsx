@@ -1,23 +1,25 @@
 import { checkRequestCompleteness } from '@qajet/engine/completeness';
-import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
+import { Reveal, Stagger } from '@qajet/ui/motion';
 import { Card } from '@qajet/ui/primitives';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { CATEGORY_LABEL, type CatalogCategory } from '../../../../lib/catalog';
 import {
   ITEMS_EDITABLE_STATES,
   ORDER_STATE_LABEL,
   type OrderState,
 } from '../../../../lib/order-state';
+import { ItemCard } from './_item-card';
 
 /**
- * Экран позиций заявки для консьержа — agents.md §8A/§7.4, шаг 2 волны 1.
+ * Экран позиций заявки для консьержа — agents.md §8A/§7.4, шаги 2-3 волны 1.
  * Раньше такого экрана не было вообще: путь консьержа от «взял в работу»
  * до «RFQ отправлен» — цепочка одиночных кнопок без единого промежуточного
- * просмотра/правки request_items. Пока только просмотр (правка категории —
- * следующий шаг волны); показывает баннер Completeness Engine — тот же
- * checkRequestCompleteness, что и серверный гейт в advanceOrderStage.
+ * просмотра/правки request_items. Показывает баннер Completeness Engine —
+ * тот же checkRequestCompleteness, что и серверный гейт в advanceOrderStage.
+ * Правка категории/названия (Classification Engine) — в _item-card.tsx,
+ * пишет обучающий сигнал на сервере (item-actions.ts). Split/merge
+ * позиций (Dependency Engine) — следующие шаги волны, на этом же экране.
  *
  * Доступен только до отправки RFQ: quote_lines/plan_lines ссылаются на
  * request_items с onDelete:'restrict', так что split/merge (следующие шаги
@@ -120,35 +122,23 @@ export default async function ConciergeOrderItemsPage({
       </Reveal>
 
       <Stagger startIndex={2} className="flex flex-col gap-3">
-        {items.map((item) => {
-          const sourceText = (item.specs as { sourceText?: string } | null)?.sourceText;
-          const categoryLabel = CATEGORY_LABEL[item.category as CatalogCategory] ?? item.category;
-          return (
-            <Card key={item.id} padding="sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-semibold text-ink">{item.name}</p>
-                  <p className="mt-0.5 text-fine text-muted">
-                    {categoryLabel} · {item.qty} {item.unit}
-                    {item.required_capabilities.length > 0 &&
-                      ` · ${item.required_capabilities.join(', ')}`}
-                  </p>
-                  {sourceText && (
-                    <p className="mt-1.5 text-fine text-muted italic">«{sourceText}»</p>
-                  )}
-                </div>
-                {item.needs_clarification && (
-                  <Stamp tone="signal" className="shrink-0">
-                    требует уточнения
-                  </Stamp>
-                )}
-              </div>
-              {item.needs_clarification && item.clarification_reason && (
-                <p className="mt-2 text-fine text-status-danger-fg">{item.clarification_reason}</p>
-              )}
-            </Card>
-          );
-        })}
+        {items.map((item) => (
+          <ItemCard
+            key={item.id}
+            editable={editable}
+            item={{
+              id: item.id,
+              name: item.name,
+              category: item.category,
+              qty: item.qty,
+              unit: item.unit,
+              requiredCapabilities: item.required_capabilities,
+              sourceText: (item.specs as { sourceText?: string } | null)?.sourceText,
+              needsClarification: item.needs_clarification,
+              clarificationReason: item.clarification_reason,
+            }}
+          />
+        ))}
         {items.length === 0 && <p className="text-fine text-muted">В заявке нет позиций.</p>}
       </Stagger>
 

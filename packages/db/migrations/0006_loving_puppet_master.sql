@@ -1,0 +1,4 @@
+CREATE POLICY "extraction_aliases_insert_staff" ON "extraction_aliases" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((select public.current_role()) in ('concierge', 'admin'));--> statement-breakpoint
+CREATE POLICY "extraction_aliases_update_staff" ON "extraction_aliases" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((select public.current_role()) in ('concierge', 'admin')) WITH CHECK ((select public.current_role()) in ('concierge', 'admin'));--> statement-breakpoint
+CREATE POLICY "learning_events_insert_staff" ON "learning_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((select public.current_role()) in ('concierge', 'admin'));--> statement-breakpoint
+CREATE POLICY "request_items_update_staff" ON "request_items" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((select public.current_role()) in ('concierge', 'admin')) WITH CHECK ((select public.current_role()) in ('concierge', 'admin'));

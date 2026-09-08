@@ -83,6 +83,15 @@ export const learningEvents = pgTable(
       to: authenticatedRole,
       using: staffOnly,
     }),
+    // Консьерж пишет сюда сам при исправлении классификации позиции
+    // (agents.md §8A) — не через service_role, тем же приёмом, что и
+    // остальные staff-действия в схеме.
+    pgPolicy('learning_events_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
     pgPolicy('learning_events_service_all', {
       as: 'permissive',
       for: 'all',
@@ -143,6 +152,22 @@ export const extractionAliases = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: staffOnly,
+    }),
+    // Апсерт (insert новой строки / update счётчика hits) при каждом
+    // исправлении консьержа — agents.md §8A: «hits ≥ 3 начинает
+    // применяться автоматически».
+    pgPolicy('extraction_aliases_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('extraction_aliases_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
     }),
     pgPolicy('extraction_aliases_service_all', {
       as: 'permissive',
