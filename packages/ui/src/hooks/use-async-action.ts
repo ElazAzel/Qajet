@@ -17,8 +17,14 @@ export interface AsyncActionResult {
   error?: string;
 }
 
-export function useAsyncAction<Args extends unknown[]>(
-  action: (...args: Args) => Promise<AsyncActionResult>,
+export function useAsyncAction<
+  Args extends unknown[],
+  R extends AsyncActionResult = AsyncActionResult,
+>(
+  action: (...args: Args) => Promise<R>,
+  /** Действие создало что-то новое (заявку, заказ) — получить результат для
+   *  навигации/сообщения вместо (или вместе с) обновлением текущей страницы. */
+  onSuccess?: (result: R) => void,
 ) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -29,6 +35,7 @@ export function useAsyncAction<Args extends unknown[]>(
     setError(null);
     const result = await action(...args);
     if (result.ok) {
+      onSuccess?.(result);
       router.refresh();
       setPending(false);
       return;

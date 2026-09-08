@@ -15,6 +15,27 @@
       "when": 1788793589312,
       "tag": "0001_pale_lockjaw",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788803044195,
+      "tag": "0002_black_wendell_rand",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788805697571,
+      "tag": "0003_slim_morg",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788827364080,
+      "tag": "0004_abandoned_raider",
+      "breakpoints": true
     }
   ]
 }

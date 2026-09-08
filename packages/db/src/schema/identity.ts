@@ -57,6 +57,20 @@ export const companies = pgTable(
       to: authenticatedRole,
       using: sql`${currentRoleSubquery} in ('concierge', 'admin')`,
     }),
+    // Поставщик видит карточку компании-покупателя только если ему по её
+    // заявке отправили RFQ — иначе он не узнал бы, кому отвечает. Через
+    // SECURITY DEFINER-функцию (buyerCompanyIdsForCurrentSupplierSubquery,
+    // объявлена ниже в этом файле), а не подзапрос напрямую в "requests"/
+    // "rfqs": requests_select_supplier_via_rfq и rfqs_select_buyer_of_request
+    // (procurement.ts) сами транзитивно проходят друг через друга, и прямой
+    // подзапрос отсюда замкнул бы цикл через них в ERROR 42P17 (см. комментарий
+    // у самой константы).
+    pgPolicy('companies_select_supplier_via_rfq', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: sql`id in (select ${buyerCompanyIdsForCurrentSupplierSubquery})`,
+    }),
     pgPolicy('companies_service_all', {
       as: 'permissive',
       for: 'all',
@@ -253,3 +267,21 @@ export const supplierStats = pgTable(
  */
 export const currentCompanyIdSubquery = sql`public.current_company_id()`;
 export const currentRoleSubquery = sql`public.current_role()`;
+
+/**
+ * Тот же цикл, что описан выше для `users`, но между `requests` и `rfqs`:
+ * `requests_select_supplier_via_rfq` (requests → rfqs) и
+ * `rfqs_select_buyer_of_request` (rfqs → requests, миграция 0000) взаимно
+ * подзапрашивали друг друга под ролью `authenticated` →
+ * `ERROR 42P17: infinite recursion detected in policy for relation
+ * "requests"` — ловилось на любом запросе, который тянет `companies` вместе
+ * с ролью/компанией пользователя (`current-user.ts`), то есть буквально на
+ * каждом заходе после логина. `SECURITY DEFINER`-функции ниже читают
+ * `rfqs`/`requests` в обход их RLS, разрывая цикл — тот же приём, что и для
+ * `current_company_id()`. Определены как сырой SQL прямо в сгенерированной
+ * миграции (см. `packages/db/migrations/*.sql`, блок `CREATE OR REPLACE
+ * FUNCTION public.rfq_request_ids_for_current_supplier` и соседний
+ * `buyer_company_ids_for_current_supplier`), а не через Drizzle-схему.
+ */
+export const rfqRequestIdsForCurrentSupplierSubquery = sql`public.rfq_request_ids_for_current_supplier()`;
+export const buyerCompanyIdsForCurrentSupplierSubquery = sql`public.buyer_company_ids_for_current_supplier()`;

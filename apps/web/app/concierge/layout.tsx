@@ -11,6 +11,7 @@ import {
   ORDER_STATE_TONE,
   type OrderState,
 } from '../lib/order-state';
+import { IntakeButton } from './_intake-button';
 
 const NAV_ITEMS = [
   { key: 'orders', href: '/concierge', label: 'Заказы', icon: <LayoutList size={18} /> },
@@ -59,9 +60,44 @@ async function loadBoard(supabase: Awaited<ReturnType<typeof createSupabaseServe
   return rows.sort((a, b) => ORDER_STATE_PRIORITY[a.state] - ORDER_STATE_PRIORITY[b.state]);
 }
 
+interface PendingRequestRow {
+  id: string;
+  title: string;
+  city: string | null;
+  buyerCompany: string;
+}
+
+/** Заявки, поданные покупателем, но ещё не взятые в работу — до intakeRequest()
+ *  у них физически нет строки в orders, поэтому доска заказов их не видит. */
+async function loadPendingRequests(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): Promise<PendingRequestRow[]> {
+  const [{ data: submitted }, { data: orderedRows }] = await Promise.all([
+    supabase
+      .from('requests')
+      .select('id, title, city, companies(name)')
+      .eq('status', 'submitted')
+      .order('created_at', { ascending: true }),
+    supabase.from('orders').select('request_id'),
+  ]);
+
+  const orderedRequestIds = new Set((orderedRows ?? []).map((o) => o.request_id));
+
+  return (submitted ?? [])
+    .filter((row) => !orderedRequestIds.has(row.id))
+    .map((row) => {
+      const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+      return { id: row.id, title: row.title, city: row.city, buyerCompany: company?.name ?? '—' };
+    });
+}
+
 export default async function ConciergeLayout({ children }: { children: ReactNode }) {
   const supabase = await createSupabaseServerClient();
-  const [user, board] = await Promise.all([requireCurrentUser(), loadBoard(supabase)]);
+  const [user, board, pendingRequests] = await Promise.all([
+    requireCurrentUser(),
+    loadBoard(supabase),
+    loadPendingRequests(supabase),
+  ]);
 
   return (
     <ConciergeShell
@@ -69,6 +105,31 @@ export default async function ConciergeLayout({ children }: { children: ReactNod
       user={shellUserFrom(user)}
       list={
         <div>
+          {pendingRequests.length > 0 && (
+            <div className="border-b border-rule bg-purple-10">
+              <div className="p-4 pb-2">
+                <p className="text-micro tracking-wide text-purple uppercase">
+                  Новые заявки · {pendingRequests.length}
+                </p>
+              </div>
+              <div className="flex flex-col">
+                {pendingRequests.map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex items-center justify-between gap-3 border-t border-purple/10 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">{row.title}</p>
+                      <p className="truncate text-fine text-muted">
+                        {row.buyerCompany} · {row.city ?? '—'}
+                      </p>
+                    </div>
+                    <IntakeButton requestId={row.id} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="border-b border-rule p-4">
             <p className="text-micro tracking-wide text-muted uppercase">
               Доска заказов · {board.length} активных

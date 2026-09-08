@@ -1,42 +1,40 @@
-import { cn } from '@qajet/ui/lib/cn';
-import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
-import { Button } from '@qajet/ui/primitives';
+'use client';
+
+import { useAsyncAction } from '@qajet/ui/hooks';
+import { Reveal, Stagger } from '@qajet/ui/motion';
+import { Button, Card } from '@qajet/ui/primitives';
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { useState } from 'react';
+import { createRequest } from '../../../lib/actions/request-actions';
+import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../lib/catalog';
 
 /**
- * Мастер новой заявки — §10 «Покупатель»: свободное описание и файлы →
- * распознанная спецификация с явными пробелами → свои поставщики →
- * отправка. Экран визуальный (интейк-парсер и шаги 2–4 — отдельная фаза
- * движка, agents.md §14) — здесь первый шаг мастера, реальная форма без
- * отправки на сервер.
+ * Мастер новой заявки — agents.md §10 «Покупатель». Реальная форма:
+ * пишет requests+request_items (apps/web/app/lib/actions/request-actions.ts),
+ * не мок. Позиции — выбор из фиксированного каталога
+ * (apps/web/app/lib/catalog.ts), не свободный текст: полноценный
+ * NLP-интейк (agents.md §14) — отдельный, ещё не собранный кусок движка.
  */
 
-const STEPS: { n: number; title: string; sub: string; active?: boolean }[] = [
-  { n: 1, title: 'Заявка', sub: 'Опишите задачу и приложите файлы', active: true },
-  { n: 2, title: 'Спецификация', sub: 'Проверьте распознанные позиции' },
-  { n: 3, title: 'Поставщики', sub: 'Свои поставщики или подбор QAJET' },
-  { n: 4, title: 'Проверка и отправка', sub: 'Отправка на предоплату' },
-];
+const CATEGORIES: CatalogCategory[] = ['merch', 'corporate-gifts', 'printing'];
 
-const NEXT_STEPS = [
-  {
-    title: 'Вы описываете задачу своими словами',
-    sub: 'Текстом и файлами — как обычно ставите её сотруднику',
-  },
-  {
-    title: 'QAJET разбирает её на спецификацию',
-    sub: 'Позиции, количества, характеристики — пробелы помечаются явно',
-  },
-  {
-    title: 'Мы рассылаем RFQ проверенным поставщикам',
-    sub: 'Видно, кому и почему выбран каждый поставщик',
-  },
-  {
-    title: 'Вы сравниваете варианты и утверждаете план',
-    sub: 'С этого момента план становится заказом',
-  },
-];
+interface ItemRow {
+  rowId: number;
+  itemKey: string;
+  qty: number;
+}
+
+let nextRowId = 1;
+
+const DEFAULT_CATALOG_ITEM = CATALOG[0];
+
+function firstItemRow(): ItemRow {
+  return {
+    rowId: nextRowId++,
+    itemKey: DEFAULT_CATALOG_ITEM.itemKey,
+    qty: DEFAULT_CATALOG_ITEM.qtyMin,
+  };
+}
 
 const inputClass =
   'w-full rounded-control border border-transparent bg-page px-4 py-3 text-sm text-ink placeholder:text-muted focus-visible:border-purple';
@@ -44,7 +42,79 @@ const inputClass =
 const secondaryLinkClass =
   'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-rule bg-surface px-4 text-sm font-medium text-ink transition-colors duration-[var(--duration-instant)] hover:bg-page';
 
+const NEXT_STEPS = [
+  {
+    title: 'Вы выбираете позиции и описываете задачу',
+    sub: 'Каталог + свободное описание для концьержа',
+  },
+  {
+    title: 'Концьерж берёт заявку в работу и оценивает её',
+    sub: 'Реальный расчёт по истории цен, не догадка',
+  },
+  {
+    title: 'Мы рассылаем RFQ проверенным поставщикам',
+    sub: 'Видно, кому и почему выбран каждый поставщик',
+  },
+  {
+    title: 'Вы утверждаете план — с этого момента это заказ',
+    sub: 'Полная декомпозиция суммы, без скрытых строк',
+  },
+];
+
 export default function NewRequestPage() {
+  const [title, setTitle] = useState('');
+  const [city, setCity] = useState('Алматы');
+  const [description, setDescription] = useState('');
+  const [budget, setBudget] = useState('');
+  const [deadlineDate, setDeadlineDate] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [items, setItems] = useState<ItemRow[]>([firstItemRow()]);
+  const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
+
+  const { run, pending, error } = useAsyncAction(createRequest, (result) => {
+    if (result.requestId) setCreatedRequestId(result.requestId);
+  });
+
+  function addItem() {
+    setItems((prev) => [...prev, firstItemRow()]);
+  }
+  function removeItem(rowId: number) {
+    setItems((prev) => (prev.length > 1 ? prev.filter((row) => row.rowId !== rowId) : prev));
+  }
+  function updateItem(rowId: number, patch: Partial<ItemRow>) {
+    setItems((prev) => prev.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
+  }
+
+  function handleSubmit() {
+    run({
+      title,
+      city,
+      description,
+      budgetKzt: budget ? Number(budget) : undefined,
+      deadlineDate: deadlineDate || undefined,
+      deliveryAddress: deliveryAddress || undefined,
+      items: items.map((row) => ({ itemKey: row.itemKey, qty: row.qty })),
+    });
+  }
+
+  if (createdRequestId) {
+    return (
+      <Reveal className="mx-auto max-w-xl py-20 text-center">
+        <p className="text-4xl" aria-hidden="true">
+          ✅
+        </p>
+        <h1 className="mt-4 text-2xl font-extrabold text-ink">Заявка отправлена</h1>
+        <p className="mt-2 text-sm text-muted">
+          Концьерж QAJET возьмёт её в работу и сделает оценку — заказ появится в «Мои заказы», как
+          только это произойдёт.
+        </p>
+        <Link href="/buyer" className="mt-6 inline-block">
+          <Button variant="primary">Вернуться на главную</Button>
+        </Link>
+      </Reveal>
+    );
+  }
+
   return (
     <div>
       <p className="mb-4 text-fine text-muted">
@@ -55,155 +125,202 @@ export default function NewRequestPage() {
         <span className="font-medium text-ink">Новая заявка</span>
       </p>
 
-      <Reveal className="mb-7 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold">Новая заявка</h1>
-          <p className="mt-2 text-sm text-muted">
-            Опишите, что вам нужно, — QAJET разберёт заявку и найдёт подходящих поставщиков.
-          </p>
-        </div>
-        <Button variant="secondary">Сохранить черновик</Button>
-      </Reveal>
-
-      <Reveal delay={0.06} className="mb-8 flex flex-wrap items-center gap-x-8 gap-y-4">
-        {STEPS.map((step, i) => (
-          <div key={step.n} className="flex items-center gap-3">
-            <div
-              className={cn(
-                'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
-                step.active ? 'bg-purple text-white' : 'bg-page text-muted',
-              )}
-            >
-              {step.n}
-            </div>
-            <div>
-              <p className={cn('text-fine font-semibold', step.active ? 'text-ink' : 'text-muted')}>
-                {step.title}
-              </p>
-              <p className="text-micro text-muted">{step.sub}</p>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div className="hidden h-px w-10 bg-rule sm:block" aria-hidden="true" />
-            )}
-          </div>
-        ))}
+      <Reveal className="mb-7">
+        <h1 className="text-3xl font-extrabold">Новая заявка</h1>
+        <p className="mt-2 text-sm text-muted">
+          Выберите позиции и опишите задачу — концьерж оценит стоимость и подберёт поставщиков.
+        </p>
       </Reveal>
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_340px]">
-        <Reveal delay={0.12} className="rounded-card border border-rule bg-surface p-7">
-          <h3 className="text-lg font-bold">Расскажите о задаче</h3>
-          <p className="mt-1.5 mb-5 text-fine text-muted">
-            Чем подробнее описание, тем точнее будет распознанная спецификация.
-          </p>
-
-          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field id="request-title" label="Название заявки" required>
-              <input
-                id="request-title"
-                type="text"
-                placeholder="Например, корпоративные подарки на Наурыз"
-                className={inputClass}
-              />
-            </Field>
-            <Field id="request-city" label="Город доставки" required>
-              <select id="request-city" className={inputClass} defaultValue="Алматы">
-                <option>Алматы</option>
-                <option>Астана</option>
-                <option>Шымкент</option>
-              </select>
-            </Field>
-          </div>
-
-          <div className="mb-4">
-            <Field id="request-description" label="Описание заявки" required>
-              <textarea
-                id="request-description"
-                rows={4}
-                placeholder="Что заказываем, для кого, к какому событию. Укажите тираж, если он уже известен…"
-                className={cn(inputClass, 'resize-none')}
-              />
-            </Field>
-          </div>
-
-          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field id="request-budget" label="Бюджет, ориентировочно">
-              <input
-                id="request-budget"
-                type="text"
-                placeholder="До 1 200 000 ₸"
-                className={inputClass}
-              />
-            </Field>
-            <Field id="request-date" label="Нужна дата доставки">
-              <input id="request-date" type="date" className={inputClass} />
-            </Field>
-          </div>
-
-          <div className="mb-6">
-            <p className="mb-1 text-fine font-semibold">Файлы и материалы</p>
-            <p className="mb-2.5 text-micro text-muted">
-              Техническое задание, примеры, макеты — что угодно, что поможет точнее собрать
-              спецификацию.
+        <Reveal delay={0.06}>
+          <Card className="p-7">
+            <h3 className="text-lg font-bold">Расскажите о задаче</h3>
+            <p className="mt-1.5 mb-5 text-fine text-muted">
+              Название и позиции обязательны, остальное поможет концьержу точнее оценить сроки.
             </p>
-            <div className="rounded-control border border-rule border-dashed px-6 py-8 text-center text-muted">
-              <p className="text-sm font-semibold text-ink">
-                Перетащите файлы сюда или нажмите для загрузки
-              </p>
-              <p className="mt-1 text-micro">PDF, DOC, XLS, PNG, JPG до 10 МБ</p>
-            </div>
-          </div>
 
-          <div className="flex items-center justify-between">
-            <Link href="/buyer" className={secondaryLinkClass}>
-              Отмена
-            </Link>
-            <Button variant="primary">Продолжить</Button>
-          </div>
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field id="request-title" label="Название заявки" required>
+                <input
+                  id="request-title"
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Например, корпоративные подарки на Наурыз"
+                  className={inputClass}
+                />
+              </Field>
+              <Field id="request-city" label="Город доставки" required>
+                <select
+                  id="request-city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className={inputClass}
+                >
+                  <option>Алматы</option>
+                  <option>Астана</option>
+                  <option>Шымкент</option>
+                </select>
+              </Field>
+            </div>
+
+            <div className="mb-4">
+              <Field id="request-description" label="Описание заявки">
+                <textarea
+                  id="request-description"
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Для кого, к какому событию, особые пожелания…"
+                  className={`${inputClass} resize-none`}
+                />
+              </Field>
+            </div>
+
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field id="request-budget" label="Бюджет, ориентировочно">
+                <input
+                  id="request-budget"
+                  type="number"
+                  min={0}
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  placeholder="1 200 000"
+                  className={inputClass}
+                />
+              </Field>
+              <Field id="request-date" label="Нужна дата доставки">
+                <input
+                  id="request-date"
+                  type="date"
+                  value={deadlineDate}
+                  onChange={(e) => setDeadlineDate(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field id="request-address" label="Адрес доставки">
+                <input
+                  id="request-address"
+                  type="text"
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  placeholder="Офис, склад…"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+
+            <div className="mb-6">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-fine font-semibold">Позиции *</p>
+                <Button variant="secondary" size="sm" onClick={addItem}>
+                  + Добавить позицию
+                </Button>
+              </div>
+              <div className="flex flex-col gap-3">
+                {items.map((row) => {
+                  const catalogItem =
+                    CATALOG.find((c) => c.itemKey === row.itemKey) ?? DEFAULT_CATALOG_ITEM;
+                  return (
+                    <div
+                      key={row.rowId}
+                      className="grid grid-cols-1 items-end gap-3 rounded-control border border-rule bg-page p-3 sm:grid-cols-[1fr_140px_auto]"
+                    >
+                      <label className="block">
+                        <span className="mb-1 block text-micro font-semibold text-muted">
+                          Позиция
+                        </span>
+                        <select
+                          value={row.itemKey}
+                          onChange={(e) => {
+                            const next = CATALOG.find((c) => c.itemKey === e.target.value);
+                            if (next)
+                              updateItem(row.rowId, { itemKey: next.itemKey, qty: next.qtyMin });
+                          }}
+                          className={inputClass}
+                        >
+                          {CATEGORIES.map((category) => (
+                            <optgroup key={category} label={CATEGORY_LABEL[category]}>
+                              {CATALOG.filter((c) => c.category === category).map((c) => (
+                                <option key={c.itemKey} value={c.itemKey}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-micro font-semibold text-muted">
+                          Кол-во, {catalogItem.unit}
+                        </span>
+                        <input
+                          type="number"
+                          min={catalogItem.qtyMin}
+                          max={catalogItem.qtyMax}
+                          value={row.qty}
+                          onChange={(e) => updateItem(row.rowId, { qty: Number(e.target.value) })}
+                          className={inputClass}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(row.rowId)}
+                        disabled={items.length === 1}
+                        className="h-[46px] rounded-control border border-rule px-3 text-fine text-muted transition-colors duration-[var(--duration-instant)] hover:bg-surface disabled:opacity-40"
+                      >
+                        Убрать
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Link href="/buyer" className={secondaryLinkClass}>
+                Отмена
+              </Link>
+              <Button variant="primary" loading={pending} onClick={handleSubmit}>
+                {pending ? 'Отправляю…' : 'Отправить заявку'}
+              </Button>
+            </div>
+            {error && <p className="mt-3 text-fine text-signal">{error}</p>}
+          </Card>
         </Reveal>
 
         <Stagger className="flex flex-col gap-4" as="div">
           {[
-            <div key="summary" className="rounded-card border border-rule bg-surface p-5">
+            <Card key="summary" padding="sm">
               <h3 className="mb-4 text-sm font-semibold">Кратко о заявке</h3>
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-purple-10 text-base">
-                  🎁
-                </div>
-                <p className="flex-1 text-sm font-semibold">Новая заявка</p>
-                <Stamp tone="neutral" className="shrink-0">
-                  Черновик
-                </Stamp>
-              </div>
               <dl className="flex flex-col gap-2.5 text-fine">
                 <div className="flex justify-between border-t border-rule pt-2.5">
+                  <dt className="text-muted">Позиций</dt>
+                  <dd className="font-semibold">{items.length}</dd>
+                </div>
+                <div className="flex justify-between border-t border-rule pt-2.5">
                   <dt className="text-muted">Город доставки</dt>
-                  <dd className="font-semibold">Алматы</dd>
+                  <dd className="font-semibold">{city}</dd>
                 </div>
                 <div className="flex justify-between border-t border-rule pt-2.5">
                   <dt className="text-muted">Планируемая дата</dt>
-                  <dd className="font-semibold text-muted">Не указана</dd>
+                  <dd className="font-semibold text-muted">{deadlineDate || 'Не указана'}</dd>
                 </div>
                 <div className="flex justify-between border-t border-rule pt-2.5">
                   <dt className="text-muted">Бюджет</dt>
-                  <dd className="font-semibold text-muted">Не указан</dd>
+                  <dd className="font-semibold text-muted">
+                    {budget ? `${budget} ₸` : 'Не указан'}
+                  </dd>
                 </div>
               </dl>
-            </div>,
-            <div key="hint" className="flex gap-2.5 rounded-card bg-purple-10 p-4 text-fine">
-              <span aria-hidden="true">ⓘ</span>
-              <span>Позиции, количества и требуемые техпроцессы вы укажете на следующем шаге.</span>
-            </div>,
+            </Card>,
             <div key="next" className="rounded-card border border-rule bg-surface p-5">
               <h3 className="mb-4 text-sm font-semibold">Что дальше?</h3>
               <div className="flex flex-col gap-4">
                 {NEXT_STEPS.map((step, i) => (
                   <div key={step.title} className="flex gap-3">
-                    <div
-                      className={cn(
-                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-micro font-semibold',
-                        i === 0 ? 'bg-purple text-white' : 'bg-page text-muted',
-                      )}
-                    >
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-page text-micro font-semibold text-muted">
                       {i + 1}
                     </div>
                     <div>
@@ -230,7 +347,7 @@ function Field({
   id: string;
   label: string;
   required?: boolean;
-  children: ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <div className="block">
