@@ -8,6 +8,7 @@ import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE } from '../../../lib/order-state';
 import { supplierCountLabel } from '../../../lib/pluralize';
 import { AcceptDeliveryCta, ApprovePlanCta, CloseOrderForm } from './_order-actions';
+import { ShareOrderButton } from './_share-order-button';
 
 const PLAN_LABEL: Record<string, string> = {
   recommended: 'Рекомендованный',
@@ -30,10 +31,15 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
   return (
     <div className="mx-auto max-w-2xl">
       <Reveal>
-        <Stamp tone={ORDER_STATE_TONE[order.state]} className="w-fit">
-          {ORDER_STATE_LABEL[order.state]}
-        </Stamp>
-        <h1 className="mt-2 text-2xl font-extrabold text-ink">{order.requestTitle}</h1>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <Stamp tone={ORDER_STATE_TONE[order.state]} className="w-fit">
+              {ORDER_STATE_LABEL[order.state]}
+            </Stamp>
+            <h1 className="mt-2 text-2xl font-extrabold text-ink">{order.requestTitle}</h1>
+          </div>
+          <ShareOrderButton orderId={order.id} title={order.requestTitle} />
+        </div>
       </Reveal>
 
       {order.plan && order.plan.status !== 'draft' && (

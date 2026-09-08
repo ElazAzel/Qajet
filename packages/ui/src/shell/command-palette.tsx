@@ -33,6 +33,23 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Одна и та же страница открывается и в браузере, и в оболочке Tauri
+  // (apps/desktop) — глобальный хоткей там ловит нативный слой ОС (браузер
+  // физически не может зарегистрировать хоткей вне своей вкладки) и
+  // пересылает команду через Tauri IPC. `@tauri-apps/api` в браузере без
+  // моста `window.__TAURI_INTERNALS__` не грузим вовсе — обычный веб-визит
+  // не должен тянуть и не тянет этот код.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+    let unlisten: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('global-shortcut:command-palette', () => setOpen(true)).then((fn) => {
+        unlisten = fn;
+      });
+    });
+    return () => unlisten?.();
+  }, []);
+
   const groups = groupBy(items, (item) => item.group);
 
   return (

@@ -1,5 +1,5 @@
 import { Stamp } from '@qajet/ui/motion';
-import { ConciergeShell } from '@qajet/ui/shell';
+import { ConciergeShell, KeyboardListNav } from '@qajet/ui/shell';
 import { AlertTriangle, LayoutGrid, LayoutList } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -135,21 +135,30 @@ export default async function ConciergeLayout({ children }: { children: ReactNod
               Доска заказов · {board.length} активных
             </p>
           </div>
-          <div className="flex flex-col">
-            {board.map((row) => (
-              <Link
-                key={row.id}
-                href={`/concierge/orders/${row.id}`}
-                className="flex flex-col gap-1.5 border-b border-rule px-4 py-3 hover:bg-page"
-              >
-                <span className="text-sm font-semibold text-ink">{row.title}</span>
-                <span className="text-fine text-muted">{row.buyerCompany}</span>
-                <Stamp tone={ORDER_STATE_TONE[row.state]} className="mt-1 w-fit">
-                  {ORDER_STATE_LABEL[row.state]}
-                </Stamp>
-              </Link>
-            ))}
-          </div>
+          {board.length === 0 ? (
+            <p className="p-4 text-fine text-muted">
+              Пока нет заказов в работе — они появятся здесь сразу после «Взять в работу».
+            </p>
+          ) : (
+            <KeyboardListNav>
+              <div className="flex flex-col">
+                {board.map((row) => (
+                  <Link
+                    key={row.id}
+                    href={`/concierge/orders/${row.id}`}
+                    data-kbd-row
+                    className="flex flex-col gap-1.5 border-b border-rule px-4 py-3 hover:bg-page"
+                  >
+                    <span className="text-sm font-semibold text-ink">{row.title}</span>
+                    <span className="text-fine text-muted">{row.buyerCompany}</span>
+                    <Stamp tone={ORDER_STATE_TONE[row.state]} className="mt-1 w-fit">
+                      {ORDER_STATE_LABEL[row.state]}
+                    </Stamp>
+                  </Link>
+                ))}
+              </div>
+            </KeyboardListNav>
+          )}
         </div>
       }
       detail={children}

@@ -1,8 +1,9 @@
 'use client';
 
 import { Bell, Search } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { cn } from '../lib/cn';
 
 /**
@@ -72,6 +73,45 @@ export function ShellLayout({
 }: ShellLayoutProps) {
   const dark = tone === 'dark';
   const pathname = usePathname();
+  const router = useRouter();
+  const ordersHref = navItems[0]?.href;
+
+  // `g o` — план §"Оболочка ПК": «g o к заказам». Первый пункт навигации
+  // каждой роли и есть её экран заказов (buyer/supplier/concierge/admin —
+  // структурно один и тот же корневой маршрут, agents.md §12), так что
+  // хардкодить целевой путь по роли не нужно.
+  useEffect(() => {
+    let awaitingSecondKey = false;
+    let resetTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+      if (event.key === 'g' && !awaitingSecondKey) {
+        awaitingSecondKey = true;
+        resetTimer = setTimeout(() => {
+          awaitingSecondKey = false;
+        }, 800);
+        return;
+      }
+      if (event.key === 'o' && awaitingSecondKey && ordersHref) {
+        awaitingSecondKey = false;
+        clearTimeout(resetTimer);
+        event.preventDefault();
+        router.push(ordersHref);
+        return;
+      }
+      awaitingSecondKey = false;
+      clearTimeout(resetTimer);
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      clearTimeout(resetTimer);
+    };
+  }, [ordersHref, router]);
 
   return (
     <div className="flex min-h-screen bg-page">

@@ -4,9 +4,10 @@ import { useAsyncAction } from '@qajet/ui/hooks';
 import { Button } from '@qajet/ui/primitives';
 import { useState } from 'react';
 import { advanceOrderStage, approvePlan } from '../../../lib/actions/order-actions';
+import { hapticSuccess } from '../../../lib/native-bridge';
 
 export function ApprovePlanCta({ orderId }: { orderId: string }) {
-  const { run, pending, error } = useAsyncAction(approvePlan);
+  const { run, pending, error } = useAsyncAction(approvePlan, hapticSuccess);
   return (
     <div className="flex flex-col items-start gap-1.5">
       <Button variant="primary" loading={pending} onClick={() => run(orderId)}>
@@ -18,7 +19,10 @@ export function ApprovePlanCta({ orderId }: { orderId: string }) {
 }
 
 export function AcceptDeliveryCta({ orderId }: { orderId: string }) {
-  const { run, pending, error } = useAsyncAction((id: string) => advanceOrderStage(id, 'accepted'));
+  const { run, pending, error } = useAsyncAction(
+    (id: string) => advanceOrderStage(id, 'accepted'),
+    hapticSuccess,
+  );
   return (
     <div className="flex flex-col items-start gap-1.5">
       <Button variant="primary" loading={pending} onClick={() => run(orderId)}>

@@ -8,9 +8,15 @@
     "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
-    "clean": "rm -rf .next .turbo"
+    "e2e": "playwright test",
+    "clean": "rm -rf .next .turbo playwright-report test-results"
   },
   "dependencies": {
+    "@capacitor/core": "8.5.1",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/push-notifications": "8.1.2",
+    "@capacitor/share": "8.0.1",
+    "@capacitor/status-bar": "8.0.3",
     "@qajet/engine": "workspace:*",
     "@qajet/pd": "workspace:*",
     "@qajet/ui": "workspace:*",
@@ -24,6 +30,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@serwist/next": "9.5.12",
     "@tailwindcss/postcss": "catalog:",
     "@types/node": "22.20.1",

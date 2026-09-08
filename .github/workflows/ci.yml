@@ -73,6 +73,41 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @qajet/web build
 
+  e2e:
+    name: Сквозной сценарий (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # NEXT_PUBLIC_SUPABASE_URL/ANON_KEY как secrets репозитория — открытый
+      # пункт (README «Известные ограничения»), тот же класс, что и
+      # DATABASE_URL для теста изоляции поставщиков. Без них
+      # playwright.config.ts не находит .env.local, e2e/*.spec.ts пропускают
+      # себя сами (test.skip) — джоба не падает, просто ничего не проверяет.
+      - name: Playwright Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm --filter @qajet/web build
+
+      - name: pnpm e2e
+        working-directory: apps/web
+        run: pnpm e2e
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
   rag-freshness:
     name: RAG-индекс не отстал от кода
     runs-on: ubuntu-latest

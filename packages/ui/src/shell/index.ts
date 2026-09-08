@@ -6,6 +6,7 @@ export type { CommandPaletteItem } from './command-palette';
 export { CommandPalette } from './command-palette';
 export type { ConciergeShellProps } from './concierge-shell';
 export { ConciergeShell } from './concierge-shell';
+export { KeyboardListNav } from './keyboard-list-nav';
 export type { ShellLayoutProps, ShellNavItem, ShellSearch, ShellUser } from './shell-layout';
 export { ShellLayout } from './shell-layout';
 export type { SupplierShellProps } from './supplier-shell';

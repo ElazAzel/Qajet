@@ -4,6 +4,8 @@
 
 ## apps/
 
+- `@qajet/desktop` — `apps/desktop` (нет src/)
+- `@qajet/mobile` — `apps/mobile` (нет src/)
 - `@qajet/web` — `apps/web` (нет src/)
 
 ## packages/

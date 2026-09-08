@@ -12,7 +12,9 @@ import {
 } from 'recharts';
 import type { ExplorationPoint, LeadtimePoint, LearningPoint } from '../../lib/learning-metrics';
 
-const AXIS_COLOR = 'rgba(20,20,26,.5)';
+// .62, не .5 — тот же контраст, что у --color-muted в globals.css (AA на
+// белом/--color-page для этого же 11-12px размера подписей осей).
+const AXIS_COLOR = 'rgba(20,20,26,.62)';
 const GRID_COLOR = 'rgba(20,20,26,.08)';
 
 function formatMonth(iso: string): string {

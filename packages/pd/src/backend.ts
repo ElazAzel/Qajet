@@ -32,8 +32,14 @@ export interface DeliveryAddress {
 export interface PdBackend {
   /** users.full_name/email — agents.md §11.1 персональные данные сотрудника. */
   getUserContact(userId: string): Promise<UserContact | null>;
-  /** requests.delivery_address — адрес физического лица/офиса получателя. */
-  getDeliveryAddress(requestId: string): Promise<DeliveryAddress | null>;
+  /**
+   * requests.delivery_address — адрес физического лица/офиса получателя.
+   * `actingUserId` — от чьего имени читать: пока не вызывается ни одним
+   * реальным экраном (задел на будущее, ADR-0005), но бэкенд на голом
+   * Postgres (см. createPostgresPdBackend) не может опереться на сессионные
+   * куки, как это делает Supabase-бэкенд — ему нужен явный актёр для RLS.
+   */
+  getDeliveryAddress(requestId: string, actingUserId: string): Promise<DeliveryAddress | null>;
 }
 
 /**
@@ -53,7 +59,7 @@ export function createSupabasePdBackend(supabase: SupabaseClient): PdBackend {
       return { id: data.id, fullName: data.full_name, email: data.email };
     },
 
-    async getDeliveryAddress(requestId) {
+    async getDeliveryAddress(requestId, _actingUserId) {
       const { data } = await supabase
         .from('requests')
         .select('id, delivery_address')
