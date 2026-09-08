@@ -25,15 +25,21 @@ import { ShellLayout, type ShellNavItem, type ShellUser } from './shell-layout';
  * (раньше — PanelGroup/PanelResizeHandle). Читать это как факт версии,
  * а не как сокращение имён по вкусу.
  *
- * Split-панель имеет смысл только от планшета и выше — при ≤375px 32%
- * список превращается в нечитаемую полосу в 120px. Ниже `md` split не
- * рисуется вовсе: одна колонка на весь экран, список ИЛИ карточка, в
- * зависимости от маршрута (`/concierge` — список, `/concierge/orders/[id]`
- * — карточка с кнопкой «Все заказы» назад). Разметка списка/карточки при
- * этом присутствует в DOM дважды (для desktop-сплита и для мобильной
- * колонки) и переключается через `hidden`/`md:hidden` — тот же приём,
- * что уже использует ShellLayout для сайдбара и нижних вкладок, не новый
- * паттерн ради этого экрана.
+ * Split-панель включается с `lg` (1024px), не с `md` (768px). Замерено
+ * вживую: react-resizable-panels на этой странице несёт устойчивый
+ * hydration mismatch (Group/Panel рендерят SSR/клиент со своим инлайн-
+ * `style`, "won't be patched up" — React принимает серверное значение и
+ * не пересчитывает), из-за которого панель "list" на ширинах 768–900px
+ * застревает на абсолютной ширине ~565px, а "detail" схлопывается до 0 —
+ * экран сравнения физически недоступен на большинстве планшетов. При
+ * ≥1024px сумма помещается и оставляет detail видимую полосу; ниже —
+ * одна колонка на весь экран, список ИЛИ карточка, в зависимости от
+ * маршрута (`/concierge` — список, `/concierge/orders/[id]` — карточка с
+ * кнопкой «Все заказы» назад). Разметка списка/карточки при этом
+ * присутствует в DOM дважды (для split и для одноколоночной раскладки) и
+ * переключается через `hidden`/`lg:hidden` — тот же приём, что уже
+ * использует ShellLayout для сайдбара и нижних вкладок, не новый паттерн
+ * ради этого экрана.
  */
 
 /**
@@ -82,7 +88,7 @@ export function ConciergeShell({
         НА САМОМ Group ничего не прячет. Прячем через внешний div, до
         которого библиотека не дотягивается.
       */}
-      <div className="-m-6 hidden h-[calc(100%+3rem)] md:block">
+      <div className="-m-6 hidden h-[calc(100%+3rem)] lg:block">
         <Group
           orientation="horizontal"
           id="concierge-columns"
@@ -103,7 +109,7 @@ export function ConciergeShell({
         </Group>
       </div>
 
-      <div className="-mx-6 -mt-6 md:hidden">
+      <div className="-mx-6 -mt-6 lg:hidden">
         <div className={cn('bg-surface', isDetailRoute && 'hidden')}>{list}</div>
         <div className={cn('relative bg-page', !isDetailRoute && 'hidden')}>
           <Link

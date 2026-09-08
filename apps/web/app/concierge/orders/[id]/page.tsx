@@ -7,6 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadRequestComparison } from '../../../lib/comparison';
 import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE, type OrderState } from '../../../lib/order-state';
+import { supplierCountLabel } from '../../../lib/pluralize';
 import { ProposePlanButton } from './_propose-plan-button';
 import { StageAdvanceButton } from './_stage-advance-button';
 
@@ -173,7 +174,7 @@ function PlanCard({
             Срок ~{Math.round(plan.etaDays)} дн. · запас {plan.slackDays} дн.
           </p>
           <p>
-            {plan.supplierCount} {plan.supplierCount === 1 ? 'поставщик' : 'поставщика'} ·{' '}
+            {plan.supplierCount} {supplierCountLabel(plan.supplierCount)} ·{' '}
             {plan.method === 'exact' ? 'точный перебор' : 'эвристика'}
           </p>
         </div>

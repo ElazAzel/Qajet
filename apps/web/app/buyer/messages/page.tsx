@@ -85,8 +85,12 @@ export default function BuyerMessagesPage() {
   return (
     <Reveal>
       <h1 className="mb-5 text-3xl font-extrabold">Сообщения</h1>
-      <div className="grid h-[calc(100vh-260px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-card border border-rule bg-surface md:grid-cols-[320px_1fr]">
-        <div className="hidden flex-col border-rule border-r md:flex">
+      {/* lg, не md: список тредов (320px) появляется вместе с сайдбаром
+          оболочки (тоже md:flex, 240px) — на планшете (768px) оба разом
+          оставляли треду ~200px, нечитаемо. lg сдвигает точку туда, где
+          после сайдбара реально остаётся место для списка И треда. */}
+      <div className="grid h-[calc(100vh-260px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-card border border-rule bg-surface lg:grid-cols-[320px_1fr]">
+        <div className="hidden flex-col border-rule border-r lg:flex">
           <div className="border-rule border-b p-4">
             <input
               type="search"

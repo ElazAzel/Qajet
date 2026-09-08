@@ -113,7 +113,7 @@ export default async function BuyerHome() {
       <Reveal>
         <Card className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <h3 className="shrink-0 text-lg font-bold text-ink">Быстрые действия</h3>
-          <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <QuickAction
               href="/buyer/requests/new"
               icon={<FilePlus size={16} />}
@@ -156,7 +156,7 @@ function QuickAction({
         {icon}
       </span>
       <div className="min-w-0">
-        <p className="text-sm font-bold text-ink">{title}</p>
+        <p className="truncate text-sm font-bold text-ink">{title}</p>
         <p className="truncate text-fine text-muted">{sub}</p>
       </div>
     </Link>

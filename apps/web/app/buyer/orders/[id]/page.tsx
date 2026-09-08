@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerOrder } from '../../../lib/buyer-order';
 import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE } from '../../../lib/order-state';
+import { supplierCountLabel } from '../../../lib/pluralize';
 import { AcceptDeliveryCta, ApprovePlanCta, CloseOrderForm } from './_order-actions';
 
 const PLAN_LABEL: Record<string, string> = {
@@ -35,7 +36,7 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
         <h1 className="mt-2 text-2xl font-extrabold text-ink">{order.requestTitle}</h1>
       </Reveal>
 
-      {order.plan && (
+      {order.plan && order.plan.status !== 'draft' && (
         <Reveal className="mt-6" from="up">
           <Card padding="sm">
             <div className="flex items-center justify-between gap-4">
@@ -52,8 +53,7 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
                   Срок {order.plan.etaDate ?? '—'} · запас {order.plan.slackDays ?? '—'} дн.
                 </p>
                 <p>
-                  {order.plan.supplierCount}{' '}
-                  {order.plan.supplierCount === 1 ? 'поставщик' : 'поставщика'}
+                  {order.plan.supplierCount} {supplierCountLabel(order.plan.supplierCount)}
                 </p>
               </div>
             </div>

@@ -168,7 +168,7 @@ export function ShellLayout({
 
       <nav
         className={cn(
-          'fixed inset-x-0 bottom-0 z-40 flex border-t md:hidden',
+          'fixed inset-x-0 bottom-0 z-40 flex overflow-x-auto border-t md:hidden',
           dark ? 'border-white/10 bg-ink' : 'border-rule bg-surface',
         )}
         style={{ paddingBottom: 'var(--safe-bottom)' }}
@@ -181,7 +181,17 @@ export function ShellLayout({
               href={item.href}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'relative flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-micro',
+                // flex-[1_0_60px]: делит ширину поровну, пока пунктов мало
+                // (растёт), но не сжимается тоньше 60px — при 6-7 пунктах
+                // (buyer/admin, agents.md §8) это раньше сжимало подписи до
+                // нечитаемых обрывков ("Как ...", "Мет..."); лишние пункты
+                // уходят в горизонтальный скролл контейнера, а не в мусор
+                // из усечённых слов. 60px — минимум, при котором помещаются
+                // все 6 пунктов buyer без скролла; у admin (7) последний
+                // всё равно уезжает за экран — известное ограничение, не
+                // предмет этой правки (нужен паттерн «Ещё», не влезающий
+                // в разовый фикс).
+                'relative flex min-w-0 flex-[1_0_60px] flex-col items-center gap-1 py-2.5 text-micro',
                 active
                   ? dark
                     ? 'text-lime'
