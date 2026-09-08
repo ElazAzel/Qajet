@@ -45,14 +45,14 @@ export interface ActionResult {
   error?: string;
 }
 
-type OrderRow = {
+export type OrderRow = {
   id: string;
   state: OrderState;
   request_id: string;
   approved_plan_id: string | null;
 };
 
-async function loadOrder(
+export async function loadOrder(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   by: { orderId: string } | { requestId: string },
 ): Promise<OrderRow | null> {

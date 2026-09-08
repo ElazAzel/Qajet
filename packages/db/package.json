@@ -14,7 +14,7 @@
     "db:seed": "tsx src/seed/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "test:rls": "vitest run supplier-isolation --passWithNoTests",
+    "test:rls": "vitest run src/__tests__ --passWithNoTests",
     "clean": "rm -rf .turbo"
   },
   "dependencies": {

@@ -173,6 +173,19 @@ export const requestItems = pgTable(
         select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
       )`,
     }),
+    // Правка категории/названия консьержем (agents.md §8A: исправление —
+    // источник обучающего сигнала для Classification Engine) и split/merge
+    // позиций (Dependency Engine) — обе идут через staff-сессию, не
+    // service_role. «Допустимо ли на этой стадии заказа» — в приложении
+    // (ITEMS_EDITABLE_STATES), не в policy, тем же приёмом, что уже
+    // используется у plans/orders.
+    pgPolicy('request_items_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
+    }),
     pgPolicy('request_items_service_all', {
       as: 'permissive',
       for: 'all',

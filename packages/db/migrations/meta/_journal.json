@@ -43,6 +43,13 @@
       "when": 1788853076499,
       "tag": "0005_flimsy_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788886318447,
+      "tag": "0006_loving_puppet_master",
+      "breakpoints": true
     }
   ]
 }
