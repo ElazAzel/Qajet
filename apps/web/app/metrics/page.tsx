@@ -4,21 +4,29 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../lib/current-user';
 import { loadMetrics } from '../lib/metrics';
+import { createJuryMetricsClient, isValidJuryToken } from './_jury-access';
+import { JuryLinkButton } from './_jury-link-button';
 
 /**
  * /metrics — agents.md §9: «доступен админу и по временной ссылке для
- * жюри». Ссылка для жюри (подписанный токен без входа) не реализована в
- * этой фазе — только доступ под ролью admin; честно задокументировано в
- * journal, а не притворяется готовым.
+ * жюри». `?jury=<токен>` — подписанный токен без входа
+ * (`../lib/signed-link.ts`), проверяется здесь до `requireCurrentUser()`,
+ * поэтому по валидной ссылке экран открывается вообще без сессии.
+ * Реальные данные жюри показываются через `service_role`-клиент
+ * (`_jury-access.ts`) — обоснование там же, в комментарии.
  *
  * Отдельная от AdminShell страница: экран рассчитан на демонстрацию
  * «на сцене», не на повседневную навигацию внутри админки.
  */
-export default async function MetricsPage() {
-  const user = await requireCurrentUser();
-  if (user.role !== 'admin') redirect('/');
+export default async function MetricsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ jury?: string }>;
+}) {
+  const { jury } = await searchParams;
+  const isJuryAccess = isValidJuryToken(jury);
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = isJuryAccess ? createJuryMetricsClient() : await requireAdminSession();
   const metrics = await loadMetrics(supabase);
 
   const conversionPct =
@@ -38,12 +46,19 @@ export default async function MetricsPage() {
     <div className="min-h-screen bg-page px-6 py-10 sm:px-10">
       <div className="mx-auto max-w-5xl">
         <Reveal>
-          <p className="text-micro tracking-wide text-muted uppercase">QAJET · /metrics</p>
-          <h1 className="mt-1 text-3xl font-extrabold text-ink">Юнит-экономика</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted">
-            Комиссия {metrics.commissionRatePct}% — параметр в settings, меняется вживую при вопросе
-            жюри. Все числа ниже — реальные данные демо-сида, не иллюстрация.
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-micro tracking-wide text-muted uppercase">QAJET · /metrics</p>
+              <h1 className="mt-1 text-3xl font-extrabold text-ink">Юнит-экономика</h1>
+              <p className="mt-2 max-w-2xl text-sm text-muted">
+                Комиссия {metrics.commissionRatePct}% — параметр в settings, меняется вживую при
+                вопросе жюри. Все числа ниже — реальные данные демо-сида, не иллюстрация.
+              </p>
+            </div>
+            {/* Кнопка выпуска ссылки — только под сессией админа, не по самой ссылке жюри
+                (у неё нет своей сессии, чтобы выпускать новые ссылки). */}
+            {!isJuryAccess && <JuryLinkButton />}
+          </div>
         </Reveal>
 
         <Stagger
@@ -96,4 +111,10 @@ export default async function MetricsPage() {
       </div>
     </div>
   );
+}
+
+async function requireAdminSession() {
+  const user = await requireCurrentUser();
+  if (user.role !== 'admin') redirect('/');
+  return createSupabaseServerClient();
 }

@@ -9,6 +9,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
     "e2e": "playwright test",
+    "test": "vitest run --passWithNoTests",
     "clean": "rm -rf .next .turbo playwright-report test-results"
   },
   "dependencies": {
@@ -38,6 +39,7 @@
     "@types/react-dom": "catalog:",
     "serwist": "9.5.12",
     "tailwindcss": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
