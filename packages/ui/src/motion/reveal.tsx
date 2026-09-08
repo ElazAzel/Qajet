@@ -17,7 +17,8 @@ import { duration, easing, seconds, staggerStep } from './tokens';
 
 const StaggerIndexContext = createContext<number | null>(null);
 
-const shift = {
+/** Смещения появления — 6px, «лист лёг на стол». Общие с ScrollReveal. */
+export const revealShift = {
   up: { y: 6, x: 0 },
   down: { y: -6, x: 0 },
   left: { x: 6, y: 0 },
@@ -25,7 +26,7 @@ const shift = {
   none: { x: 0, y: 0 },
 } as const;
 
-export type RevealFrom = keyof typeof shift;
+export type RevealFrom = keyof typeof revealShift;
 
 export interface RevealProps extends Omit<HTMLMotionProps<'div'>, 'initial' | 'animate'> {
   children: ReactNode;
@@ -40,7 +41,7 @@ export interface RevealProps extends Omit<HTMLMotionProps<'div'>, 'initial' | 'a
 export function Reveal({ children, from = 'up', index, delay = 0, ...rest }: RevealProps) {
   const inherited = useContext(StaggerIndexContext);
   const position = index ?? inherited ?? 0;
-  const offset = shift[from];
+  const offset = revealShift[from];
 
   return (
     <motion.div

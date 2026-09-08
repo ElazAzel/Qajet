@@ -1,12 +1,72 @@
 'use client';
 
-import { BarGrow, type BarSegment } from '@qajet/ui/motion';
+import { cn } from '@qajet/ui/lib/cn';
+import { BarGrow, type BarSegment, CountUp, ScrollProgress } from '@qajet/ui/motion';
 import { ArrowUpRight, Check, ChevronDown } from 'lucide-react';
 import Image from 'next/image';
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import styles from './startupbattle.module.css';
 
+/**
+ * Шапка сжимается при прокрутке — те же 80px→60px, что в мобильных
+ * приложениях, где заголовок экономит место при чтении, но не исчезает
+ * совсем (навигация остаётся доступной). Порог 12px — не дёргается на
+ * микроскроллах тачпада.
+ */
+export function Header() {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        setScrolled(window.scrollY > 12);
+        ticking = false;
+      });
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  return (
+    <header className={`${styles.header} ${scrolled ? styles.headerScrolled : ''}`}>
+      <ScrollProgress className={cn(styles.scrollProgress)} />
+      <div className={styles.nav}>
+        <Link href="/" className={styles.logo} aria-label="QAJET — главная">
+          QAJET<span>®</span>
+        </Link>
+        <nav aria-label="Навигация по странице" className={styles.navLinks}>
+          <a href="#how-it-works">Как работает</a>
+          <a href="#product">Продукт</a>
+          <a href="#progress">Наш прогресс</a>
+        </nav>
+        <a href="#contact" className={styles.navCta}>
+          Обсудить пилот <ArrowUpRight size={16} aria-hidden="true" />
+        </a>
+      </div>
+    </header>
+  );
+}
+
 const money = (value: number) => `${new Intl.NumberFormat('ru-RU').format(value)} ₸`;
+const wholeNumber = (value: number) => String(Math.round(value));
+
+/**
+ * CountUp принимает функцию `format` — её нельзя передать пропом из
+ * серверного page.tsx в клиентский компонент (RSC-граница не
+ * сериализует функции). Оборачиваем здесь, где определение функции
+ * форматирования и её использование — в одном клиентском модуле.
+ */
+export function MoneyCountUp({ value }: { value: number }) {
+  return <CountUp value={value} format={money} />;
+}
+export function IntCountUp({ value }: { value: number }) {
+  return <CountUp value={value} format={wholeNumber} />;
+}
 const parts = [
   { index: 0, label: 'Товар', color: 'ink' },
   { index: 1, label: 'Нанесение и работы', color: 'muted' },
