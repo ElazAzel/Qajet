@@ -84,6 +84,8 @@ interface ItemRow {
   rowId: number;
   itemKey: string;
   qty: number;
+  /** Исходная фраза быстрого разбора — только у строк, добавленных так. */
+  sourceText?: string;
 }
 
 let nextRowId = 1;
@@ -162,7 +164,10 @@ export default function NewRequestPage() {
     const qty = quickPreview.qty
       ? Math.min(Math.max(quickPreview.qty, catalogItem.qtyMin), catalogItem.qtyMax)
       : catalogItem.qtyMin;
-    setItems((prev) => [...prev, { rowId: nextRowId++, itemKey: catalogItem.itemKey, qty }]);
+    setItems((prev) => [
+      ...prev,
+      { rowId: nextRowId++, itemKey: catalogItem.itemKey, qty, sourceText: quickText },
+    ]);
     if (quickPreview.deadline && !deadlineDate) setDeadlineDate(quickPreview.deadline);
     if (quickPreview.budget && !budget) setBudget(String(quickPreview.budget));
     setQuickText('');
@@ -181,7 +186,11 @@ export default function NewRequestPage() {
       budgetKzt: budget ? Number(budget) : undefined,
       deadlineDate: deadlineDate || undefined,
       deliveryAddress: deliveryAddress || undefined,
-      items: items.map((row) => ({ itemKey: row.itemKey, qty: row.qty })),
+      items: items.map((row) => ({
+        itemKey: row.itemKey,
+        qty: row.qty,
+        sourceText: row.sourceText,
+      })),
     });
   }
 
