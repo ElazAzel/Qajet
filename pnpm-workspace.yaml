@@ -8,6 +8,8 @@ onlyBuiltDependencies:
   - "@biomejs/biome"
   - "@tailwindcss/oxide"
   - esbuild
+  - onnxruntime-node
+  - protobufjs
   - sharp
 
 # Версии зафиксированы явно (ADR-0001). Каталог не даёт разъехаться

@@ -118,7 +118,7 @@ docs/
 - [ADR-0001](./docs/decisions/0001-stack-versions.md) — версии стека
 - [ADR-0002](./docs/decisions/0002-standalone-output.md) — `output: 'standalone'`, независимость от Vercel в рантайме
 - [ADR-0003](./docs/decisions/0003-serwist-webpack-build.md) — сборка на webpack, не на Turbopack (известный разрыв Serwist ↔ Turbopack)
-- [ADR-0004](./docs/decisions/0004-rag-fts-first.md) — RAG: FTS5 сейчас, векторный слой отдельным заходом
+- [ADR-0004](./docs/decisions/0004-rag-fts-first.md) — RAG: гибридный поиск FTS5 + векторный слой (`sqlite-vec`)
 - [ADR-0005](./docs/decisions/0005-pd-backend-abstraction.md) — `packages/pd`: конфигурируемый бэкенд для персональных данных
 - [ADR-0006](./docs/decisions/0006-order-transition-write-path.md) — единственный путь записи состояния заказа: RLS + `transition()`, без `service_role`
 - [ADR-0007](./docs/decisions/0007-rls-visibility-cascade-risk.md) — найденная и исправленная утечка изоляции поставщиков: почему «видно, если видно связанное» — опасный паттерн RLS

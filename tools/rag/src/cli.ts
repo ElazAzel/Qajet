@@ -26,7 +26,7 @@ async function main() {
         process.exitCode = 1;
         return;
       }
-      const hits = searchCorpus(query);
+      const hits = await searchCorpus(query);
       if (hits.length === 0) {
         console.log('Ничего не найдено. Возможно, индекс не собран: pnpm rag:sync');
         return;

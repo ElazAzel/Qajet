@@ -25,8 +25,9 @@ test-results/
 blob-report/
 .playwright/
 
-# RAG: корпус и решения коммитятся, бинарный индекс — нет
+# RAG: корпус и решения коммитятся, бинарный индекс и модель эмбеддингов — нет
 tools/rag/.index/
+tools/rag/.cache/
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal

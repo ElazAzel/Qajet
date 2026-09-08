@@ -11,5 +11,7 @@ export const JOURNAL_DIR = path.join(REPO_ROOT, 'docs/journal');
 export const STATE_DIR = path.join(REPO_ROOT, 'docs/state');
 export const INDEX_DIR = path.join(REPO_ROOT, 'tools/rag/.index');
 export const INDEX_DB_PATH = path.join(INDEX_DIR, 'corpus.sqlite');
+/** Кэш модели эмбеддингов (@huggingface/transformers) — скачивается один раз, не коммитится. */
+export const EMBEDDINGS_CACHE_DIR = path.join(REPO_ROOT, 'tools/rag/.cache');
 export const APPS_DIR = path.join(REPO_ROOT, 'apps');
 export const PACKAGES_DIR = path.join(REPO_ROOT, 'packages');

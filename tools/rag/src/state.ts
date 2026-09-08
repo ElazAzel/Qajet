@@ -224,7 +224,6 @@ async function generateLedger(): Promise<string> {
 
   lines.push('', '## Открытые решения без реализации', '');
   lines.push(
-    '- Векторный слой RAG (sqlite-vec + локальные эмбеддинги) — см. `docs/decisions/0004-rag-fts-first.md`.',
     '- Казахстанский ДЦ для персональных данных (agents.md §11.1) — `packages/pd` спроектирован под это, бэкенд не переключён.',
   );
 
