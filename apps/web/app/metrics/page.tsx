@@ -1,8 +1,7 @@
 import { Reveal, Stagger } from '@qajet/ui/motion';
 import { formatKzt, StatTile } from '@qajet/ui/primitives';
-import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { requireCurrentUser } from '../lib/current-user';
+import { requireActor } from '../lib/current-user';
 import { loadMetrics } from '../lib/metrics';
 import { createJuryMetricsClient, isValidJuryToken } from './_jury-access';
 import { JuryLinkButton } from './_jury-link-button';
@@ -114,7 +113,6 @@ export default async function MetricsPage({
 }
 
 async function requireAdminSession() {
-  const user = await requireCurrentUser();
-  if (user.role !== 'admin') redirect('/');
+  await requireActor('admin');
   return createSupabaseServerClient();
 }

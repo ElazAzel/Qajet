@@ -1,0 +1,1 @@
+DROP POLICY "quotes_select_buyer_of_request" ON "quotes" CASCADE;

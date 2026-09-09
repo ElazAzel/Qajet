@@ -11,13 +11,22 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * supplierHistory для предсказания срока намеренно пустая: без сохранённой
  * истории k' сходится к 1.0 (agents.md §8: «сдвиг к базовому 1.0 при малом
  * N»), что даёт корректный прогноз = заявленный срок + буфер логистики.
+ *
+ * ВАЖНО: результат содержит offerSupplierNames — реальные названия
+ * компаний-исполнителей. agents.md §10 «Покупатель»: личность исполнителя
+ * покупателю не раскрывается ни в UI, ни в данных, которые может прочитать
+ * его сессия. Вызывать эту функцию можно только из concierge/admin-гейтед
+ * маршрутов (сегодня: /concierge/orders/[id], proposePlan в
+ * order-actions.ts) — НИКОГДА из buyer-роута. RLS на `companies` уже не
+ * даёт покупательской сессии разрешить чужой company_id в имя (защита в
+ * глубину), но эта функция не должна давать шанс проверить это на практике.
  */
 
 const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
 const LOGISTICS_BUFFER_INTERCITY_DAYS = 3;
 const DELIVERY_ALMATY_KZT = 5_000;
 const DELIVERY_INTERCITY_KZT = 15_000;
-const FALLBACK_COMMISSION_RATE_PCT = 12;
+const FALLBACK_COMMISSION_RATE_PCT = 23;
 const FALLBACK_CIT_RATE_PCT = 20;
 
 export interface ComparisonItem {
@@ -35,6 +44,10 @@ export interface RequestComparison {
   items: ComparisonItem[];
   offerSupplierNames: Map<string, string>;
   result: CombineResult;
+  /** Ставка, которой реально считались варианты — proposePlan() переиспользует
+   *  её при вставке plan_lines, без второго похода в settings (комиссия по
+   *  умолчанию на каждой позиции, консьерж правит потом точечно, 21-24%). */
+  commissionRatePct: number;
 }
 
 export async function loadRequestComparison(
@@ -146,5 +159,6 @@ export async function loadRequestComparison(
     items,
     offerSupplierNames,
     result,
+    commissionRatePct,
   };
 }

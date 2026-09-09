@@ -1,0 +1,3 @@
+ALTER POLICY "supplier_profiles_select_all" ON "supplier_profiles" TO authenticated USING ("supplier_profiles"."company_id" = (select public.current_company_id()) or (select public.current_role()) in ('concierge', 'admin'));--> statement-breakpoint
+ALTER POLICY "supplier_stats_select_all" ON "supplier_stats" TO authenticated USING ("supplier_stats"."company_id" = (select public.current_company_id()) or (select public.current_role()) in ('concierge', 'admin'));--> statement-breakpoint
+ALTER POLICY "documents_select_via_order" ON "documents" TO authenticated USING ("documents"."order_id" in (select id from "orders") and ("documents"."type" <> 'supplier_invoice' or (select public.current_role()) in ('concierge', 'admin')));

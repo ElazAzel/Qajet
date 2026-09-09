@@ -186,13 +186,15 @@ export const supplierProfiles = pgTable(
     ...timestamps,
   },
   (t) => [
-    // Публичный профиль виден всем аутентифицированным (покупатель должен
-    // видеть портфолио при сравнении — agents.md §10 «Поставщик»).
+    // Личность/профиль поставщика покупателю не раскрывается — agents.md §10
+    // «Покупатель»/«Поставщик»: с точки зрения покупателя поставщик — сам
+    // QAJET, реальный исполнитель невидим. Профиль читают только сам
+    // поставщик (свой) и staff (подбор, экран сравнения консьержа).
     pgPolicy('supplier_profiles_select_all', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`true`,
+      using: sql`${t.companyId} = ${currentCompanyIdSubquery} or ${currentRoleSubquery} in ('concierge', 'admin')`,
     }),
     pgPolicy('supplier_profiles_update_own', {
       as: 'permissive',
@@ -230,12 +232,14 @@ export const supplierStats = pgTable(
     leadTimeMultiplier: integer('lead_time_multiplier'),
     ...timestamps,
   },
-  () => [
+  (t) => [
+    // Тот же принцип, что и supplier_profiles: покупателю личность/показатели
+    // поставщика не видны, только сам поставщик (свой дашборд роста) и staff.
     pgPolicy('supplier_stats_select_all', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`true`,
+      using: sql`${t.companyId} = ${currentCompanyIdSubquery} or ${currentRoleSubquery} in ('concierge', 'admin')`,
     }),
     pgPolicy('supplier_stats_service_all', {
       as: 'permissive',

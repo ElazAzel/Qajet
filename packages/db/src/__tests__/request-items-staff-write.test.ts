@@ -9,6 +9,14 @@ import { describe, expect, it } from 'vitest';
  * supplier-isolation.test.ts — единственный способ реально проверить RLS,
  * а не то, что приложение САМО решило не делать запрещённый запрос.
  *
+ * `set_config(..., true)` — LOCAL, живёт только до конца ТЕКУЩЕЙ
+ * транзакции. Без явного sql.begin() каждый отдельный тег-вызов
+ * postgres.js — своя отдельная неявная транзакция: auth.uid() снова null
+ * уже на следующем запросе, RLS молча откатывается к «анонимной» сессии.
+ * Тот же приём, что уже есть в packages/pd/src/postgres-backend.ts
+ * (комментарий там же) — set_config и все запросы под ним обязаны жить
+ * в одном tx.
+ *
  * Требует DATABASE_URL — см. supplier-isolation.test.ts.
  */
 
@@ -89,46 +97,58 @@ describeIfConfigured(
           connection: { options: '-c role=authenticated' },
         });
 
+        let aliasId: string | undefined;
+        let learningEventId: string | undefined;
         try {
-          await asBuyer`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authBuyer.id, role: 'authenticated' })}, true)`;
-          const buyerUpdate =
-            await asBuyer`update request_items set category = 'printing' where id = ${item.id} returning id`;
+          const buyerUpdate = await asBuyer.begin(async (tx) => {
+            await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authBuyer.id, role: 'authenticated' })}, true)`;
+            return tx`update request_items set category = 'printing' where id = ${item.id} returning id`;
+          });
           expect(buyerUpdate).toHaveLength(0);
 
-          await asConcierge`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
-          const conciergeUpdate =
-            await asConcierge`update request_items set category = 'printing' where id = ${item.id} returning id, category`;
+          const { conciergeUpdate, learningInsert, aliasInsert } = await asConcierge.begin(
+            async (tx) => {
+              await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
+              const conciergeUpdate =
+                await tx`update request_items set category = 'printing' where id = ${item.id} returning id, category`;
+              const learningInsert = await tx`
+              insert into learning_events (type, payload)
+              values ('extraction_fix', ${JSON.stringify({ requestItemId: item.id })})
+              returning id
+            `;
+              const aliasInsert = await tx`
+              insert into extraction_aliases (alias, canonical, kind, hits, confirmed_by)
+              values ('тестовый алиас', 'printing', 'category', 1, ${authConcierge.id})
+              returning id
+            `;
+              return { conciergeUpdate, learningInsert, aliasInsert };
+            },
+          );
           expect(conciergeUpdate).toHaveLength(1);
           expect(conciergeUpdate[0]?.category).toBe('printing');
-
-          const learningInsert = await asConcierge`
-          insert into learning_events (type, payload)
-          values ('extraction_fix', ${JSON.stringify({ requestItemId: item.id })})
-          returning id
-        `;
           expect(learningInsert).toHaveLength(1);
-
-          const aliasInsert = await asConcierge`
-          insert into extraction_aliases (alias, canonical, kind, hits, confirmed_by)
-          values ('тестовый алиас', 'printing', 'category', 1, ${authConcierge.id})
-          returning id
-        `;
           expect(aliasInsert).toHaveLength(1);
+          aliasId = aliasInsert[0]?.id;
+          learningEventId = learningInsert[0]?.id;
 
-          const buyerAliasInsert = await asBuyer`
-          insert into extraction_aliases (alias, canonical, kind, hits)
-          values ('чужой алиас', 'merch', 'category', 1)
-          returning id
-        `.catch(() => []);
+          const buyerAliasInsert = await asBuyer
+            .begin(async (tx) => {
+              await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authBuyer.id, role: 'authenticated' })}, true)`;
+              return tx`
+              insert into extraction_aliases (alias, canonical, kind, hits)
+              values ('чужой алиас', 'merch', 'category', 1)
+              returning id
+            `;
+            })
+            .catch(() => []);
           expect(buyerAliasInsert).toHaveLength(0);
-
-          await admin`delete from extraction_aliases where id = ${aliasInsert[0]?.id}`;
-          await admin`delete from learning_events where id = ${learningInsert[0]?.id}`;
         } finally {
           await asBuyer.end();
           await asConcierge.end();
         }
 
+        if (aliasId) await admin`delete from extraction_aliases where id = ${aliasId}`;
+        if (learningEventId) await admin`delete from learning_events where id = ${learningEventId}`;
         await admin`delete from request_items where id = ${item.id}`;
         await admin`delete from requests where id = ${request.id}`;
         await admin`delete from public.users where id in (${authBuyer.id}, ${authConcierge.id})`;

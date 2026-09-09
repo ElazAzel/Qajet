@@ -90,3 +90,17 @@ export function orderActorFor(user: CurrentUser): OrderActor {
   if (user.role === 'concierge' || user.role === 'admin') return user.role;
   return user.companyType === 'supplier' ? 'supplier' : 'buyer';
 }
+
+/**
+ * Гейт для *-layout.tsx каждой роли — найдено при review PR (P1): ни один
+ * layout не проверял, что залогиненный пользователь действительно этой
+ * роли. RLS всё равно не даёт увидеть чужие данные (staffOnly/company_id-
+ * подзапросы), но это не повод не гейтить сам маршрут — буквально любой
+ * покупатель мог зайти на /admin и увидеть пустую, но настоящую админку.
+ * Тот же принцип, что уже был в /metrics (requireAdminSession()).
+ */
+export async function requireActor(expected: OrderActor): Promise<CurrentUser> {
+  const user = await requireCurrentUser();
+  if (orderActorFor(user) !== expected) redirect('/');
+  return user;
+}
