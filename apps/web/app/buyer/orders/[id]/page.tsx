@@ -65,12 +65,10 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
             </div>
 
             <div className="mt-4 flex flex-col gap-1.5">
-              {order.plan.decomposition.map((line) => (
-                <div key={line.label} className="flex items-center justify-between text-fine">
-                  <span className="text-muted">{line.label}</span>
-                  <span className="numeric text-ink">{formatKzt(line.amountKzt ?? 0)}</span>
-                </div>
-              ))}
+              <div className="flex items-center justify-between text-fine">
+                <span className="text-muted">Доставка</span>
+                <span className="numeric text-ink">{formatKzt(order.plan.deliveryKzt)}</span>
+              </div>
             </div>
 
             {canApprove && (

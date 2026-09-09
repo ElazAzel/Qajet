@@ -551,17 +551,15 @@ export const plans = pgTable(
       using: staffOnly,
       withCheck: staffOnly,
     }),
-    pgPolicy('plans_update_buyer_own', {
-      as: 'permissive',
-      for: 'update',
-      to: authenticatedRole,
-      using: sql`${t.requestId} in (
-        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
-      )`,
-      withCheck: sql`${t.requestId} in (
-        select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
-      )`,
-    }),
+    // Было plans_update_buyer_own — UPDATE без ограничения по колонкам,
+    // хотя approvePlan() в приложении трогает только status. RLS не умеет
+    // колоночно: прямой PostgREST-запрос от покупателя мог бы переписать
+    // commission_kzt/total_kzt/total_supplier_kzt в СВОЁМ же плане (подмена
+    // цены). Заменено на SECURITY INVOKER RPC approve_plan(p_order_id) —
+    // тот же приём, что split_request_item/merge_request_items (волна 1,
+    // шаг 6): функция сама проверяет владение заказом и меняет только
+    // status, буквальный UPDATE-доступ покупателю на эту таблицу больше не
+    // выдаётся вообще.
     pgPolicy('plans_service_all', {
       as: 'permissive',
       for: 'all',
@@ -590,6 +588,12 @@ export const planLines = pgTable(
       .references(() => quoteLines.id, { onDelete: 'restrict' }),
     qty: integer('qty').notNull(),
     lineTotalKzt: bigint('line_total_kzt', { mode: 'number' }).notNull(),
+    /** Комиссия по этой конкретной позиции — по умолчанию плоский процент
+     *  из settings (proposePlan), консьерж может задать другой в диапазоне
+     *  21-24% (packages/engine/src/commission). Снимок на момент правки —
+     *  agents.md §7 правило 8: задним числом не меняется, только вперёд. */
+    commissionPct: real('commission_pct').notNull().default(23),
+    commissionKzt: bigint('commission_kzt', { mode: 'number' }).notNull().default(0),
     ...timestamps,
   },
   (t) => [
@@ -597,16 +601,36 @@ export const planLines = pgTable(
     index('plan_lines_request_item_id_idx').on(t.requestItemId),
     index('plan_lines_supplier_company_id_idx').on(t.supplierCompanyId),
     index('plan_lines_quote_line_id_idx').on(t.quoteLineId),
+    // Имя не переименовано в *_select_staff (drizzle-kit иначе спрашивает
+    // интерактивно rename-or-new, недоступно в этой среде — тот же приём,
+    // что уже применялся в этой сессии для extraction_aliases_select_staff)
+    // — было `planId in (select id from plans)`, тот же анти-паттерн, что
+    // уже пофикшен для requests/rfqs (см. комментарий у visibleToBuyerOrStaff
+    // выше): раз plans видна и покупателю, то и ЛЮБАЯ plan_lines была видна
+    // ему целиком через прямой PostgREST — включая supplier_company_id,
+    // прямое нарушение ADR-0009 (личность поставщика не раскрывается
+    // покупателю). Ни один buyer-маршрут сегодня напрямую .from('plan_lines')
+    // не читает (только order-actions.ts/comparison.ts на стороне
+    // консьержа) — сузить до staff можно без потери функциональности.
     pgPolicy('plan_lines_select_via_plan', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.planId} in (select id from ${plans})`,
+      using: staffOnly,
     }),
     pgPolicy('plan_lines_insert_staff', {
       as: 'permissive',
       for: 'insert',
       to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
+    // Первая UPDATE-политика на этой таблице — нужна для правки
+    // commission_pct/commission_kzt консьержем (updatePlanLineCommission).
+    pgPolicy('plan_lines_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
       withCheck: staffOnly,
     }),
     pgPolicy('plan_lines_service_all', {

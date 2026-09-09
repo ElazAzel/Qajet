@@ -74,6 +74,17 @@ export const ORDER_STATE_TONE: Record<OrderState, StampTone> = {
  */
 export const ITEMS_EDITABLE_STATES: readonly OrderState[] = ['draft', 'estimated', 'prepaid'];
 
+/**
+ * Стадии, на которых консьерж может править комиссию по позиции плана
+ * (задача «комиссия платформы» — 21-24% на строку, agents.md §7). После
+ * `plan_approved` заморожено — правило 8: «изменение процента задним
+ * числом невозможно», покупатель уже утвердил цену.
+ */
+export const PLAN_EDITABLE_STATES: readonly OrderState[] = [
+  'plan_proposed',
+  'awaiting_internal_approval',
+];
+
 /** Порядок приоритета для доски консьержа — что горит, всплывает наверх. */
 export const ORDER_STATE_PRIORITY: Record<OrderState, number> = {
   disputed: 0,

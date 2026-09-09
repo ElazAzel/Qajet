@@ -10,7 +10,7 @@ import {
   type ScoringFeatures,
   scoreSupplier,
 } from '@qajet/engine/match';
-import { roundKzt } from '@qajet/engine/money';
+import { percentOfKzt, roundKzt } from '@qajet/engine/money';
 import { transition } from '@qajet/engine/order';
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -223,6 +223,11 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
         quote_line_id: line.offerId,
         qty: line.qty,
         line_total_kzt: line.lineTotalKzt,
+        // По умолчанию — та же плоская ставка, что уже использовалась при
+        // подборе вариантов (comparison.commissionRatePct); консьерж правит
+        // точечно по позиции на экране плана, 21-24% (agents.md §7).
+        commission_pct: comparison.commissionRatePct,
+        commission_kzt: percentOfKzt(line.lineTotalKzt, comparison.commissionRatePct),
       })),
     );
     if (linesError) return { ok: false, error: linesError.message };
@@ -267,12 +272,12 @@ export async function approvePlan(orderId: string): Promise<ActionResult> {
   const check = transition(order.state, 'plan_approved', actor);
   if (!check.ok) return { ok: false, error: check.reason };
 
-  const { error: planError, count } = await supabase
-    .from('plans')
-    .update({ status: 'approved' }, { count: 'exact' })
-    .eq('id', order.approved_plan_id);
-  if (planError) return { ok: false, error: planError.message };
-  if (count === 0) return { ok: false, error: 'Нет доступа к этому плану' };
+  // RPC вместо прямого update — plans_update_buyer_own снята (была без
+  // ограничения по колонкам, покупатель мог бы переписать commission_kzt/
+  // total_kzt в своём же плане). approve_plan() сама проверяет владение
+  // заказом и меняет только status.
+  const { error: planError } = await supabase.rpc('approve_plan', { p_order_id: order.id });
+  if (planError) return { ok: false, error: 'Нет доступа к этому плану' };
 
   const { error: orderError } = await supabase
     .from('orders')

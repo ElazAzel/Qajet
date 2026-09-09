@@ -26,7 +26,7 @@ const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
 const LOGISTICS_BUFFER_INTERCITY_DAYS = 3;
 const DELIVERY_ALMATY_KZT = 5_000;
 const DELIVERY_INTERCITY_KZT = 15_000;
-const FALLBACK_COMMISSION_RATE_PCT = 12;
+const FALLBACK_COMMISSION_RATE_PCT = 23;
 const FALLBACK_CIT_RATE_PCT = 20;
 
 export interface ComparisonItem {
@@ -44,6 +44,10 @@ export interface RequestComparison {
   items: ComparisonItem[];
   offerSupplierNames: Map<string, string>;
   result: CombineResult;
+  /** Ставка, которой реально считались варианты — proposePlan() переиспользует
+   *  её при вставке plan_lines, без второго похода в settings (комиссия по
+   *  умолчанию на каждой позиции, консьерж правит потом точечно, 21-24%). */
+  commissionRatePct: number;
 }
 
 export async function loadRequestComparison(
@@ -155,5 +159,6 @@ export async function loadRequestComparison(
     items,
     offerSupplierNames,
     result,
+    commissionRatePct,
   };
 }

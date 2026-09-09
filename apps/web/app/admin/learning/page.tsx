@@ -1,6 +1,8 @@
 import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
 import { Card, StatTile } from '@qajet/ui/primitives';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { loadCommissionSuggestions } from '../../lib/actions/plan-actions';
+import { CATEGORY_LABEL, type CatalogCategory } from '../../lib/catalog';
 import { loadAliasMetrics, loadLearningMetrics } from '../../lib/learning-metrics';
 import { ExplorationChart, LeadtimeChart, MapeMarginChart } from './_charts';
 
@@ -14,7 +16,12 @@ export default async function AdminLearningPage() {
   const [
     { estimator, leadtime, exploration, explorationSuppliersTotal },
     { correctionsTotal, aliases },
-  ] = await Promise.all([loadLearningMetrics(supabase), loadAliasMetrics(supabase)]);
+    commissionSuggestions,
+  ] = await Promise.all([
+    loadLearningMetrics(supabase),
+    loadAliasMetrics(supabase),
+    loadCommissionSuggestions(supabase),
+  ]);
 
   const latestEstimator = estimator.at(-1);
   const firstEstimator = estimator[0];
@@ -153,6 +160,37 @@ export default async function AdminLearningPage() {
             </ul>
           ) : (
             <EmptyNote text="Пока нет ни одного алиаса — появится после первого исправления категории консьержем." />
+          )}
+        </Card>
+      </Reveal>
+
+      <Reveal delay={0.32}>
+        <Card>
+          <h3 className="text-base font-bold text-ink">Комиссия по категориям</h3>
+          <p className="mt-1 text-fine text-muted">
+            По умолчанию 23% на позицию (agents.md §7) — консьерж правит точечно, 21-24%. Здесь —
+            усреднение прошлых правок по категории (learning_events), подсказка появляется после 3
+            похожих решений, применяется только вручную.
+          </p>
+          {commissionSuggestions.size > 0 ? (
+            <ul className="mt-4 flex flex-col gap-2">
+              {[...commissionSuggestions.entries()].map(([category, suggestion]) => (
+                <li
+                  key={category}
+                  className="flex items-center justify-between gap-3 border-rule border-b pb-2 text-fine last:border-b-0"
+                >
+                  <span className="font-semibold text-ink">
+                    {CATEGORY_LABEL[category as CatalogCategory] ?? category}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-muted">{suggestion.sampleCount} решений</span>
+                    <Stamp tone="progress">советует {suggestion.pct}%</Stamp>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyNote text="Пока нет подсказки ни по одной категории — появится после 3 правок комиссии консьержем в одной категории." />
           )}
         </Card>
       </Reveal>
