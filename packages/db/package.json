@@ -10,6 +10,7 @@
   "scripts": {
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/scripts/migrate.ts",
+    "db:reset": "tsx src/scripts/reset.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/seed/index.ts",
     "typecheck": "tsc --noEmit",

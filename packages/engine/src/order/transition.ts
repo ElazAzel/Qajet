@@ -93,6 +93,44 @@ export const ORDER_TRANSITION_GRAPH: Record<OrderState, readonly Edge[]> = {
   cancelled: [],
 };
 
+/** Стадии учёта времени — agents.md §9, дословно её список. */
+export type TimeEntryStage =
+  | 'intake'
+  | 'sourcing'
+  | 'normalization'
+  | 'approval'
+  | 'execution'
+  | 'exception'
+  | 'closing';
+
+/**
+ * Состояние заказа → стадия учёта времени (§9). Живёт рядом с графом
+ * состояний, а не в apps/web: по этой карте пишут и автотаймер
+ * (apps/web/app/lib/autotimer.ts), и генератор сида
+ * (packages/db/src/seed/generator.ts) — две копии разошлись бы молча,
+ * а расхождение здесь означало бы, что демо-история и живая работа
+ * считают «часы на заказ» по-разному.
+ */
+export const TIME_ENTRY_STAGE_BY_STATE: Record<OrderState, TimeEntryStage> = {
+  draft: 'intake',
+  estimated: 'intake',
+  prepaid: 'sourcing',
+  rfq_sent: 'sourcing',
+  quotes_received: 'normalization',
+  plan_proposed: 'normalization',
+  awaiting_internal_approval: 'normalization',
+  plan_approved: 'approval',
+  suppliers_paid: 'execution',
+  in_production: 'execution',
+  shipped: 'execution',
+  delivered: 'execution',
+  accepted: 'closing',
+  closed: 'closing',
+  on_hold: 'exception',
+  disputed: 'exception',
+  cancelled: 'exception',
+};
+
 export type TransitionResult = { ok: true } | { ok: false; reason: string };
 
 /**

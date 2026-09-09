@@ -18,6 +18,7 @@
     "e2e": "turbo run e2e",
     "db:generate": "pnpm --filter @qajet/db db:generate",
     "db:migrate": "pnpm --filter @qajet/db db:migrate",
+    "db:reset": "pnpm --filter @qajet/db db:reset",
     "db:seed": "pnpm --filter @qajet/db db:seed",
     "rag:sync": "tsx tools/rag/src/cli.ts sync",
     "rag:search": "tsx tools/rag/src/cli.ts search",

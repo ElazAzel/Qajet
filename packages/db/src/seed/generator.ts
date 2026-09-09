@@ -13,6 +13,7 @@ import {
 import type { OrderOutcome } from '@qajet/engine/learn';
 import { recalibrate } from '@qajet/engine/learn';
 import { percentOfKzt, roundKzt } from '@qajet/engine/money';
+import { TIME_ENTRY_STAGE_BY_STATE, type TimeEntryStage } from '@qajet/engine/order';
 import type * as schema from '../schema/index.js';
 import {
   DEMO_SUPPLIER_COMPANY_SEED_KEY,
@@ -41,6 +42,31 @@ import type { SeedCategory } from './suppliers.js';
 // ---------------------------------------------------------------------------
 // Константы и настройки
 // ---------------------------------------------------------------------------
+
+/**
+ * Базовые АКТИВНЫЕ минуты консьержа на стадию (agents.md §9). Именно
+ * активные — не календарное время между переходами: стадия «производство»
+ * длится неделю, но консьерж тратит на неё минуты. Числа — порядок величины
+ * ручной работы закупщика, а не замер; нормализация КП самая тяжёлая, это
+ * ровно та работа, которую продукт и автоматизирует.
+ */
+const ACTIVE_MINUTES_BY_TIME_ENTRY_STAGE: Record<TimeEntryStage, number> = {
+  intake: 25,
+  sourcing: 35,
+  normalization: 45,
+  approval: 10,
+  execution: 15,
+  closing: 20,
+  exception: 30,
+};
+
+/**
+ * Насколько падают часы на заказ к концу истории (§13, сцена 8: «часы на
+ * заказ падают, точность растёт»). Падение — следствие накопленной истории
+ * (шаблоны, известные поставщики, меньше уточнений), поэтому масштабируется
+ * тем же `progress`, что и качество моделей.
+ */
+const ACTIVE_TIME_LEARNING_DROP = 0.45;
 
 /** Плейсхолдер до решения по тарифам (agents.md §17: "финальный процент комиссии — параметр, не константа"). */
 const COMMISSION_RATE_PCT = 23;
@@ -155,6 +181,11 @@ type LearningEventRow = typeof schema.learningEvents.$inferInsert;
 type PriceObservationRow = typeof schema.priceObservations.$inferInsert;
 type ModelSnapshotRow = typeof schema.modelSnapshots.$inferInsert;
 type SettingRow = typeof schema.settings.$inferInsert;
+type TimeEntryRow = typeof schema.timeEntries.$inferInsert;
+type ThreadRow = typeof schema.threads.$inferInsert;
+type MessageRow = typeof schema.messages.$inferInsert;
+type PermissionRow = typeof schema.permissions.$inferInsert;
+type ChangeRequestRow = typeof schema.changeRequests.$inferInsert;
 
 export interface SeedAccountLink {
   seedKey: string;
@@ -192,6 +223,11 @@ export interface SeedDataset {
   priceObservations: PriceObservationRow[];
   modelSnapshots: ModelSnapshotRow[];
   settings: SettingRow[];
+  timeEntries: TimeEntryRow[];
+  threads: ThreadRow[];
+  messages: MessageRow[];
+  permissions: PermissionRow[];
+  changeRequests: ChangeRequestRow[];
   accounts: SeedAccountLink[];
 }
 
@@ -249,6 +285,11 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
     priceObservations: [],
     modelSnapshots: [],
     settings: [],
+    timeEntries: [],
+    threads: [],
+    messages: [],
+    permissions: [],
+    changeRequests: [],
     accounts: [],
   };
 
@@ -492,6 +533,61 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
   // --- Спецзаказ демо-сцены: quotes_received, 6 позиций, 5 КП, 2 с пропусками, 1 с невыполнимым сроком ---
   buildQuotesReceivedDemoOrder({ dataset, rng, referenceDate, ctx: sharedCtx });
 
+  // --- Треды/сообщения/внутренние заметки по всем заказам ---
+  pushCommunications({ dataset, rng, buyerUserId, conciergeUserId });
+
+  // --- Доступы сотрудников компании-покупателя (§10 «Команда и доступы») ---
+  // Лимит согласования живёт колонкой `users.approval_limit_kzt`; здесь —
+  // именно права, которые владелец компании выдаёт и отзывает поимённо.
+  for (const account of dataset.accounts) {
+    if (account.companyId !== buyerCompanyId) continue;
+    const isOwner = account.seedKey === 'demo-buyer';
+    dataset.permissions.push(
+      {
+        userId: account.userId,
+        key: 'can_create_request',
+        value: true,
+        createdAt: referenceDate,
+        updatedAt: referenceDate,
+      },
+      {
+        userId: account.userId,
+        key: 'can_approve_plan',
+        value: true,
+        createdAt: referenceDate,
+        updatedAt: referenceDate,
+      },
+      {
+        userId: account.userId,
+        key: 'can_manage_team',
+        value: isOwner,
+        createdAt: referenceDate,
+        updatedAt: referenceDate,
+      },
+    );
+  }
+
+  // --- Запрос на изменение утверждённого плана (§15: «изменение
+  // утверждённого плана создаёт новую версию, а не правит заказ») ---
+  // Демонстрируется на закрытом заказе: покупатель попросил увеличить тираж
+  // уже после утверждения, из-за чего появилась новая версия плана.
+  const changeRequestOrder = dataset.orders.find((o) => o.state === 'closed');
+  if (changeRequestOrder?.approvedPlanId) {
+    const at = changeRequestOrder.closedAt ?? referenceDate;
+    dataset.changeRequests.push({
+      orderId: changeRequestOrder.id as string,
+      proposedPlanId: changeRequestOrder.approvedPlanId as string,
+      initiatorUserId: buyerUserId,
+      diff: {
+        reason: 'Увеличение тиража после утверждения плана',
+        changes: [{ field: 'qty', note: 'тираж увеличен клиентом до отгрузки' }],
+      },
+      status: 'accepted',
+      createdAt: at,
+      updatedAt: at,
+    });
+  }
+
   // --- supplier_stats из накопленных исходов ---
   for (const { seedKey } of SEED_SUPPLIER_COMPANIES) {
     const outcomes = supplierOutcomes.get(seedKey) ?? [];
@@ -559,6 +655,106 @@ function pickCategory(rng: () => number): SeedCategory {
   const cat = CATEGORIES[Math.floor(rng() * CATEGORIES.length)];
   if (cat === undefined) throw new Error('unreachable');
   return cat;
+}
+
+/**
+ * Переписки, доступы и запросы на изменение плана — отдельным проходом по
+ * уже построенным заказам, а не внутри `buildOrder`: тот выходит через
+ * несколько ранних `return` на разных целевых стадиях, и один общий хвост
+ * в нём недостижим. Схема (`packages/db/src/schema/communication.ts`) и её
+ * RLS существовали с фазы 1, но сид никогда сюда не писал — из-за чего
+ * экран сообщений покупателя стоял на выдуманных данных.
+ */
+function pushCommunications(p: {
+  dataset: SeedDataset;
+  rng: () => number;
+  buyerUserId: string;
+  conciergeUserId: string;
+}): void {
+  const { dataset, rng, buyerUserId, conciergeUserId } = p;
+
+  const requestById = new Map(dataset.requests.map((r) => [r.id as string, r]));
+  const eventsByOrder = new Map<string, OrderStageEventRow[]>();
+  for (const event of dataset.orderStageEvents) {
+    const list = eventsByOrder.get(event.orderId as string) ?? [];
+    list.push(event);
+    eventsByOrder.set(event.orderId as string, list);
+  }
+
+  for (const order of dataset.orders) {
+    const orderId = order.id as string;
+    const request = requestById.get(order.requestId as string);
+    if (!request) continue;
+    const events = (eventsByOrder.get(orderId) ?? [])
+      .slice()
+      .sort((a, b) => (a.at as Date).getTime() - (b.at as Date).getTime());
+    const firstAt = (events[0]?.at as Date | undefined) ?? new Date();
+    const lastAt = (events[events.length - 1]?.at as Date | undefined) ?? firstAt;
+    if (order.state === 'draft') continue;
+
+    const buyerThreadId = randomUUID();
+    dataset.threads.push({
+      id: buyerThreadId,
+      orderId,
+      requestId: order.requestId,
+      kind: 'buyer',
+      supplierCompanyId: null,
+      createdAt: firstAt,
+      updatedAt: lastAt,
+    });
+    const openedAt = addDays(firstAt, 1);
+    dataset.messages.push(
+      {
+        threadId: buyerThreadId,
+        authorUserId: conciergeUserId,
+        body: `Взяли «${request.title}» в работу. Считаю оценку по истории закупок и вернусь с предоплатным счётом.`,
+        attachments: [],
+        createdAt: firstAt,
+        updatedAt: firstAt,
+      },
+      {
+        threadId: buyerThreadId,
+        authorUserId: buyerUserId,
+        body: 'Спасибо. Срок жёсткий — если не проходим, скажите сразу, лучше сократим тираж.',
+        attachments: [],
+        createdAt: openedAt,
+        updatedAt: openedAt,
+      },
+    );
+    if (order.state === 'closed') {
+      dataset.messages.push({
+        threadId: buyerThreadId,
+        authorUserId: conciergeUserId,
+        body: 'Заказ закрыт, акт и сверка в документах заказа. Спасибо за работу.',
+        attachments: [],
+        createdAt: lastAt,
+        updatedAt: lastAt,
+      });
+    }
+
+    // Внутренние заметки (§3.5, §10 «Консьерж → внутренние заметки») — kind
+    // 'internal', RLS физически закрывает их и от покупателя, и от поставщика.
+    if (rng() < 0.35) {
+      const internalThreadId = randomUUID();
+      dataset.threads.push({
+        id: internalThreadId,
+        orderId,
+        requestId: order.requestId,
+        kind: 'internal',
+        supplierCompanyId: null,
+        createdAt: firstAt,
+        updatedAt: firstAt,
+      });
+      dataset.messages.push({
+        threadId: internalThreadId,
+        authorUserId: conciergeUserId,
+        body: 'Заметка: у клиента жёсткая приёмка по качеству печати — брать поставщиков с подтверждённым техпроцессом, не по минимальной цене.',
+        attachments: [],
+        createdAt: firstAt,
+        updatedAt: firstAt,
+      });
+    }
+  }
 }
 
 function buildOrder(p: BuildOrderParams): void {
@@ -682,6 +878,26 @@ function buildOrder(p: BuildOrderParams): void {
       actorUserId,
       at,
     });
+    // Учёт времени (§9) пишется тем же событием, что и переход, и только для
+    // консьержа — RLS `time_entries_insert_own` пускает вставку лишь
+    // staff-ролям, а покупатель, утверждая план, времени QAJET не тратит.
+    // Записывается стадия, которую ПОКИДАЕМ, — та же семантика, что у живого
+    // автотаймера (apps/web/app/lib/autotimer.ts).
+    if (actorUserId === conciergeUserId) {
+      const stage = TIME_ENTRY_STAGE_BY_STATE[currentState];
+      const baseMinutes = ACTIVE_MINUTES_BY_TIME_ENTRY_STAGE[stage];
+      const learned = 1 - ACTIVE_TIME_LEARNING_DROP * progress;
+      const jitter = 0.8 + rng() * 0.4;
+      dataset.timeEntries.push({
+        orderId,
+        userId: conciergeUserId,
+        stage,
+        seconds: Math.round(baseMinutes * 60 * learned * jitter),
+        source: 'auto',
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
     currentState = to;
     orderRow.state = to;
   };
@@ -1055,6 +1271,25 @@ function buildOrder(p: BuildOrderParams): void {
   advance('closed', closedAt, buyerUserId);
   requestRow.status = 'closed';
 
+  // Стадия `closing` (§9) не появляется из переходов: приёмку и закрытие
+  // совершает покупатель, а закрывающую работу — сверку и акт — делает
+  // консьерж, и делает её именно здесь. Пишем её явно, иначе стадия
+  // никогда не попала бы в учёт времени, хотя работа реальная.
+  dataset.timeEntries.push({
+    orderId,
+    userId: conciergeUserId,
+    stage: 'closing',
+    seconds: Math.round(
+      ACTIVE_MINUTES_BY_TIME_ENTRY_STAGE.closing *
+        60 *
+        (1 - ACTIVE_TIME_LEARNING_DROP * progress) *
+        (0.8 + rng() * 0.4),
+    ),
+    source: 'auto',
+    createdAt: closedAt,
+    updatedAt: closedAt,
+  });
+
   recordRatings({
     dataset,
     orderId,
@@ -1371,6 +1606,22 @@ function buildQuotesReceivedDemoOrder(args: {
       actorUserId: conciergeUserId,
       at: stageAt,
     });
+    if (prevStage !== null) {
+      const timeStage = TIME_ENTRY_STAGE_BY_STATE[prevStage];
+      dataset.timeEntries.push({
+        orderId,
+        userId: conciergeUserId,
+        stage: timeStage,
+        // Демо-заказ — «сегодняшний», то есть уже с накопленным опытом:
+        // тот же множитель, что у последних закрытых заказов истории.
+        seconds: Math.round(
+          ACTIVE_MINUTES_BY_TIME_ENTRY_STAGE[timeStage] * 60 * (1 - ACTIVE_TIME_LEARNING_DROP),
+        ),
+        source: 'auto',
+        createdAt: stageAt,
+        updatedAt: stageAt,
+      });
+    }
     prevStage = stage;
     stageAt = addDays(stageAt, 1);
   }

@@ -194,4 +194,48 @@ describe('generateSeedDataset', () => {
     // Все заявки покупателя ссылаются на переданный id, а не на новый сгенерированный.
     expect(dataset.requests.every((r) => r.buyerCompanyId === existingBuyerCompanyId)).toBe(true);
   });
+  it('пишет учёт времени только для консьержа и по всем стадиям §9, с падающим трендом', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    const conciergeUserId = dataset.accounts.find((a) => a.seedKey === 'demo-concierge')?.userId;
+
+    expect(dataset.timeEntries.length).toBeGreaterThan(0);
+    // Покупатель не тратит время QAJET — RLS всё равно пустила бы только staff.
+    expect(dataset.timeEntries.every((t) => t.userId === conciergeUserId)).toBe(true);
+
+    // Активные часы, а не календарные: стадия «производство» идёт неделю,
+    // но записи по ней обязаны оставаться в пределах рабочих часов.
+    const hoursByOrder = new Map<string, number>();
+    for (const entry of dataset.timeEntries) {
+      const key = entry.orderId as string;
+      hoursByOrder.set(key, (hoursByOrder.get(key) ?? 0) + (entry.seconds as number) / 3600);
+    }
+    for (const hours of hoursByOrder.values()) expect(hours).toBeLessThan(12);
+
+    // §13, сцена 8: «часы на заказ падают».
+    const closed = dataset.orders.filter((o) => o.state === 'closed');
+    const hoursOf = (o: (typeof closed)[number]) => hoursByOrder.get(o.id as string) ?? 0;
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    expect(mean(closed.slice(-8).map(hoursOf))).toBeLessThan(mean(closed.slice(0, 8).map(hoursOf)));
+  });
+
+  it('заполняет треды, сообщения, доступы и запрос на изменение плана', () => {
+    const dataset = generateSeedDataset(PARAMS);
+
+    expect(dataset.threads.length).toBeGreaterThan(0);
+    expect(dataset.messages.length).toBeGreaterThan(0);
+    // Внутренние заметки существуют и отделены от переписки с покупателем.
+    expect(dataset.threads.some((t) => t.kind === 'internal')).toBe(true);
+    expect(dataset.threads.some((t) => t.kind === 'buyer')).toBe(true);
+
+    const threadIds = new Set(dataset.threads.map((t) => t.id as string));
+    expect(dataset.messages.every((m) => threadIds.has(m.threadId as string))).toBe(true);
+
+    // §10 «Команда и доступы»: право управлять командой есть только у владельца.
+    const manageTeam = dataset.permissions.filter((p) => p.key === 'can_manage_team');
+    expect(manageTeam.length).toBeGreaterThan(1);
+    expect(manageTeam.filter((p) => p.value === true)).toHaveLength(1);
+
+    // §15: изменение утверждённого плана существует как отдельная сущность.
+    expect(dataset.changeRequests.length).toBeGreaterThan(0);
+  });
 });

@@ -1,3 +1,4 @@
+import { TIME_ENTRY_STAGE_BY_STATE } from '@qajet/engine/order';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { OrderActor } from './current-user';
 import type { OrderState } from './order-state';
@@ -16,26 +17,6 @@ import type { OrderState } from './order-state';
  * (столбец уже есть в схеме) отличает эту запись от гипотетической ручной
  * правки, если такая появится позже.
  */
-
-const STAGE_BUCKET_BY_STATE: Record<OrderState, string> = {
-  draft: 'intake',
-  estimated: 'intake',
-  prepaid: 'sourcing',
-  rfq_sent: 'sourcing',
-  quotes_received: 'normalization',
-  plan_proposed: 'normalization',
-  awaiting_internal_approval: 'normalization',
-  plan_approved: 'approval',
-  suppliers_paid: 'execution',
-  in_production: 'execution',
-  shipped: 'execution',
-  delivered: 'execution',
-  accepted: 'closing',
-  closed: 'closing',
-  on_hold: 'exception',
-  disputed: 'exception',
-  cancelled: 'exception',
-};
 
 /**
  * Пишет время, проведённое в состоянии `fromState`, при переходе на
@@ -78,7 +59,7 @@ export async function logAutoTimeEntry(
   await supabase.from('time_entries').insert({
     order_id: orderId,
     user_id: actorUserId,
-    stage: STAGE_BUCKET_BY_STATE[fromState],
+    stage: TIME_ENTRY_STAGE_BY_STATE[fromState],
     seconds,
   });
 }
