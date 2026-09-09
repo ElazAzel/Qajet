@@ -1,0 +1,1 @@
+ALTER POLICY "extraction_aliases_select_staff" ON "extraction_aliases" TO authenticated USING (true);
