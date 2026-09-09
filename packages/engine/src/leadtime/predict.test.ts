@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyReliability,
   calculateSlackDays,
   calculateSupplierReliability,
   predictAfterQuote,
@@ -69,6 +70,13 @@ describe('predictAfterQuote', () => {
       logisticsBufferDays: 1,
     });
     expect(result.predictedDays).toBe(8);
+  });
+});
+
+describe('applyReliability', () => {
+  it('та же формула, что и внутри predictAfterQuote — читает уже посчитанную надёжность', () => {
+    expect(applyReliability(10, { kShrunk: 1.25 }, 1)).toBeCloseTo(13.5, 5);
+    expect(applyReliability(7, { kShrunk: 1.0 }, 1)).toBe(8);
   });
 });
 

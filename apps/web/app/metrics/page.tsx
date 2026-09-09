@@ -101,8 +101,12 @@ export default async function MetricsPage({
           />
           <StatTile
             title="Активные часы на заказ"
-            value={metrics.hasTimeEntries ? '—' : 'нет данных'}
-            note="Автотаймер консьержа (agents.md §9) ещё не подключён к экрану заказа — time_entries пока не пишется"
+            value={
+              metrics.avgHoursPerOrder !== null
+                ? `${metrics.avgHoursPerOrder.toFixed(1)} ч`
+                : 'нет данных'
+            }
+            note="Автотаймер консьержа (agents.md §9) — сумма time_entries.seconds по заказу, усреднено по заказам с хотя бы одной записью"
             tone="muted"
             className="p-6"
           />

@@ -210,6 +210,20 @@ export const modelSnapshots = pgTable(
       to: authenticatedRole,
       using: staffOnly,
     }),
+    // Замыкание контура обучения (agents.md §8G, §14 шаг 10) — order-actions.ts
+    // пишет новый снапшот 'matcher'/'leadtime' в момент перехода стадии
+    // заказа, который ВСЕГДА совершает staff (delivered — только STAFF по
+    // packages/engine/order/transition.ts; closed/accepted могут быть и
+    // покупателем — тогда запись просто не выполняется, см. комментарий в
+    // order-actions.ts). Разрешать вставку с произвольными весами любому
+    // authenticated было бы риском отравления общей модели — поэтому
+    // staffOnly, а не по владению заказом, как у order_stage_events/documents.
+    pgPolicy('model_snapshots_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
     pgPolicy('model_snapshots_service_all', {
       as: 'permissive',
       for: 'all',
@@ -281,12 +295,24 @@ export const settings = pgTable(
     value: jsonb('value').notNull(),
     updatedAt: timestamps.updatedAt,
   },
-  () => [
+  (t) => [
     pgPolicy('settings_select_staff', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
       using: staffOnly,
+    }),
+    // Реквизиты QAJET (agents.md §11.3 «экран подтверждения с реквизитами»)
+    // — единственная строка settings, которую видит и покупатель, не только
+    // staff: она нужна на экране утверждения плана и в счёте/акте
+    // (Document Engine, order-actions.ts). Ограничено конкретным ключом
+    // построчно, а не открытием всей таблицы — остальные ключи
+    // (commission_rate_pct и т.д.) остаются staffOnly через политику выше.
+    pgPolicy('settings_select_public_requisites', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: sql`${t.key} = 'qajet_requisites'`,
     }),
     pgPolicy('settings_service_all', {
       as: 'permissive',

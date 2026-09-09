@@ -49,6 +49,19 @@ const CIT_RATE_PCT = 20;
 const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
 const LOGISTICS_BUFFER_INTERCITY_DAYS = 3;
 
+/** Те же демо-значения, что settings.qajet_requisites (agents.md §11.3) —
+ *  Document Engine подставляет их и в живой счёт/акт, и здесь, в историю сида. */
+const QAJET_SEED_REQUISITES = {
+  legalName: 'ТОО "QAJET"',
+  bin: '241140012345',
+  address: 'г. Алматы, Бостандыкский р-н, ул. Розыбакиева 247',
+  bankName: 'АО "Kaspi Bank"',
+  iban: 'KZ123456789012345678',
+  bik: 'CASPKZKA',
+  phone: '+7 727 000 00 00',
+  email: 'billing@qajet.kz',
+};
+
 const HISTORY_ORDER_COUNT = 24;
 const HISTORY_SPAN_START_DAYS = 270;
 const HISTORY_SPAN_END_DAYS = 14;
@@ -248,6 +261,23 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
     // Подбор поставщиков под RFQ (agents.md §8C) — apps/web/app/lib/actions/order-actions.ts
     { key: 'rfq_batch_size_per_item', value: 5 },
     { key: 'rfq_exploration_every_n', value: 4 },
+    // Реквизиты QAJET (agents.md §11.3 «экран подтверждения с реквизитами»)
+    // — единственный ключ settings, читаемый и покупателем (RLS-политика
+    // settings_select_public_requisites), Document Engine подставляет их
+    // в счёт/акт. Демо-значения, не реальное юрлицо.
+    {
+      key: 'qajet_requisites',
+      value: {
+        legalName: 'ТОО "QAJET"',
+        bin: '241140012345',
+        address: 'г. Алматы, Бостандыкский р-н, ул. Розыбакиева 247',
+        bankName: 'АО "Kaspi Bank"',
+        iban: 'KZ123456789012345678',
+        bik: 'CASPKZKA',
+        phone: '+7 727 000 00 00',
+        email: 'billing@qajet.kz',
+      },
+    },
   );
 
   // --- Компании и аккаунты ---
@@ -1040,16 +1070,32 @@ function buildOrder(p: BuildOrderParams): void {
       orderId,
       stage: 'prepaid',
       type: 'prepay_invoice',
-      url: `https://files.qajet.kz/seed/${orderId}/prepay.pdf`,
-      meta: {},
+      url: `/documents/${orderId}?type=prepay_invoice`,
+      meta: {
+        invoiceNo: `PRE-${orderId.slice(0, 8)}`,
+        amountKzt: roundKzt(chosenPlan.totalKzt * 0.5),
+        buyerCompany: { name: SEED_BUYER_COMPANY.name, bin: SEED_BUYER_COMPANY.bin },
+        qajetRequisites: QAJET_SEED_REQUISITES,
+        issuedAt: closedAt.toISOString(),
+      },
     },
     {
       id: randomUUID(),
       orderId,
       stage: 'closed',
-      type: 'final_invoice',
-      url: `https://files.qajet.kz/seed/${orderId}/final.pdf`,
-      meta: {},
+      type: 'act',
+      url: `/documents/${orderId}?type=act`,
+      meta: {
+        actNo: `ACT-${orderId.slice(0, 8)}`,
+        buyerCompany: { name: SEED_BUYER_COMPANY.name, bin: SEED_BUYER_COMPANY.bin },
+        qajetRequisites: QAJET_SEED_REQUISITES,
+        planTotalKzt: chosenPlan.totalKzt,
+        settlement,
+        settlementAmountKzt,
+        finalCostKzt,
+        items: requestItems.map((ri) => ({ name: ri.item.name, qty: ri.qty, unit: ri.item.unit })),
+        closedAt: closedAt.toISOString(),
+      },
     },
   );
   dataset.learningEvents.push({

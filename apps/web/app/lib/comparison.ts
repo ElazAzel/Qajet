@@ -1,5 +1,7 @@
 import { type CombineResult, combine, type QuoteOffer } from '@qajet/engine/combine';
+import { applyReliability } from '@qajet/engine/leadtime';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { loadSupplierReliabilityMap } from './recalibration';
 
 /**
  * Загрузка данных для экрана сравнения (agents.md §8D, §12) — единственное
@@ -8,9 +10,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * packages/db/src/seed/generator.ts (сид генерирует историю тем же
  * combine(), поэтому вычисления обязаны совпадать).
  *
- * supplierHistory для предсказания срока намеренно пустая: без сохранённой
- * истории k' сходится к 1.0 (agents.md §8: «сдвиг к базовому 1.0 при малом
- * N»), что даёт корректный прогноз = заявленный срок + буфер логистики.
+ * Прогноз срока (agents.md §8E) — заявленный срок × k' поставщика + буфер
+ * логистики, k' читается из последнего снапшота 'leadtime'
+ * (loadSupplierReliabilityMap, recalibration.ts), который дописывает
+ * order-actions.ts при каждой доставке. Без сохранённой истории k' = 1.0
+ * (agents.md §8: «сдвиг к базовому 1.0 при малом N»), то есть прогноз
+ * вырождается в заявленный срок + буфер — то же поведение, что было до
+ * подключения, для новых поставщиков без истории.
  *
  * ВАЖНО: результат содержит offerSupplierNames — реальные названия
  * компаний-исполнителей. agents.md §10 «Покупатель»: личность исполнителя
@@ -106,6 +112,8 @@ export async function loadRequestComparison(
   const commissionRatePct = settingsMap.get('commission_rate_pct') ?? FALLBACK_COMMISSION_RATE_PCT;
   const citRatePct = settingsMap.get('cit_rate_pct') ?? FALLBACK_CIT_RATE_PCT;
 
+  const reliabilityBySupplierId = await loadSupplierReliabilityMap(supabase, supplierIds);
+
   const offers: QuoteOffer[] = [];
   const offerSupplierNames = new Map<string, string>();
 
@@ -116,6 +124,10 @@ export async function loadRequestComparison(
     if (!supplierId || !supplier) continue;
 
     const isAlmaty = supplier.city === 'Алматы';
+    const logisticsBufferDays = isAlmaty
+      ? LOGISTICS_BUFFER_ALMATY_DAYS
+      : LOGISTICS_BUFFER_INTERCITY_DAYS;
+    const kShrunk = reliabilityBySupplierId.get(supplierId) ?? 1.0;
     const bundleRule = line.bundle_rule as { thresholdKzt: number; discountPct: number } | null;
     const fieldFlags = (line.field_flags ?? {}) as Record<string, unknown>;
 
@@ -125,9 +137,7 @@ export async function loadRequestComparison(
       supplierId,
       unitPriceKzt: line.unit_price_kzt,
       setupFeeKzt: line.setup_fee_kzt,
-      predictedLeadDays:
-        line.lead_time_days +
-        (isAlmaty ? LOGISTICS_BUFFER_ALMATY_DAYS : LOGISTICS_BUFFER_INTERCITY_DAYS),
+      predictedLeadDays: applyReliability(line.lead_time_days, { kShrunk }, logisticsBufferDays),
       minQty: line.min_qty,
       orderMultiple: null,
       bundleRule,

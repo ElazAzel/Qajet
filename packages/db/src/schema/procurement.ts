@@ -895,6 +895,23 @@ export const documents = pgTable(
       to: authenticatedRole,
       using: sql`${t.orderId} in (select id from ${orders}) and (${t.type} <> 'supplier_invoice' or ${staffOnly})`,
     }),
+    // Document Engine (agents.md §14 шаг 11) — счёт/акт пишет order-actions.ts
+    // в момент перехода стадии заказа (prepaid → prepay_invoice, closed →
+    // act), той же RLS-сессией текущего актёра, что и остальные записи
+    // жизненного цикла (agents.md §6, без service_role). Актёр перехода
+    // closed — покупатель ИЛИ staff (packages/engine/order/transition.ts),
+    // поэтому withCheck пускает оба случая, тем же приёмом, что
+    // order_stage_events_insert_actor выше по файлу.
+    pgPolicy('documents_insert_via_order', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${t.orderId} in (
+        select o.id from ${orders} o
+        join ${requests} r on r.id = o.request_id
+        where ${staffOnly} or r.buyer_company_id = ${currentCompanyIdSubquery}
+      )`,
+    }),
     pgPolicy('documents_service_all', {
       as: 'permissive',
       for: 'all',
