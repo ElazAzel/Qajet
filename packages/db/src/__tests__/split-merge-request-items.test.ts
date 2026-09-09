@@ -93,10 +93,17 @@ describeIfConfigured('split_request_item/merge_request_items (RLS)', () => {
         connection: { options: '-c role=authenticated' },
       });
 
-      const splitParts = JSON.stringify([
+      // Не JSON.stringify: postgres.js сам сериализует параметр под
+      // ::jsonb (types.js — serialize: x => JSON.stringify(x)) — заранее
+      // застрингованное значение задваивает кодирование и превращает
+      // jsonb-массив в jsonb-строку, split_request_item тогда падает на
+      // собственной проверке jsonb_typeof(p_parts) <> 'array'. Поймано
+      // на CI (job «Тест изоляции поставщиков»), локально не запускается
+      // без DATABASE_URL.
+      const splitParts = [
         { name: 'Футболки с логотипом', qty: 100 },
         { name: 'Кепки с логотипом', qty: 50 },
-      ]);
+      ];
 
       let splitIds: string[] = [];
       try {
@@ -107,7 +114,7 @@ describeIfConfigured('split_request_item/merge_request_items (RLS)', () => {
             await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authBuyer.id, role: 'authenticated' })}, true)`;
             return tx<
               { id: string }[]
-            >`select * from split_request_item(${item.id}, ${splitParts}::jsonb)`;
+            >`select * from split_request_item(${item.id}, ${tx.json(splitParts)})`;
           })
           .catch(() => null);
         expect(buyerSplit).toBeNull();
@@ -129,7 +136,7 @@ describeIfConfigured('split_request_item/merge_request_items (RLS)', () => {
         const conciergeSplit = await asConcierge.begin(async (tx) => {
           await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
           return tx<{ id: string; name: string; qty: number; needs_clarification: boolean }[]>`
-            select * from split_request_item(${item.id}, ${splitParts}::jsonb)
+            select * from split_request_item(${item.id}, ${tx.json(splitParts)})
           `;
         });
         expect(conciergeSplit).toHaveLength(2);
