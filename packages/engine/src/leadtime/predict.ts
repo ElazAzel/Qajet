@@ -70,10 +70,30 @@ export interface LeadTimePrediction {
   reliability: SupplierReliability;
 }
 
+/**
+ * Прогноз = заявленный срок × k' + буфер логистики — сама формула,
+ * вынесена отдельно от `predictAfterQuote()`, чтобы вызывающий код мог
+ * применить её к УЖЕ посчитанной и сохранённой надёжности (например,
+ * из последнего `model_snapshots` типа 'leadtime'), не пересчитывая
+ * `calculateSupplierReliability()` по сырой истории заново при каждом
+ * открытии экрана сравнения.
+ */
+export function applyReliability(
+  declaredLeadDays: number,
+  reliability: Pick<SupplierReliability, 'kShrunk'>,
+  logisticsBufferDays: number,
+): number {
+  return declaredLeadDays * reliability.kShrunk + logisticsBufferDays;
+}
+
 /** После получения КП — прогноз = заявленный срок × k' поставщика + буфер логистики. */
 export function predictAfterQuote(input: PredictAfterQuoteInput): LeadTimePrediction {
   const reliability = calculateSupplierReliability(input.supplierHistory);
-  const predictedDays = input.declaredLeadDays * reliability.kShrunk + input.logisticsBufferDays;
+  const predictedDays = applyReliability(
+    input.declaredLeadDays,
+    reliability,
+    input.logisticsBufferDays,
+  );
   return { predictedDays, reliability };
 }
 

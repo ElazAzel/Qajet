@@ -4,7 +4,9 @@ import type { PlanKind } from '@qajet/engine/combine';
 import { checkRequestCompleteness } from '@qajet/engine/completeness';
 import { estimate as engineEstimate } from '@qajet/engine/estimate';
 import {
+  DEFAULT_WEIGHTS,
   isExplorationSlot,
+  type MatchWeights,
   passesHardFilters,
   pickExplorationCandidate,
   type ScoringFeatures,
@@ -14,10 +16,13 @@ import { percentOfKzt, roundKzt } from '@qajet/engine/money';
 import { transition } from '@qajet/engine/order';
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { logAutoTimeEntry } from '../autotimer';
 import { CATALOG_BY_KEY } from '../catalog';
 import { loadRequestComparison } from '../comparison';
-import { orderActorFor, requireCurrentUser } from '../current-user';
+import { type OrderActor, orderActorFor, requireCurrentUser } from '../current-user';
+import { createActDocument, createPrepayInvoiceDocument } from '../documents';
 import type { OrderState } from '../order-state';
+import { recalibrateLeadTimeForSupplier, recalibrateMatcherForOrder } from '../recalibration';
 
 /** Ставка за единицу для позиций вне справочника каталога (не должно случаться
  *  для заявок, созданных через createRequest, — только защита от старых данных). */
@@ -76,7 +81,13 @@ async function logStageEvent(
   fromState: OrderState,
   toState: OrderState,
   actorUserId: string,
+  actor: OrderActor,
 ): Promise<string | null> {
+  // Автотаймер (agents.md §9, autotimer.ts) — читает предыдущий
+  // order_stage_events ДО вставки нового, иначе нашёл бы сам себя.
+  // Best-effort: ошибка не должна валить сам переход стадии.
+  await logAutoTimeEntry(supabase, orderId, fromState, actor, actorUserId).catch(() => undefined);
+
   const { error } = await supabase.from('order_stage_events').insert({
     order_id: orderId,
     from_state: fromState,
@@ -252,7 +263,14 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
     .eq('id', order.id);
   if (orderError) return { ok: false, error: orderError.message };
 
-  const eventError = await logStageEvent(supabase, order.id, order.state, 'plan_proposed', user.id);
+  const eventError = await logStageEvent(
+    supabase,
+    order.id,
+    order.state,
+    'plan_proposed',
+    user.id,
+    actor,
+  );
   if (eventError) return { ok: false, error: eventError };
 
   revalidateOrder(order.id);
@@ -285,7 +303,14 @@ export async function approvePlan(orderId: string): Promise<ActionResult> {
     .eq('id', order.id);
   if (orderError) return { ok: false, error: orderError.message };
 
-  const eventError = await logStageEvent(supabase, order.id, order.state, 'plan_approved', user.id);
+  const eventError = await logStageEvent(
+    supabase,
+    order.id,
+    order.state,
+    'plan_approved',
+    user.id,
+    actor,
+  );
   if (eventError) return { ok: false, error: eventError };
 
   revalidateOrder(order.id);
@@ -339,6 +364,14 @@ export async function advanceOrderStage(
 
   const payload: Record<string, unknown> = { state: toState };
   if (toState === 'accepted') payload.accepted_at = new Date().toISOString();
+  // Захвачено вне if-блока — нужно и для payload, и для Document Engine
+  // (акт выполненных работ) после успешного update() ниже.
+  let closedSettlement: {
+    settlement: 'refund' | 'surcharge' | 'exact';
+    settlementAmountKzt: number;
+    planTotalKzt: number;
+    finalCostKzt: number;
+  } | null = null;
   if (toState === 'closed') {
     if (!options.settlement) return { ok: false, error: 'Не указан тип сверки' };
     const { data: plan } = await supabase
@@ -358,6 +391,12 @@ export async function advanceOrderStage(
     payload.settlement_amount_kzt = settlementAmountKzt;
     payload.final_cost_kzt = planTotal + settlementAmountKzt;
     payload.closed_at = new Date().toISOString();
+    closedSettlement = {
+      settlement: options.settlement,
+      settlementAmountKzt,
+      planTotalKzt: planTotal,
+      finalCostKzt: planTotal + settlementAmountKzt,
+    };
   }
 
   const { error: orderError, count } = await supabase
@@ -367,8 +406,42 @@ export async function advanceOrderStage(
   if (orderError) return { ok: false, error: orderError.message };
   if (count === 0) return { ok: false, error: 'Нет доступа к этому заказу' };
 
-  const eventError = await logStageEvent(supabase, order.id, order.state, toState, user.id);
+  const eventError = await logStageEvent(supabase, order.id, order.state, toState, user.id, actor);
   if (eventError) return { ok: false, error: eventError };
+
+  if (toState === 'closed' && closedSettlement) {
+    const { data: itemRows } = await supabase
+      .from('request_items')
+      .select('name, qty, unit')
+      .eq('request_id', order.request_id);
+    const documentError = await createActDocument(
+      supabase,
+      { id: order.id, requestId: order.request_id, ...closedSettlement },
+      itemRows ?? [],
+    );
+    if (documentError) return { ok: false, error: documentError };
+  }
+
+  // Замыкание контура обучения (agents.md §8G, §14 шаг 10) — best-effort,
+  // никогда не проваливает сам переход стадии: это фоновое обучение, а не
+  // условие успеха действия пользователя. recalibration.ts объясняет, почему
+  // только staff-актёр (RLS model_snapshots_insert_staff — staffOnly).
+  if (toState === 'delivered' && order.approved_plan_id) {
+    const { data: lines } = await supabase
+      .from('plan_lines')
+      .select('supplier_company_id')
+      .eq('plan_id', order.approved_plan_id);
+    const supplierIds = [...new Set((lines ?? []).map((l) => l.supplier_company_id))];
+    await Promise.all(
+      supplierIds.map((id) => recalibrateLeadTimeForSupplier(supabase, id).catch(() => undefined)),
+    );
+  }
+  if (toState === 'closed' && (actor === 'concierge' || actor === 'admin')) {
+    await recalibrateMatcherForOrder(supabase, {
+      requestId: order.request_id,
+      approvedPlanId: order.approved_plan_id,
+    }).catch(() => undefined);
+  }
 
   revalidateOrder(order.id);
   return { ok: true };
@@ -442,15 +515,24 @@ async function insertPrepayment(
     .limit(1)
     .maybeSingle();
   const p50 = estimateRow?.p50_kzt ?? 0;
+  const amountKzt = roundKzt(p50 * 0.5);
+  const invoiceNo = `PRE-${order.id.slice(0, 8)}`;
 
   const { error } = await supabase.from('prepayments').insert({
     request_id: order.request_id,
-    amount_kzt: roundKzt(p50 * 0.5),
-    invoice_no: `PRE-${order.id.slice(0, 8)}`,
+    amount_kzt: amountKzt,
+    invoice_no: invoiceNo,
     status: 'paid',
     paid_at: new Date().toISOString(),
   });
-  return error?.message ?? null;
+  if (error) return error.message;
+
+  return createPrepayInvoiceDocument(
+    supabase,
+    { id: order.id, requestId: order.request_id },
+    invoiceNo,
+    amountKzt,
+  );
 }
 
 interface SupplierCandidateRow {
@@ -634,6 +716,21 @@ async function createRfqsForOrder(
     return 'Не нашлось ни одного поставщика по категории и техпроцессам этой заявки';
   }
 
+  // Дообученные веса матчера (agents.md §8C, §8G) — читает последний
+  // снапшот 'matcher', который order-actions.ts/recalibration.ts пишет
+  // при закрытии заказа; без истории — DEFAULT_WEIGHTS, то же поведение,
+  // что было до подключения контура обучения.
+  const { data: latestMatcherSnapshot } = await supabase
+    .from('model_snapshots')
+    .select('params')
+    .eq('model', 'matcher')
+    .order('trained_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const matchWeights: MatchWeights =
+    (latestMatcherSnapshot?.params as { weights?: MatchWeights } | null)?.weights ??
+    DEFAULT_WEIGHTS;
+
   const chosenIds = new Set<string>();
   const explorationIds = new Set<string>();
   const selectionReasonById = new Map<string, Record<string, unknown>>();
@@ -663,7 +760,7 @@ async function createRfqsForOrder(
     if (passing.length === 0) return;
 
     const scored = passing
-      .map((c) => ({ candidate: c, score: scoreSupplier(featuresFor(c)) }))
+      .map((c) => ({ candidate: c, score: scoreSupplier(featuresFor(c), matchWeights) }))
       .sort((a, b) => b.score - a.score);
 
     const picked = scored.slice(0, batchSizePerItem).map((s) => s.candidate);

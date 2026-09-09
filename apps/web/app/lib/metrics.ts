@@ -2,10 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * Данные для /metrics (agents.md §9) — юнит-экономика на реальных данных
- * сида. «Активные часы на заказ» честно показаны как отсутствующие:
- * time_entries пуста, автотаймер консьержа ещё не подключён к UI —
- * это описано в agents.md §9 как отдельная функция, а не посчитано здесь
- * по угадыванию.
+ * сида. «Активные часы на заказ» — реальное среднее по `time_entries`
+ * (autotimer.ts пишет её при каждом staff-переходе стадии заказа);
+ * `null`, пока ни одной записи ещё нет, а не подрисованное число.
  */
 
 export interface MetricsData {
@@ -14,7 +13,7 @@ export interface MetricsData {
   repeatCompanies: { total: number; repeat: number };
   gmv: { closedOrders: number; totalKzt: number };
   commission: { closedOrders: number; totalKzt: number; avgKzt: number };
-  hasTimeEntries: boolean;
+  avgHoursPerOrder: number | null;
   commissionRatePct: number;
 }
 
@@ -80,9 +79,15 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
     .reduce((sum, o) => sum + (o.final_cost_kzt ?? 0), 0);
   const commissionTotal = (closedPlans ?? []).reduce((sum, p) => sum + p.commission_kzt, 0);
 
-  const { count: timeEntriesCount } = await supabase
-    .from('time_entries')
-    .select('*', { count: 'exact', head: true });
+  const { data: timeEntryRows } = await supabase.from('time_entries').select('order_id, seconds');
+  const secondsByOrder = new Map<string, number>();
+  for (const row of timeEntryRows ?? []) {
+    secondsByOrder.set(row.order_id, (secondsByOrder.get(row.order_id) ?? 0) + row.seconds);
+  }
+  const avgHoursPerOrder =
+    secondsByOrder.size > 0
+      ? [...secondsByOrder.values()].reduce((s, v) => s + v, 0) / secondsByOrder.size / 3600
+      : null;
 
   const { data: commissionSetting } = await supabase
     .from('settings')
@@ -103,7 +108,7 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
       totalKzt: commissionTotal,
       avgKzt: closedPlans?.length ? Math.round(commissionTotal / closedPlans.length) : 0,
     },
-    hasTimeEntries: (timeEntriesCount ?? 0) > 0,
-    commissionRatePct: (commissionSetting?.value as number) ?? 12,
+    avgHoursPerOrder,
+    commissionRatePct: (commissionSetting?.value as number) ?? 23,
   };
 }

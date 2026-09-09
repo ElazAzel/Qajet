@@ -2,7 +2,7 @@
 
 # Инвентарь маршрутов apps/web
 
-Найдено файлов маршрутизации: 27. Сегментов: 18.
+Найдено файлов маршрутизации: 29. Сегментов: 20.
 
 | Маршрут | Файлы |
 | --- | --- |
@@ -18,6 +18,8 @@
 | `/concierge` | `layout`, `page` |
 | `/concierge/orders/[id]` | `page` |
 | `/concierge/orders/[id]/items` | `page` |
+| `/demo` | `page` |
+| `/documents/[id]` | `page` |
 | `/icons/[size]` | `route` |
 | `/login` | `page` |
 | `/metrics` | `page` |
