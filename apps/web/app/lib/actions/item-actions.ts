@@ -115,3 +115,89 @@ export async function correctItemClassification(
   revalidatePath(`/concierge/orders`);
   return { ok: true };
 }
+
+/**
+ * Split/merge позиций (Dependency Engine, agents.md §8A, волна 1 шаги
+ * 6-8). Сама операция — RPC split_request_item/merge_request_items
+ * (packages/db/migrations/0011_aromatic_deathstrike.sql): одной
+ * транзакцией insert новых строк + delete исходных, каждая проверяет
+ * роль вызывающего первой же строкой. Здесь — только gate по стадии
+ * заказа (тот же assertItemsEditable, что и у correctItemClassification)
+ * и понятная русская ошибка на очевидных случаях до похода в БД.
+ */
+export interface SplitPart {
+  name: string;
+  qty: number;
+  category?: string;
+}
+
+export async function splitRequestItem(itemId: string, parts: SplitPart[]): Promise<ActionResult> {
+  const user = await requireCurrentUser();
+  const actor = orderActorFor(user);
+  if (actor !== 'concierge' && actor !== 'admin') {
+    return { ok: false, error: 'Только концьерж может разделять позиции заявки' };
+  }
+  if (parts.length < 2) {
+    return { ok: false, error: 'Нужно минимум 2 части' };
+  }
+  if (parts.some((p) => !p.name.trim() || !Number.isInteger(p.qty) || p.qty <= 0)) {
+    return { ok: false, error: 'У каждой части должны быть название и количество больше 0' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: item } = await supabase
+    .from('request_items')
+    .select('request_id')
+    .eq('id', itemId)
+    .maybeSingle();
+  if (!item) return { ok: false, error: 'Позиция не найдена' };
+
+  const editError = await assertItemsEditable(supabase, item.request_id);
+  if (editError) return { ok: false, error: editError };
+
+  const { error } = await supabase.rpc('split_request_item', {
+    p_item_id: itemId,
+    p_parts: parts,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/concierge/orders`);
+  return { ok: true };
+}
+
+export async function mergeRequestItems(
+  itemIds: string[],
+  overrides?: { name?: string; category?: string },
+): Promise<ActionResult> {
+  const user = await requireCurrentUser();
+  const actor = orderActorFor(user);
+  if (actor !== 'concierge' && actor !== 'admin') {
+    return { ok: false, error: 'Только концьерж может объединять позиции заявки' };
+  }
+  if (itemIds.length < 2) {
+    return { ok: false, error: 'Нужно выбрать минимум 2 позиции' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: item } = await supabase
+    .from('request_items')
+    .select('request_id')
+    .eq('id', itemIds[0])
+    .maybeSingle();
+  if (!item) return { ok: false, error: 'Позиция не найдена' };
+
+  const editError = await assertItemsEditable(supabase, item.request_id);
+  if (editError) return { ok: false, error: editError };
+
+  const { error } = await supabase.rpc('merge_request_items', {
+    p_item_ids: itemIds,
+    p_name: overrides?.name ?? null,
+    p_category: overrides?.category ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/concierge/orders`);
+  return { ok: true };
+}

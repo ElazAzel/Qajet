@@ -1,5 +1,5 @@
 import { checkRequestCompleteness } from '@qajet/engine/completeness';
-import { Reveal, Stagger } from '@qajet/ui/motion';
+import { Reveal } from '@qajet/ui/motion';
 import { Card } from '@qajet/ui/primitives';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -9,7 +9,7 @@ import {
   ORDER_STATE_LABEL,
   type OrderState,
 } from '../../../../lib/order-state';
-import { ItemCard } from './_item-card';
+import { ItemsList } from './_items-list';
 
 /**
  * Экран позиций заявки для консьержа — agents.md §8A/§7.4, шаги 2-3 волны 1.
@@ -18,13 +18,14 @@ import { ItemCard } from './_item-card';
  * просмотра/правки request_items. Показывает баннер Completeness Engine —
  * тот же checkRequestCompleteness, что и серверный гейт в advanceOrderStage.
  * Правка категории/названия (Classification Engine) — в _item-card.tsx,
- * пишет обучающий сигнал на сервере (item-actions.ts). Split/merge
- * позиций (Dependency Engine) — следующие шаги волны, на этом же экране.
+ * пишет обучающий сигнал на сервере (item-actions.ts). Split/merge позиций
+ * (Dependency Engine, шаги 6-8 волны) — там же плюс _items-list.tsx для
+ * merge (объединяет несколько карточек сразу, выбор чекбоксами пересекает
+ * их — состояние нужно на уровне списка).
  *
  * Доступен только до отправки RFQ: quote_lines/plan_lines ссылаются на
- * request_items с onDelete:'restrict', так что split/merge (следующие шаги
- * волны) безопасны лишь в этом окне — единая модель редактирования для
- * всего экрана, не только для ещё не написанных split/merge-действий.
+ * request_items с onDelete:'restrict', так что split/merge безопасны лишь
+ * в этом окне — единая модель редактирования для всего экрана.
  */
 
 const secondaryLinkClass =
@@ -121,26 +122,20 @@ export default async function ConciergeOrderItemsPage({
         )}
       </Reveal>
 
-      <Stagger startIndex={2} className="flex flex-col gap-3">
-        {items.map((item) => (
-          <ItemCard
-            key={item.id}
-            editable={editable}
-            item={{
-              id: item.id,
-              name: item.name,
-              category: item.category,
-              qty: item.qty,
-              unit: item.unit,
-              requiredCapabilities: item.required_capabilities,
-              sourceText: (item.specs as { sourceText?: string } | null)?.sourceText,
-              needsClarification: item.needs_clarification,
-              clarificationReason: item.clarification_reason,
-            }}
-          />
-        ))}
-        {items.length === 0 && <p className="text-fine text-muted">В заявке нет позиций.</p>}
-      </Stagger>
+      <ItemsList
+        editable={editable}
+        items={items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          qty: item.qty,
+          unit: item.unit,
+          requiredCapabilities: item.required_capabilities,
+          sourceText: (item.specs as { sourceText?: string } | null)?.sourceText,
+          needsClarification: item.needs_clarification,
+          clarificationReason: item.clarification_reason,
+        }))}
+      />
 
       <Link href={`/concierge/orders/${order.id}`} className={`${secondaryLinkClass} mt-6`}>
         Назад к заказу
