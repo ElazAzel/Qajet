@@ -1,7 +1,7 @@
 import { BuyerShell } from '@qajet/ui/shell';
 import { FilePlus, ListChecks, MessageSquare, Repeat, Settings } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
+import { requireActor, shellUserFrom } from '../lib/current-user';
 
 const NAV_ITEMS = [
   { key: 'orders', href: '/buyer', label: 'Заказы', icon: <ListChecks size={18} /> },
@@ -30,7 +30,7 @@ const NAV_ITEMS = [
 // реализован; при реализации вернуть пункт сюда, не создавать новый.
 
 export default async function BuyerLayout({ children }: { children: ReactNode }) {
-  const user = await requireCurrentUser();
+  const user = await requireActor('buyer');
   return (
     <BuyerShell navItems={NAV_ITEMS} user={shellUserFrom(user)}>
       {children}

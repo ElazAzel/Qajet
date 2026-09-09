@@ -375,20 +375,19 @@ export const quotes = pgTable(
       to: authenticatedRole,
       using: sql`${t.rfqId} in (select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery})`,
     }),
-    // Тот же риск утечки между поставщиками, что и у rfqs_select_buyer_of_request
-    // (см. комментарий там): "request_id in (select id from requests)" молча
-    // предполагал requests видной только покупателю. Явная проверка
-    // buyer_company_id — обязательна, quotes держат цены ДРУГИХ поставщиков.
-    pgPolicy('quotes_select_buyer_of_request', {
-      as: 'permissive',
-      for: 'select',
-      to: authenticatedRole,
-      using: sql`${t.rfqId} in (
-        select id from ${rfqs} where request_id in (
-          select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
-        )
-      )`,
-    }),
+    // Раньше здесь была quotes_select_buyer_of_request (тот же риск, что у
+    // rfqs_select_buyer_of_request — см. комментарий там). Убрана целиком
+    // (не сужена) при аудите agents.md §10: quotes.notes/file_url —
+    // свободный текст и файл от ИМЕНИ поставщика (не структурные price/
+    // lead_time), способные раскрыть личность исполнителя напрямую
+    // (подпись, контакты, брендированный PDF) — то, что покупателю
+    // недоступно по замыслу. RLS не различает колонки внутри строки, а
+    // ни один buyer-маршрут в apps/web не читает quotes вообще (только
+    // agregированный combine()-результат через comparison.ts — экран
+    // сравнения консьержа, не buyer) — политика была чистой дырой без
+    // единого легитимного применения. Понадобится покупателю view на
+    // quotes — заводить её явно суженной (без notes/file_url), не
+    // возвращать это разрешение.
     pgPolicy('quotes_select_staff', {
       as: 'permissive',
       for: 'select',

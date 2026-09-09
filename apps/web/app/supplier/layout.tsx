@@ -1,7 +1,7 @@
 import { SupplierShell } from '@qajet/ui/shell';
 import { Inbox } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
+import { requireActor, shellUserFrom } from '../lib/current-user';
 
 // «Заказы»/«Рост»/«Профиль» (agents.md §10 «Поставщик») убраны из
 // навигации — /supplier/orders, /supplier/growth, /supplier/profile не
@@ -11,7 +11,7 @@ import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
 const NAV_ITEMS = [{ key: 'inbox', label: 'RFQ', href: '/supplier', icon: <Inbox size={18} /> }];
 
 export default async function SupplierLayout({ children }: { children: ReactNode }) {
-  const user = await requireCurrentUser();
+  const user = await requireActor('supplier');
   return (
     <SupplierShell navItems={NAV_ITEMS} user={shellUserFrom(user)}>
       {children}

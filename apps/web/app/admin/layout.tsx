@@ -1,7 +1,7 @@
 import { AdminShell } from '@qajet/ui/shell';
 import { Gauge, LineChart, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
+import { requireActor, shellUserFrom } from '../lib/current-user';
 
 /**
  * Админ получает ту же оболочку сайдбар+хедер, что и остальные роли, но
@@ -24,7 +24,7 @@ const NAV_ITEMS = [
 ];
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const user = await requireCurrentUser();
+  const user = await requireActor('admin');
   return (
     <AdminShell navItems={NAV_ITEMS} user={shellUserFrom(user)}>
       {children}

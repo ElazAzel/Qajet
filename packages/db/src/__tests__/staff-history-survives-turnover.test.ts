@@ -25,6 +25,11 @@ import { describe, expect, it } from 'vitest';
  *    но concierge B по-прежнему видит всё: история не привязана к
  *    персоне, ушедший сотрудник не может продолжать её читать.
  *
+ * `set_config(..., true)` — LOCAL, живёт только до конца ТЕКУЩЕЙ
+ * транзакции: без явного sql.begin() каждый отдельный тег-вызов
+ * postgres.js — своя неявная транзакция, auth.uid() снова null уже на
+ * следующем запросе. Тот же приём, что в packages/pd/src/postgres-backend.ts.
+ *
  * Требует DATABASE_URL — см. supplier-isolation.test.ts.
  */
 
@@ -54,6 +59,13 @@ async function insertAuthUser(admin: postgres.Sql, email: string): Promise<{ id:
       ) returning id
     `,
   );
+}
+
+function openSession(databaseUrl: string): postgres.Sql {
+  return postgres(databaseUrl, {
+    prepare: false,
+    connection: { options: '-c role=authenticated' },
+  });
 }
 
 describeIfConfigured('история заказа переживает смену/деактивацию концьержа (RLS)', () => {
@@ -122,31 +134,34 @@ describeIfConfigured('история заказа переживает смен�
         values (${order.id}, 'draft', ${authConciergeA.id})
       `;
 
-      const asConciergeB = postgres(DATABASE_URL as string, {
-        prepare: false,
-        connection: { options: '-c role=authenticated' },
-      });
+      const claimsFor = (userId: string) => JSON.stringify({ sub: userId, role: 'authenticated' });
 
+      const conciergeBSession = openSession(DATABASE_URL as string);
       try {
-        await asConciergeB`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConciergeB.id, role: 'authenticated' })}, true)`;
-
-        const visibleOrders = await asConciergeB<{ id: string }[]>`
-          select id from orders where id = ${order.id}
-        `;
+        const visibleOrders = await conciergeBSession.begin(async (tx) => {
+          await tx`select set_config('request.jwt.claims', ${claimsFor(authConciergeB.id)}, true)`;
+          return tx<{ id: string }[]>`select id from orders where id = ${order.id}`;
+        });
         expect(visibleOrders).toHaveLength(1);
 
-        const visibleRfqs = await asConciergeB<{ id: string; supplier_company_id: string }[]>`
-          select id, supplier_company_id from rfqs where id = ${rfq.id}
-        `;
+        const visibleRfqs = await conciergeBSession.begin(async (tx) => {
+          await tx`select set_config('request.jwt.claims', ${claimsFor(authConciergeB.id)}, true)`;
+          return tx<{ id: string; supplier_company_id: string }[]>`
+            select id, supplier_company_id from rfqs where id = ${rfq.id}
+          `;
+        });
         expect(visibleRfqs).toHaveLength(1);
         expect(visibleRfqs[0]?.supplier_company_id).toBe(supplierCompany.id);
 
-        const visibleEvents = await asConciergeB<{ id: string }[]>`
-          select id from order_stage_events where order_id = ${order.id}
-        `;
+        const visibleEvents = await conciergeBSession.begin(async (tx) => {
+          await tx`select set_config('request.jwt.claims', ${claimsFor(authConciergeB.id)}, true)`;
+          return tx<
+            { id: string }[]
+          >`select id from order_stage_events where order_id = ${order.id}`;
+        });
         expect(visibleEvents).toHaveLength(1);
       } finally {
-        await asConciergeB.end();
+        await conciergeBSession.end();
       }
 
       // Концьерж A деактивирован (agents.md §10 «Админ»: «отзыв доступа») —
@@ -154,34 +169,27 @@ describeIfConfigured('история заказа переживает смен�
       // единственный физически доступный путь.
       await admin`update public.users set is_active = false where id = ${authConciergeA.id}`;
 
-      const asDeactivatedConciergeA = postgres(DATABASE_URL as string, {
-        prepare: false,
-        connection: { options: '-c role=authenticated' },
-      });
+      const conciergeASession = openSession(DATABASE_URL as string);
       try {
-        await asDeactivatedConciergeA`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConciergeA.id, role: 'authenticated' })}, true)`;
-
-        const stillVisible = await asDeactivatedConciergeA<{ id: string }[]>`
-          select id from rfqs where id = ${rfq.id}
-        `;
-        expect(stillVisible).toHaveLength(0);
+        const stillVisibleToA = await conciergeASession.begin(async (tx) => {
+          await tx`select set_config('request.jwt.claims', ${claimsFor(authConciergeA.id)}, true)`;
+          return tx<{ id: string }[]>`select id from rfqs where id = ${rfq.id}`;
+        });
+        expect(stillVisibleToA).toHaveLength(0);
       } finally {
-        await asDeactivatedConciergeA.end();
+        await conciergeASession.end();
       }
 
       // Concierge B по-прежнему видит всё — уход A не сломал историю.
-      const asConciergeBAgain = postgres(DATABASE_URL as string, {
-        prepare: false,
-        connection: { options: '-c role=authenticated' },
-      });
+      const conciergeBSessionAgain = openSession(DATABASE_URL as string);
       try {
-        await asConciergeBAgain`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConciergeB.id, role: 'authenticated' })}, true)`;
-        const stillThere = await asConciergeBAgain<{ id: string }[]>`
-          select id from rfqs where id = ${rfq.id}
-        `;
-        expect(stillThere).toHaveLength(1);
+        const stillVisibleToB = await conciergeBSessionAgain.begin(async (tx) => {
+          await tx`select set_config('request.jwt.claims', ${claimsFor(authConciergeB.id)}, true)`;
+          return tx<{ id: string }[]>`select id from rfqs where id = ${rfq.id}`;
+        });
+        expect(stillVisibleToB).toHaveLength(1);
       } finally {
-        await asConciergeBAgain.end();
+        await conciergeBSessionAgain.end();
       }
 
       await admin`delete from order_stage_events where order_id = ${order.id}`;

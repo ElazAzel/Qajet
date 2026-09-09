@@ -9,6 +9,17 @@ import { describe, expect, it } from 'vitest';
  * делает PostgREST на каждый запрос — так тест проверяет настоящие RLS
  * policy, а не эмулирует их в приложении.
  *
+ * `set_config(..., true)` — LOCAL, живёт только до конца ТЕКУЩЕЙ
+ * транзакции: без явного sql.begin() — тот же приём, что в
+ * packages/pd/src/postgres-backend.ts — `auth.uid()` снова null уже на
+ * следующем отдельном запросе, и импersonation молча не работает. Именно
+ * поэтому ассерт ниже проверяет не только отсутствие ЧУЖОЙ строки, но и
+ * присутствие СВОЕЙ: изоляция, проверенная только «не вижу чужого», молча
+ * проходит и тогда, когда impersonation вообще не сработала и поставщик A
+ * не видит ВООБЩЕ НИЧЕГО — находка ревью (P1) при первом переносе этого
+ * приёма в новый тестовый файл: без sql.begin() запрос после set_config
+ * шёл в новой транзакции и терял claims, но тест этого не ловил.
+ *
  * Требует `DATABASE_URL` — прямое подключение к Postgres проекта Supabase
  * (Project Settings → Database → Connection string, роль postgres или
  * пулер в session-режиме). Сервисные ключи и пароль БД никогда не должны
@@ -29,7 +40,7 @@ function one<T>(rows: T[]): T {
 }
 
 describeIfConfigured('изоляция поставщиков (RLS)', () => {
-  it('поставщик A не видит quote_lines поставщика B по тому же RFQ', async () => {
+  it('поставщик A видит свою quote_lines, но не поставщика B по тому же RFQ', async () => {
     const admin = postgres(DATABASE_URL as string, { prepare: false });
 
     try {
@@ -107,10 +118,13 @@ describeIfConfigured('изоляция поставщиков (RLS)', () => {
         await admin<{ id: string }[]>`insert into quotes (rfq_id) values (${rfqB.id}) returning id`,
       );
 
-      await admin`
-        insert into quote_lines (quote_id, request_item_id, unit_price_kzt, lead_time_days)
-        values (${quoteA.id}, ${item.id}, 1000, 5)
-      `;
+      const lineA = one(
+        await admin<{ id: string }[]>`
+          insert into quote_lines (quote_id, request_item_id, unit_price_kzt, lead_time_days)
+          values (${quoteA.id}, ${item.id}, 1000, 5)
+          returning id
+        `,
+      );
       const lineB = one(
         await admin<{ id: string }[]>`
           insert into quote_lines (quote_id, request_item_id, unit_price_kzt, lead_time_days)
@@ -120,18 +134,21 @@ describeIfConfigured('изоляция поставщиков (RLS)', () => {
       );
 
       // Соединение под ролью authenticated с JWT-claims поставщика A —
-      // ровно то, что PostgREST выставляет на каждый запрос.
+      // ровно то, что PostgREST выставляет на каждый запрос. set_config и
+      // запрос обязаны жить в одной транзакции (см. комментарий в шапке).
       const asSupplierA = postgres(DATABASE_URL as string, {
         prepare: false,
         connection: { options: '-c role=authenticated' },
       });
 
       try {
-        await asSupplierA`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authUserA.id, role: 'authenticated' })}, true)`;
+        const visibleIds = await asSupplierA.begin(async (tx) => {
+          await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authUserA.id, role: 'authenticated' })}, true)`;
+          const rows = await tx<{ id: string }[]>`select id from quote_lines`;
+          return rows.map((r) => r.id);
+        });
 
-        const visibleQuoteLines = await asSupplierA<{ id: string }[]>`select id from quote_lines`;
-        const visibleIds = visibleQuoteLines.map((r) => r.id);
-
+        expect(visibleIds).toContain(lineA.id);
         expect(visibleIds).not.toContain(lineB.id);
       } finally {
         await asSupplierA.end();

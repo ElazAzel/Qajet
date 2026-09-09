@@ -4,7 +4,7 @@ import { LayoutList } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { requireCurrentUser, shellUserFrom } from '../lib/current-user';
+import { requireActor, shellUserFrom } from '../lib/current-user';
 import {
   ORDER_STATE_LABEL,
   ORDER_STATE_PRIORITY,
@@ -85,7 +85,7 @@ async function loadPendingRequests(
 export default async function ConciergeLayout({ children }: { children: ReactNode }) {
   const supabase = await createSupabaseServerClient();
   const [user, board, pendingRequests] = await Promise.all([
-    requireCurrentUser(),
+    requireActor('concierge'),
     loadBoard(supabase),
     loadPendingRequests(supabase),
   ]);
