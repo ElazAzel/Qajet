@@ -192,7 +192,7 @@ describeIfConfigured('комиссия по позиции плана (RLS + app
         // Концьерж может UPDATE commission_pct/commission_kzt на plan_lines.
         const conciergeUpdateLine = await asConcierge.begin(async (tx) => {
           await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
-          return tx<{ id: string; commission_pct: number; commission_kzt: number }[]>`
+          return tx<{ id: string; commission_pct: number; commission_kzt: string }[]>`
             update plan_lines set commission_pct = 21, commission_kzt = 21000
             where id = ${planLine.id}
             returning id, commission_pct, commission_kzt
@@ -200,7 +200,9 @@ describeIfConfigured('комиссия по позиции плана (RLS + app
         });
         expect(conciergeUpdateLine).toHaveLength(1);
         expect(conciergeUpdateLine[0]?.commission_pct).toBe(21);
-        expect(conciergeUpdateLine[0]?.commission_kzt).toBe(21000);
+        // postgres.js возвращает bigint как строку (защита от потери
+        // точности за пределами Number.MAX_SAFE_INTEGER) — приводим явно.
+        expect(Number(conciergeUpdateLine[0]?.commission_kzt)).toBe(21000);
 
         // Чужой покупатель (не владелец заявки) не может утвердить план.
         const otherBuyerApprove = await asOtherBuyer
