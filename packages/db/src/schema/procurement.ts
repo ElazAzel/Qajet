@@ -186,6 +186,26 @@ export const requestItems = pgTable(
       using: staffOnly,
       withCheck: staffOnly,
     }),
+    // Dependency Engine (agents.md §8A, волна 1 шаг 6): split/merge позиции
+    // консьержем — рукописные SQL-функции split_request_item/
+    // merge_request_items (миграция 0011) сами insert новые строки и delete
+    // исходные одной транзакцией, SECURITY INVOKER — выполняются от имени
+    // вызывающего, эти две policy и есть реальная граница доступа.
+    pgPolicy('request_items_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
+    // Первая DELETE-политика на этой таблице — раньше строки request_items
+    // не удалялись никогда (только insert/update), split/merge впервые
+    // вводит такую операцию.
+    pgPolicy('request_items_delete_staff', {
+      as: 'permissive',
+      for: 'delete',
+      to: authenticatedRole,
+      using: staffOnly,
+    }),
     pgPolicy('request_items_service_all', {
       as: 'permissive',
       for: 'all',

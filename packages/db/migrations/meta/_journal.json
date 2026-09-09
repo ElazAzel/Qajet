@@ -78,6 +78,13 @@
       "when": 1788917807252,
       "tag": "0010_simple_callisto",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788919326332,
+      "tag": "0011_aromatic_deathstrike",
+      "breakpoints": true
     }
   ]
 }
