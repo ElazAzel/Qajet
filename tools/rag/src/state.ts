@@ -110,7 +110,7 @@ async function readWorkspacePackages(root: string): Promise<WorkspacePackage[]> 
     const pkgJson = JSON.parse(await readFile(pkgJsonPath, 'utf8')) as { name?: string };
     packages.push({
       name: pkgJson.name ?? entry,
-      dir: path.relative(REPO_ROOT, path.join(root, entry)),
+      dir: path.relative(REPO_ROOT, path.join(root, entry)).split(path.sep).join('/'),
       hasSrc: existsSync(path.join(root, entry, 'src')),
     });
   }
