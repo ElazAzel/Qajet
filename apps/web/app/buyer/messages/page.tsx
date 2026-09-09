@@ -2,15 +2,17 @@ import { cn } from '@qajet/ui/lib/cn';
 import { Reveal } from '@qajet/ui/motion';
 
 /**
- * Сообщения — переписка покупателя с поставщиками по заказам (threads/
- * messages, agents.md §5). Экран визуальный: список тредов слева, открытый
- * тред справа. Реальная отправка и realtime — отдельная фаза, здесь
- * статичная витрина с реалистичными данными.
+ * Сообщения — переписка покупателя с QAJET по заказам (threads/messages,
+ * agents.md §5, kind='buyer'). agents.md §10 «Покупатель»: личность
+ * исполнителя покупателю не раскрывается — покупатель переписывается с
+ * QAJET, а не напрямую с компанией-исполнителем, независимо от того, кто
+ * фактически исполняет заказ. Экран визуальный: список тредов слева,
+ * открытый тред справа. Реальная отправка и realtime — отдельная фаза,
+ * здесь статичная витрина с реалистичными данными.
  */
 
 interface ChatPreview {
   id: string;
-  name: string;
   order: string;
   preview: string;
   time: string;
@@ -19,8 +21,7 @@ interface ChatPreview {
 }
 
 const DEFAULT_CHAT: ChatPreview = {
-  id: 'uka-print',
-  name: 'Uka Print',
+  id: 'qj-00112',
   order: 'Мерч для конференции',
   preview: 'Счёт отправлен, проверьте, пожалуйста',
   time: '10:24',
@@ -31,32 +32,28 @@ const DEFAULT_CHAT: ChatPreview = {
 const CHATS: ChatPreview[] = [
   DEFAULT_CHAT,
   {
-    id: 'printlab',
-    name: 'PrintLab',
+    id: 'qj-00098',
     order: 'Welcome Pack',
     preview: 'Макет утверждён, спасибо!',
     time: '09:17',
     unread: false,
   },
   {
-    id: 'goodies-kz',
-    name: 'Goodies KZ',
+    id: 'qj-00087',
     order: 'HR-подарки к Наурызу',
     preview: 'Производство запущено',
     time: 'Вчера',
     unread: true,
   },
   {
-    id: 'eventoria',
-    name: 'Eventoria',
+    id: 'qj-00073',
     order: 'Кейтеринг на открытие офиса',
     preview: 'Заказ доставлен',
     time: 'Вчера',
     unread: false,
   },
   {
-    id: 'alma-design',
-    name: 'Alma Design',
+    id: 'qj-00061',
     order: 'Ежедневники с тиснением',
     preview: 'Ждём вашего подтверждения',
     time: '12 сен',
@@ -111,10 +108,10 @@ export default function BuyerMessagesPage() {
                   <span className={cn(avatarClass, 'h-10 w-10 shrink-0')} aria-hidden="true" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-semibold">{chat.name}</span>
+                      <span className="truncate text-sm font-semibold">{chat.order}</span>
                       <span className="shrink-0 text-micro text-muted">{chat.time}</span>
                     </span>
-                    <span className="mt-0.5 block truncate text-fine text-muted">{chat.order}</span>
+                    <span className="mt-0.5 block truncate text-fine text-muted">QAJET</span>
                     <span className="mt-0.5 block truncate text-fine text-muted">
                       {chat.preview}
                     </span>
@@ -135,8 +132,8 @@ export default function BuyerMessagesPage() {
           <div className="flex items-center gap-3 border-rule border-b px-6 py-4">
             <span className={cn(avatarClass, 'h-10 w-10 shrink-0')} aria-hidden="true" />
             <div>
-              <p className="text-sm font-semibold">{activeChat.name}</p>
-              <p className="text-fine text-muted">{activeChat.order}</p>
+              <p className="text-sm font-semibold">{activeChat.order}</p>
+              <p className="text-fine text-muted">QAJET</p>
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-6">

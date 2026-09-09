@@ -34,11 +34,60 @@ export interface ExplorationPoint {
   count: number;
 }
 
+export interface AliasRow {
+  id: string;
+  alias: string;
+  canonical: string;
+  kind: string;
+  hits: number;
+  autoApplied: boolean;
+}
+
+export interface AliasMetrics {
+  correctionsTotal: number;
+  aliases: AliasRow[];
+}
+
 export interface LearningMetrics {
   estimator: LearningPoint[];
   leadtime: LeadtimePoint[];
   exploration: ExplorationPoint[];
   explorationSuppliersTotal: number;
+}
+
+/** hits ≥ 3 — порог, с которого agents.md §8A считает алиас применяемым
+ *  автоматически (сегодня это только бейдж на экране, применяет его
+ *  quick-add — шаг 5 волны 1). */
+const AUTO_APPLY_HITS_THRESHOLD = 3;
+
+/**
+ * Видимость Classification Engine (agents.md §8A, волна 1 шаг 4) — сколько
+ * раз концьерж поправил категорию (learning_events{type:'extraction_fix'})
+ * и какие алиасы это уже накопило (extraction_aliases). Обе таблицы уже
+ * staff-select (learning.ts) — RLS не меняется, чисто аддитивный шаг.
+ */
+export async function loadAliasMetrics(supabase: SupabaseClient): Promise<AliasMetrics> {
+  const [{ count: correctionsTotal }, { data: aliasRows }] = await Promise.all([
+    supabase
+      .from('learning_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('type', 'extraction_fix'),
+    supabase
+      .from('extraction_aliases')
+      .select('id, alias, canonical, kind, hits')
+      .order('hits', { ascending: false }),
+  ]);
+
+  const aliases: AliasRow[] = (aliasRows ?? []).map((a) => ({
+    id: a.id,
+    alias: a.alias,
+    canonical: a.canonical,
+    kind: a.kind,
+    hits: a.hits,
+    autoApplied: a.hits >= AUTO_APPLY_HITS_THRESHOLD,
+  }));
+
+  return { correctionsTotal: correctionsTotal ?? 0, aliases };
 }
 
 export async function loadLearningMetrics(supabase: SupabaseClient): Promise<LearningMetrics> {

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type AliasEntry,
   convertJcukenLayout,
   extractBudget,
   extractDeadline,
   extractQuantity,
   matchNomenclature,
   normalizeText,
+  resolveAlias,
   stringSimilarity,
 } from './parse.js';
 
@@ -161,5 +163,28 @@ describe('matchNomenclature', () => {
     const result = matchNomenclature('кружка', []);
     expect(result.needsClarification).toBe(true);
     expect(result.value).toBeNull();
+  });
+});
+
+describe('resolveAlias', () => {
+  const aliases: AliasEntry[] = [
+    { alias: 'футболки поло', canonical: 'printing', kind: 'category', hits: 4 },
+    { alias: 'редкая фраза', canonical: 'merch', kind: 'category', hits: 1 },
+  ];
+
+  it('отдаёт canonical для алиаса с hits ≥ 3', () => {
+    expect(resolveAlias('футболки поло', aliases, 'category')).toBe('printing');
+  });
+
+  it('ниже порога hits — не подставляет', () => {
+    expect(resolveAlias('редкая фраза', aliases, 'category')).toBeNull();
+  });
+
+  it('нет совпадения по тексту — null', () => {
+    expect(resolveAlias('что-то ещё', aliases, 'category')).toBeNull();
+  });
+
+  it('совпадение есть, но другой kind — null', () => {
+    expect(resolveAlias('футболки поло', aliases, 'material')).toBeNull();
   });
 });

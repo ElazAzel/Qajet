@@ -1,4 +1,3 @@
-import type { Explanation, ExplanationLine } from '@qajet/engine/explain';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ORDER_STATE_LABEL, type OrderState } from './order-state';
 
@@ -9,6 +8,20 @@ import { ORDER_STATE_LABEL, type OrderState } from './order-state';
  * консьержа на стадии quotes_received, здесь план уже существует в БД
  * (записан proposePlan()) — покупатель видит замороженный вариант, а не
  * то, что получилось бы, если пересчитать сейчас.
+ *
+ * Осознанно НЕ грузим `total_supplier_kzt`/`commission_kzt`/`explanation`
+ * (decomposition) из `plans` — задача «комиссия платформы»: покупатель
+ * видит только итоговую цену исполнения заказа, без разбивки поставщик/
+ * комиссия. `delivery_kzt` оставлен отдельной строкой — это логистика, не
+ * структура наценки. Честная оговорка: `plans_select_via_request`
+ * по-прежнему пускает покупательскую сессию читать ВСЮ строку `plans`
+ * напрямую через PostgREST (RLS не умеет колоночно), так что
+ * `commission_kzt`/`total_supplier_kzt` в самой БД остаются technically
+ * достижимы в обход этого файла при прямом запросе — тот же класс
+ * остаточного риска, что уже документирован в ADR-0009 (RFQ/plan_lines
+ * UUID). Настоящая колоночная защита потребовала бы отдельного view, вне
+ * объёма этой задачи. Запись цены отдельно закрыта — см. approve_plan()
+ * RPC, packages/db/migrations/0013.
  */
 
 export interface StageEvent {
@@ -21,15 +34,11 @@ export interface StageEvent {
 export interface BuyerOrderPlan {
   kind: string;
   status: string;
-  totalSupplierKzt: number;
   deliveryKzt: number;
-  commissionKzt: number;
-  taxEffectKzt: number;
   totalKzt: number;
   etaDate: string | null;
   slackDays: number | null;
   supplierCount: number;
-  decomposition: ExplanationLine[];
 }
 
 export interface BuyerOrderDetail {
@@ -65,25 +74,18 @@ export async function loadBuyerOrder(
   if (order.approved_plan_id) {
     const { data: planRow } = await supabase
       .from('plans')
-      .select(
-        'kind, status, total_supplier_kzt, delivery_kzt, commission_kzt, tax_effect_kzt, total_kzt, eta_date, slack_days, supplier_count, explanation',
-      )
+      .select('kind, status, delivery_kzt, total_kzt, eta_date, slack_days, supplier_count')
       .eq('id', order.approved_plan_id)
       .maybeSingle();
     if (planRow) {
-      const explanation = planRow.explanation as Explanation | null;
       plan = {
         kind: planRow.kind,
         status: planRow.status,
-        totalSupplierKzt: planRow.total_supplier_kzt,
         deliveryKzt: planRow.delivery_kzt,
-        commissionKzt: planRow.commission_kzt,
-        taxEffectKzt: planRow.tax_effect_kzt,
         totalKzt: planRow.total_kzt,
         etaDate: planRow.eta_date,
         slackDays: planRow.slack_days,
         supplierCount: planRow.supplier_count,
-        decomposition: explanation?.decomposition ?? [],
       };
     }
   }

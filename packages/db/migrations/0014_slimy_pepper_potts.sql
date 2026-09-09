@@ -1,0 +1,1 @@
+ALTER POLICY "plan_lines_select_via_plan" ON "plan_lines" TO authenticated USING ((select public.current_role()) in ('concierge', 'admin'));

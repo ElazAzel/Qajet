@@ -22,6 +22,15 @@ import { orders } from './procurement.js';
  * внутренняя аналитика QAJET (staff-only), либо пишется исключительно
  * движком (service_role) и никогда напрямую клиентом — обучение должно
  * идти по фактам заказов, а не по тому, что клиент сам о себе впишет.
+ *
+ * Явное исключение: `extraction_aliases` читают ВСЕ authenticated, не
+ * только staff (agents.md §8A, волна 1 шаг 5, «замыкание контура» —
+ * quick-add у покупателя должен уметь читать этот словарь, чтобы
+ * подсказывать категорию по накопленным правкам консьержа). Таблица
+ * хранит только нормализационный словарь (alias → каноническая
+ * категория/материал/единица/capability), не коммерчески чувствительные
+ * данные — не тот же класс риска, что остальные таблицы этого файла.
+ * Единственное такое исключение здесь, добавлено осознанно, не молчком.
  */
 
 const staffOnly = sql`${currentRoleSubquery} in ('concierge', 'admin')`;
@@ -147,11 +156,14 @@ export const extractionAliases = pgTable(
   },
   (t) => [
     index('extraction_aliases_confirmed_by_idx').on(t.confirmedBy),
+    // Имя не переименовано (drizzle-kit generate иначе спрашивает
+    // интерактивно rename-or-new, недоступно в этой среде) — поведение
+    // уже не staff-only, см. комментарий в шапке файла.
     pgPolicy('extraction_aliases_select_staff', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: staffOnly,
+      using: sql`true`,
     }),
     // Апсерт (insert новой строки / update счётчика hits) при каждом
     // исправлении консьержа — agents.md §8A: «hits ≥ 3 начинает

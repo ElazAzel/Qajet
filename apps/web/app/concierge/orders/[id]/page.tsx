@@ -5,15 +5,21 @@ import { Card, formatKzt, Money } from '@qajet/ui/primitives';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import {
+  loadCommissionSuggestions,
+  loadPlanLinesForConcierge,
+} from '../../../lib/actions/plan-actions';
 import { loadRequestComparison } from '../../../lib/comparison';
-import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
+import { type OrderActor, orderActorFor, requireCurrentUser } from '../../../lib/current-user';
 import {
   ITEMS_EDITABLE_STATES,
   ORDER_STATE_LABEL,
   ORDER_STATE_TONE,
   type OrderState,
+  PLAN_EDITABLE_STATES,
 } from '../../../lib/order-state';
 import { supplierCountLabel } from '../../../lib/pluralize';
+import { PlanLinesReview } from './_plan-lines';
 import { ProposePlanButton } from './_propose-plan-button';
 import { StageAdvanceButton } from './_stage-advance-button';
 
@@ -40,12 +46,23 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
 
   const { data: order } = await supabase
     .from('orders')
-    .select('id, state, request_id')
+    .select('id, state, request_id, approved_plan_id')
     .eq('id', id)
     .maybeSingle();
   if (!order) notFound();
 
   const state = order.state as OrderState;
+
+  if (PLAN_EDITABLE_STATES.includes(state)) {
+    return (
+      <PlanLinesScreen
+        orderId={order.id}
+        planId={order.approved_plan_id}
+        state={state}
+        actor={actor}
+      />
+    );
+  }
 
   if (state !== 'quotes_received') {
     const nextStates = nextStatesFor(state, actor);
@@ -205,6 +222,81 @@ function PlanCard({
 
       {action}
     </Card>
+  );
+}
+
+/**
+ * Позиции утверждённого плана — задача «комиссия платформы»: раньше здесь
+ * (state !== quotes_received) всегда была заглушка NotComparableYet, у
+ * концьержа не было экрана с plan_lines вообще. Показывает цену
+ * поставщика + комиссию по каждой строке (staff-контекст, покупатель
+ * этого не видит — apps/web/app/buyer/orders/[id]/page.tsx показывает
+ * только общий итог) и позволяет точечно менять % — 21-24%,
+ * packages/engine/src/commission.
+ */
+async function PlanLinesScreen({
+  orderId,
+  planId,
+  state,
+  actor,
+}: {
+  orderId: string;
+  planId: string;
+  state: OrderState;
+  actor: OrderActor;
+}) {
+  const supabase = await createSupabaseServerClient();
+  const { data: plan } = await supabase
+    .from('plans')
+    .select('id, total_kzt')
+    .eq('id', planId)
+    .maybeSingle();
+
+  if (!plan) {
+    return (
+      <NotComparableYet state={state} orderId={orderId} nextStates={nextStatesFor(state, actor)} />
+    );
+  }
+
+  const [lines, suggestions] = await Promise.all([
+    loadPlanLinesForConcierge(supabase, plan.id),
+    loadCommissionSuggestions(supabase),
+  ]);
+
+  const nextStates = nextStatesFor(state, actor);
+
+  return (
+    <div className="max-w-3xl">
+      <Reveal className="mb-6">
+        <p className="text-micro tracking-wide text-muted uppercase">
+          Позиции плана · {ORDER_STATE_LABEL[state]}
+        </p>
+        <h1 className="mt-1 text-2xl font-extrabold text-ink">Комиссия по позициям</h1>
+        <p className="mt-1 text-sm text-muted">
+          По умолчанию 23% на каждую позицию — можно точечно менять, 21-24%, по объёму и сложности
+          исполнения.
+        </p>
+      </Reveal>
+
+      <PlanLinesReview
+        lines={lines}
+        suggestions={Object.fromEntries(suggestions)}
+        totalKzt={plan.total_kzt}
+      />
+
+      {nextStates.length > 0 && (
+        <div className="mt-6 flex flex-wrap items-start gap-3">
+          {nextStates.map((toState, i) => (
+            <StageAdvanceButton
+              key={toState}
+              orderId={orderId}
+              toState={toState}
+              primary={i === 0}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

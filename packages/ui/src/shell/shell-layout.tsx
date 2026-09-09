@@ -223,14 +223,16 @@ export function ShellLayout({
               className={cn(
                 // flex-[1_0_60px]: делит ширину поровну, пока пунктов мало
                 // (растёт), но не сжимается тоньше 60px — при 6-7 пунктах
-                // (buyer/admin, agents.md §8) это раньше сжимало подписи до
-                // нечитаемых обрывков ("Как ...", "Мет..."); лишние пункты
-                // уходят в горизонтальный скролл контейнера, а не в мусор
-                // из усечённых слов. 60px — минимум, при котором помещаются
-                // все 6 пунктов buyer без скролла; у admin (7) последний
-                // всё равно уезжает за экран — известное ограничение, не
-                // предмет этой правки (нужен паттерн «Ещё», не влезающий
-                // в разовый фикс).
+                // (buyer/admin, agents.md §8) подпись в одну строку с
+                // `truncate` при такой ширине обрезалась до нечитаемых
+                // обрывков («Новая...», «Сообщ...») даже когда сама ячейка
+                // помещалась без горизонтального скролла — обрыв текста, а
+                // не переполнение контейнера. Сама подпись (ниже) переносится
+                // на 2 строки вместо truncate — на 60px это и есть читаемый
+                // предел для русских подписей в 1-2 слова. Лишние пункты
+                // (7-й у admin) по-прежнему уезжают в горизонтальный скролл
+                // контейнера — известное ограничение, нужен паттерн «Ещё»,
+                // не предмет этой правки.
                 'relative flex min-w-0 flex-[1_0_60px] flex-col items-center gap-1 py-2.5 text-micro',
                 active
                   ? dark
@@ -242,7 +244,9 @@ export function ShellLayout({
               )}
             >
               <span aria-hidden="true">{item.icon}</span>
-              <span className="w-full truncate text-center">{item.label}</span>
+              <span className="line-clamp-2 w-full text-center leading-[1.15] break-words">
+                {item.label}
+              </span>
               {!!item.badge && (
                 <span className="absolute top-1 right-[calc(50%-18px)] flex h-4 min-w-4 items-center justify-center rounded-full bg-purple px-1 text-[10px] font-medium text-white">
                   {item.badge}

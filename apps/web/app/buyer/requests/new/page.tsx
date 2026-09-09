@@ -1,17 +1,11 @@
 'use client';
 
-import {
-  type CatalogEntry,
-  extractBudget,
-  extractDeadline,
-  extractQuantity,
-  matchNomenclature,
-} from '@qajet/engine/intake';
 import { useAsyncAction } from '@qajet/ui/hooks';
 import { Reveal, Stagger } from '@qajet/ui/motion';
 import { Button, Card } from '@qajet/ui/primitives';
 import Link from 'next/link';
 import { useState } from 'react';
+import { parseQuickTextAction, type QuickParseResult } from '../../../lib/actions/intake-actions';
 import { createRequest } from '../../../lib/actions/request-actions';
 import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../lib/catalog';
 
@@ -25,58 +19,10 @@ import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../lib/cata
  * получить из свободного текста через @qajet/engine/intake (agents.md
  * §8A) — «Быстрое добавление» ниже: парсинг только ПРЕДЛАГАЕТ значения,
  * человек всегда видит и подтверждает результат перед добавлением строки.
+ * Сам разбор теперь идёт через server action `parseQuickTextAction`
+ * (lib/actions/intake-actions.ts) — ему нужен доступ к `extraction_aliases`
+ * (волна 1, шаг 5), которого у клиента нет и не будет.
  */
-
-const CATALOG_ENTRIES: CatalogEntry[] = CATALOG.map((c) => ({ key: c.itemKey, label: c.name }));
-
-interface QuickParsePreview {
-  itemKey: string | null;
-  itemLabel: string | null;
-  itemConfidence: number;
-  qty: number | null;
-  deadline: string | null;
-  budget: number | null;
-}
-
-// matchNomenclature (agents.md §8A) сравнивает строку целиком с коротким
-// каталожным названием — «120 футболок с логотипом до 20 октября» против
-// «Футболка с логотипом» триграммами/Дамерау-Левенштейном даёт заведомо
-// заниженное сходство просто из-за длины строки, а не из-за реального
-// несовпадения позиции. Убираем количество/срок/валюту перед сравнением
-// номенклатуры — сам движок не трогаем, это исключительно подготовка
-// текста для одного конкретного вызова здесь.
-// Не \b: в JS-регулярках без юникодных классов Cyrillic не входит в \w,
-// поэтому \b вокруг кириллических слов не срабатывает вовсе (граница
-// требует, чтобы хотя бы одна сторона была \w). Явные lookaround вместо.
-const NOISE_RE =
-  /(?<![a-zа-яё])(\d[\d\s]*|шт\.?|штук|коробок|уп\.?|упаковок|компл\.?|комплектов|пар|наборов|до|к|через|дн(?:ей|я|ь)|недел[юия]|месяц[аеы]?|млн|тг|тенге|₸|января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)(?![a-zа-яё])/gi;
-
-function stripNoiseForMatching(text: string): string {
-  const stripped = text.replace(NOISE_RE, ' ').replace(/\s+/g, ' ').trim();
-  return stripped || text;
-}
-
-function parseQuickText(text: string): QuickParsePreview {
-  const nomenclature = matchNomenclature(stripNoiseForMatching(text), CATALOG_ENTRIES);
-  const quantity = extractQuantity(text);
-  const deadline = extractDeadline(text, new Date());
-  const budget = extractBudget(text);
-  // Ниже порога уверенности (agents.md §8A) — не подставляем молча, даже
-  // если matchNomenclature вернул лучший кандидат: needsClarification уже
-  // несёт этот сигнал, используем его, а не игнорируем ради удобства.
-  const matchedItem =
-    nomenclature.value && !nomenclature.needsClarification
-      ? CATALOG.find((c) => c.itemKey === nomenclature.value)
-      : null;
-  return {
-    itemKey: matchedItem?.itemKey ?? null,
-    itemLabel: matchedItem?.name ?? null,
-    itemConfidence: nomenclature.confidence,
-    qty: quantity.value?.qty ?? null,
-    deadline: deadline.value,
-    budget: budget.value,
-  };
-}
 
 const CATEGORIES: CatalogCategory[] = ['merch', 'corporate-gifts', 'printing'];
 
@@ -116,8 +62,8 @@ const NEXT_STEPS = [
     sub: 'Реальный расчёт по истории цен, не догадка',
   },
   {
-    title: 'Мы рассылаем RFQ проверенным поставщикам',
-    sub: 'Видно, кому и почему выбран каждый поставщик',
+    title: 'QAJET запрашивает предложения у проверенных исполнителей',
+    sub: 'Вы видите срок и решения по каждой позиции — без лишних деталей',
   },
   {
     title: 'Вы утверждаете план — с этого момента это заказ',
@@ -135,7 +81,8 @@ export default function NewRequestPage() {
   const [items, setItems] = useState<ItemRow[]>([firstItemRow()]);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
   const [quickText, setQuickText] = useState('');
-  const [quickPreview, setQuickPreview] = useState<QuickParsePreview | null>(null);
+  const [quickPreview, setQuickPreview] = useState<QuickParseResult | null>(null);
+  const [quickParsing, setQuickParsing] = useState(false);
 
   const { run, pending, error } = useAsyncAction(createRequest, (result) => {
     if (result.requestId) setCreatedRequestId(result.requestId);
@@ -151,9 +98,14 @@ export default function NewRequestPage() {
     setItems((prev) => prev.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
   }
 
-  function handleQuickParse() {
-    if (!quickText.trim()) return;
-    setQuickPreview(parseQuickText(quickText));
+  async function handleQuickParse() {
+    if (!quickText.trim() || quickParsing) return;
+    setQuickParsing(true);
+    try {
+      setQuickPreview(await parseQuickTextAction(quickText));
+    } finally {
+      setQuickParsing(false);
+    }
   }
 
   function acceptQuickPreview() {
@@ -324,7 +276,12 @@ export default function NewRequestPage() {
                   placeholder="Например: 100 футболок с логотипом до 15 октября"
                   className={`${inputClass} bg-surface sm:flex-1`}
                 />
-                <Button variant="secondary" size="sm" onClick={handleQuickParse}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={quickParsing}
+                  onClick={handleQuickParse}
+                >
                   Разобрать
                 </Button>
               </div>
@@ -352,6 +309,15 @@ export default function NewRequestPage() {
                       ? `${quickPreview.budget.toLocaleString('ru-RU')} ₸`
                       : 'не распознан'}
                   </p>
+                  {quickPreview.categoryHint && (
+                    <p className="mt-1 text-muted">
+                      Категория подсказана исправлениями консьержа:{' '}
+                      <span className="font-semibold text-ink">
+                        {quickPreview.categoryHint.label}
+                      </span>{' '}
+                      — позицию каталога это не меняет, поправьте вручную при необходимости.
+                    </p>
+                  )}
                   <div className="mt-2 flex gap-2">
                     <Button variant="primary" size="sm" onClick={acceptQuickPreview}>
                       Добавить

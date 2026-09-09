@@ -12,7 +12,7 @@ import {
 } from '@qajet/engine/leadtime';
 import type { OrderOutcome } from '@qajet/engine/learn';
 import { recalibrate } from '@qajet/engine/learn';
-import { roundKzt } from '@qajet/engine/money';
+import { percentOfKzt, roundKzt } from '@qajet/engine/money';
 import type * as schema from '../schema/index.js';
 import {
   DEMO_SUPPLIER_COMPANY_SEED_KEY,
@@ -43,7 +43,7 @@ import type { SeedCategory } from './suppliers.js';
 // ---------------------------------------------------------------------------
 
 /** Плейсхолдер до решения по тарифам (agents.md §17: "финальный процент комиссии — параметр, не константа"). */
-const COMMISSION_RATE_PCT = 12;
+const COMMISSION_RATE_PCT = 23;
 /** Ставка КПН РК, 2026 (agents.md §11.4). */
 const CIT_RATE_PCT = 20;
 const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
@@ -931,6 +931,8 @@ function buildOrder(p: BuildOrderParams): void {
       quoteLineId: line.offerId,
       qty: requestItems.find((ri) => ri.id === line.requestItemId)?.qty ?? 0,
       lineTotalKzt: line.lineTotalKzt,
+      commissionPct: COMMISSION_RATE_PCT,
+      commissionKzt: percentOfKzt(line.lineTotalKzt, COMMISSION_RATE_PCT),
     });
   }
 

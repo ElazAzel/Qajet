@@ -1,6 +1,6 @@
 import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
 import { Card, StatTile } from '@qajet/ui/primitives';
-import { Clock3, FilePlus, ListChecks, Package, Search, Wrench } from 'lucide-react';
+import { Clock3, FilePlus, ListChecks, Package, Repeat, Wrench } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerHome } from '../lib/buyer-home';
@@ -121,10 +121,10 @@ export default async function BuyerHome() {
               sub="Запустить новую закупку"
             />
             <QuickAction
-              href="/buyer/suppliers"
-              icon={<Search size={16} />}
-              title="Найти поставщика"
-              sub="Проверенные партнёры"
+              href="/buyer/reorder"
+              icon={<Repeat size={16} />}
+              title="Повторить заказ"
+              sub="По истории своих заказов"
             />
             <QuickAction
               href="/buyer"

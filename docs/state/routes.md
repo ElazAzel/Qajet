@@ -12,9 +12,9 @@
 | `/buyer` | `layout`, `page` |
 | `/buyer/messages` | `page` |
 | `/buyer/orders/[id]` | `page` |
+| `/buyer/reorder` | `page` |
 | `/buyer/requests/new` | `page` |
 | `/buyer/settings` | `page` |
-| `/buyer/suppliers` | `page` |
 | `/concierge` | `layout`, `page` |
 | `/concierge/orders/[id]` | `page` |
 | `/concierge/orders/[id]/items` | `page` |

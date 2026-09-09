@@ -328,3 +328,36 @@ export function matchNomenclature(
 
   return { value: bestKey, confidence: bestScore, needsClarification: false };
 }
+
+// ---------------------------------------------------------------------------
+// Алиасы — обучение на правках консьержа (extraction_aliases, agents.md §8A)
+// ---------------------------------------------------------------------------
+
+export interface AliasEntry {
+  alias: string;
+  canonical: string;
+  kind: string;
+  hits: number;
+}
+
+/** agents.md §8A: «hits ≥ 3 начинает применяться автоматически». */
+export const ALIAS_AUTO_APPLY_HITS_THRESHOLD = 3;
+
+/**
+ * Ищет подтверждённый алиас для НОРМАЛИЗОВАННОГО текста (см. `normalizeText`)
+ * — словарь передаётся вызывающим кодом, ровно как каталог в
+ * `matchNomenclature`, intake не обращается к базе сам. Ниже порога
+ * `hits` — сигнал ещё не устойчивый, не возвращаем совпадение (agents.md
+ * §8A: не подставлять молча то, что не накопило подтверждений).
+ */
+export function resolveAlias(
+  normalizedText: string,
+  aliases: readonly AliasEntry[],
+  kind: string,
+): string | null {
+  const match = aliases.find(
+    (a) =>
+      a.kind === kind && a.hits >= ALIAS_AUTO_APPLY_HITS_THRESHOLD && a.alias === normalizedText,
+  );
+  return match?.canonical ?? null;
+}
