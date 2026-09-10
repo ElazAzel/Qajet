@@ -16,6 +16,13 @@ export async function generateJuryLink(): Promise<GenerateJuryLinkResult> {
   if (user.role !== 'admin') {
     return { ok: false, error: 'Только админ может создать ссылку для жюри' };
   }
-  const token = createSignedLink(JURY_SCOPE, {}, JURY_LINK_TTL_SECONDS);
-  return { ok: true, token };
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return { ok: false, error: 'Доступ для жюри не настроен в этом окружении.' };
+  }
+  try {
+    const token = createSignedLink(JURY_SCOPE, {}, JURY_LINK_TTL_SECONDS);
+    return { ok: true, token };
+  } catch {
+    return { ok: false, error: 'Секрет подписанных ссылок не настроен.' };
+  }
 }

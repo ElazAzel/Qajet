@@ -7,25 +7,26 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 async function redirectPathFor(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   userId: string,
-): Promise<'/buyer' | '/supplier' | '/concierge' | '/admin'> {
+): Promise<'/buyer' | '/supplier' | '/concierge' | '/admin' | null> {
   const { data: profile } = await supabase
     .from('users')
-    .select('role, companies(type)')
+    .select('role, is_active, companies(type)')
     .eq('id', userId)
     .single();
 
+  if (!profile?.is_active) return null;
   if (profile?.role === 'concierge') return '/concierge';
   if (profile?.role === 'admin') return '/admin';
 
   const companyType = (profile?.companies as { type?: string } | null)?.type;
-  return companyType === 'supplier' ? '/supplier' : '/buyer';
+  return companyType === 'supplier' ? '/supplier' : companyType === 'buyer' ? '/buyer' : null;
 }
 
 export async function signIn(
   _prevState: string | null,
   formData: FormData,
 ): Promise<string | null> {
-  const email = String(formData.get('email') ?? '');
+  const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
 
   if (!email || !password) {
@@ -40,6 +41,10 @@ export async function signIn(
   }
 
   const path = await redirectPathFor(supabase, data.user.id);
+  if (!path) {
+    await supabase.auth.signOut();
+    return 'Профиль недоступен. Обратитесь к администратору QAJET.';
+  }
   redirect(path);
 }
 
@@ -57,5 +62,9 @@ export async function quickSignIn(email: string): Promise<void> {
   if (error || !data.user) return;
 
   const path = await redirectPathFor(supabase, data.user.id);
+  if (!path) {
+    await supabase.auth.signOut();
+    return;
+  }
   redirect(path);
 }

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -10,6 +11,7 @@ import { defineConfig } from 'vitest/config';
  * or fixture".
  */
 export default defineConfig({
+  resolve: { alias: { '@': fileURLToPath(new URL('.', import.meta.url)) } },
   test: {
     exclude: ['**/node_modules/**', '**/.git/**', 'e2e/**'],
   },

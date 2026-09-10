@@ -12,7 +12,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  * `/metrics` не должен провериться как валидный где-то ещё, даже если
  * секрет утечёт вместе с одним конкретным токеном.
  *
- * `LINK_SIGNING_SECRET` — обязателен в проде. Без него используется
+ * `LINK_SIGNING_SECRET` — обязателен в проде. Только в разработке используется
  * фиксированная dev-заглушка (agents.md §2: проект обязан запускаться
  * без единого внешнего ключа) — она НЕ секрет, любой, кто читал этот
  * файл, может подделать токен, если реальный секрет не задан.
@@ -21,6 +21,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 const DEV_FALLBACK_SECRET = 'qajet-dev-only-insecure-link-signing-secret-do-not-use-in-prod';
 
 function getSecret(): string {
+  if (!process.env.LINK_SIGNING_SECRET && process.env.NODE_ENV === 'production') {
+    throw new Error('LINK_SIGNING_SECRET не задан — подписанные ссылки отключены.');
+  }
   return process.env.LINK_SIGNING_SECRET || DEV_FALLBACK_SECRET;
 }
 
@@ -57,6 +60,8 @@ export function createSignedLink<T>(scope: string, payload: T, ttlSeconds: numbe
  * какая именно проверка не прошла (не давать атакующему обратную связь).
  */
 export function verifySignedLink<T>(token: string, expectedScope: string): T | null {
+  if (!process.env.LINK_SIGNING_SECRET && process.env.NODE_ENV === 'production') return null;
+  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) return null;
   const dotIndex = token.indexOf('.');
   if (dotIndex === -1) return null;
   const bodyB64 = token.slice(0, dotIndex);
@@ -74,13 +79,14 @@ export function verifySignedLink<T>(token: string, expectedScope: string): T | n
     return null;
   }
 
-  let body: SignedLinkBody<T>;
+  let body: Partial<SignedLinkBody<T>> | null;
   try {
     body = JSON.parse(Buffer.from(bodyB64, 'base64url').toString('utf8'));
   } catch {
     return null;
   }
-  if (body.scope !== expectedScope) return null;
-  if (Math.floor(Date.now() / 1000) > body.exp) return null;
-  return body.payload;
+  if (!body || typeof body !== 'object' || body.scope !== expectedScope) return null;
+  if (typeof body.exp !== 'number' || !Number.isSafeInteger(body.exp)) return null;
+  if (Math.floor(Date.now() / 1000) >= body.exp) return null;
+  return body.payload ?? null;
 }

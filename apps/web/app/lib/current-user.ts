@@ -36,6 +36,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
 
 interface RoleRow {
   role: UserRole;
+  is_active: boolean;
   company_id: string | null;
   companies: { name: string; type: CompanyType } | { name: string; type: CompanyType }[] | null;
 }
@@ -54,15 +55,22 @@ export async function requireCurrentUser(): Promise<CurrentUser> {
     pd.getUserContact(authUser.id),
     supabase
       .from('users')
-      .select('role, company_id, companies(name, type)')
+      .select('role, is_active, company_id, companies(name, type)')
       .eq('id', authUser.id)
       .maybeSingle<RoleRow>(),
   ]);
-  if (!contact || !roleResult.data) redirect('/login');
+  if (!contact || !roleResult.data?.is_active) redirect('/login');
 
   const company = Array.isArray(roleResult.data.companies)
     ? roleResult.data.companies[0]
     : roleResult.data.companies;
+
+  if (
+    roleResult.data.role !== 'admin' &&
+    roleResult.data.role !== 'concierge' &&
+    (!roleResult.data.company_id || !company)
+  )
+    redirect('/login');
 
   return {
     id: contact.id,

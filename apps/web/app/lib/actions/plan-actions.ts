@@ -60,32 +60,6 @@ async function loadPlanLineForUpdate(
   };
 }
 
-/** Пересчитывает агрегат plans.commission_kzt/total_kzt по сумме своих
- *  plan_lines — вызывается после каждой точечной правки строки. */
-async function recomputePlanAggregate(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  planId: string,
-): Promise<string | null> {
-  const [{ data: plan }, { data: lines }] = await Promise.all([
-    supabase
-      .from('plans')
-      .select('total_supplier_kzt, delivery_kzt')
-      .eq('id', planId)
-      .maybeSingle(),
-    supabase.from('plan_lines').select('commission_kzt').eq('plan_id', planId),
-  ]);
-  if (!plan) return 'План не найден';
-
-  const commissionKzt = (lines ?? []).reduce((sum, l) => sum + l.commission_kzt, 0);
-  const totalKzt = plan.total_supplier_kzt + plan.delivery_kzt + commissionKzt;
-
-  const { error } = await supabase
-    .from('plans')
-    .update({ commission_kzt: commissionKzt, total_kzt: totalKzt })
-    .eq('id', planId);
-  return error?.message ?? null;
-}
-
 export async function updatePlanLineCommission(
   planLineId: string,
   pct: number,
@@ -126,8 +100,7 @@ export async function updatePlanLineCommission(
     .eq('id', planLineId);
   if (updateError) return { ok: false, error: updateError.message };
 
-  const aggregateError = await recomputePlanAggregate(supabase, line.planId);
-  if (aggregateError) return { ok: false, error: aggregateError };
+  // The database updates the aggregate in the same transaction as the line.
 
   if (line.category) {
     await supabase.from('learning_events').insert({

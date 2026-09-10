@@ -33,51 +33,43 @@ export async function submitQuote(rfqId: string, lines: QuoteLineInput[]): Promi
   if (lines.length === 0) {
     return { ok: false, error: 'Укажите цену хотя бы по одной позиции' };
   }
+  if (new Set(lines.map((line) => line.requestItemId)).size !== lines.length) {
+    return { ok: false, error: 'Каждая позиция должна встречаться в КП только один раз' };
+  }
   for (const line of lines) {
-    if (!Number.isFinite(line.unitPriceKzt) || line.unitPriceKzt <= 0) {
-      return { ok: false, error: 'Укажите корректную цену за единицу' };
+    if (!Number.isSafeInteger(line.unitPriceKzt) || line.unitPriceKzt <= 0) {
+      return { ok: false, error: 'Цена должна быть целым числом тенге больше нуля' };
     }
-    if (!Number.isFinite(line.leadTimeDays) || line.leadTimeDays <= 0) {
+    if (
+      !Number.isInteger(line.leadTimeDays) ||
+      line.leadTimeDays <= 0 ||
+      line.leadTimeDays > 2147483647
+    ) {
       return { ok: false, error: 'Укажите корректный срок поставки' };
+    }
+    if (!Number.isSafeInteger(line.setupFeeKzt ?? 0) || (line.setupFeeKzt ?? 0) < 0) {
+      return {
+        ok: false,
+        error: 'Стоимость подготовки должна быть целым неотрицательным числом тенге',
+      };
+    }
+    if (
+      line.minQty !== undefined &&
+      (!Number.isInteger(line.minQty) || line.minQty <= 0 || line.minQty > 2147483647)
+    ) {
+      return { ok: false, error: 'Минимальное количество должно быть целым числом больше нуля' };
     }
   }
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: rfq } = await supabase
-    .from('rfqs')
-    .select('id, status')
-    .eq('id', rfqId)
-    .maybeSingle();
-  if (!rfq) return { ok: false, error: 'RFQ не найден' };
-  if (rfq.status !== 'sent') return { ok: false, error: 'На этот запрос уже дан ответ' };
-
-  const { data: quote, error: quoteError } = await supabase
-    .from('quotes')
-    .insert({ rfq_id: rfqId, source: 'form' })
-    .select('id')
-    .single();
-  if (quoteError || !quote)
-    return { ok: false, error: quoteError?.message ?? 'Не удалось создать КП' };
-
-  const { error: linesError } = await supabase.from('quote_lines').insert(
-    lines.map((line) => ({
-      quote_id: quote.id,
-      request_item_id: line.requestItemId,
-      unit_price_kzt: Math.round(line.unitPriceKzt),
-      lead_time_days: Math.round(line.leadTimeDays),
-      setup_fee_kzt: Math.round(line.setupFeeKzt ?? 0),
-      min_qty: line.minQty ?? null,
-      capability_confirmed: true,
-    })),
-  );
-  if (linesError) return { ok: false, error: linesError.message };
-
-  const { error: rfqError } = await supabase
-    .from('rfqs')
-    .update({ status: 'quoted' })
-    .eq('id', rfqId);
-  if (rfqError) return { ok: false, error: rfqError.message };
+  // One transaction locks the RFQ and validates item ownership before any
+  // writes. A failed line or a second concurrent response leaves no orphan КП.
+  const { error } = await supabase.rpc('submit_supplier_quote', {
+    p_rfq_id: rfqId,
+    p_lines: lines,
+  });
+  if (error) return { ok: false, error: error.message };
 
   revalidatePath('/supplier');
   revalidatePath(`/supplier/rfq/${rfqId}`);
@@ -91,9 +83,15 @@ export async function declineRfq(rfqId: string): Promise<ActionResult> {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('rfqs').update({ status: 'declined' }).eq('id', rfqId);
+  const { error, count } = await supabase
+    .from('rfqs')
+    .update({ status: 'declined' }, { count: 'exact' })
+    .eq('id', rfqId)
+    .eq('status', 'sent');
   if (error) return { ok: false, error: error.message };
+  if (count !== 1) return { ok: false, error: 'Запрос недоступен или на него уже дан ответ' };
 
   revalidatePath('/supplier');
+  revalidatePath(`/supplier/rfq/${rfqId}`);
   return { ok: true };
 }
