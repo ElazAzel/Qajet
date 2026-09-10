@@ -1,20 +1,22 @@
 'use client';
 
 import { useAsyncAction } from '@qajet/ui/hooks';
-import { Button } from '@qajet/ui/primitives';
+import { Button, buttonClass } from '@qajet/ui/primitives';
+import Link from 'next/link';
 import { useState } from 'react';
-import { advanceOrderStage, approvePlan } from '../../../lib/actions/order-actions';
+import { advanceOrderStage } from '../../../lib/actions/order-actions';
 import { hapticSuccess } from '../../../lib/native-bridge';
 
+/**
+ * Ведёт на экран подтверждения, а не утверждает сразу: §11.3 требует
+ * показать реквизиты, состав, срок, порядок оплаты и условия возврата ДО
+ * согласия. Само `approvePlan()` вызывается там (confirm/_confirm-cta.tsx).
+ */
 export function ApprovePlanCta({ orderId }: { orderId: string }) {
-  const { run, pending, error } = useAsyncAction(approvePlan, hapticSuccess);
   return (
-    <div className="flex flex-col items-start gap-1.5">
-      <Button variant="primary" loading={pending} onClick={() => run(orderId)}>
-        {pending ? 'Утверждаю…' : 'Утвердить план'}
-      </Button>
-      {error && <p className="text-fine text-signal">{error}</p>}
-    </div>
+    <Link href={`/buyer/orders/${orderId}/confirm`} className={buttonClass('primary')}>
+      Перейти к подтверждению
+    </Link>
   );
 }
 

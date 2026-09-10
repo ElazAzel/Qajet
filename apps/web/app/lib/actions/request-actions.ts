@@ -1,5 +1,6 @@
 'use server';
 
+import { findRestrictedCategory, restrictedCategoryMessage } from '@qajet/engine/compliance';
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CATALOG_BY_KEY, type CatalogItem } from '../catalog';
@@ -58,6 +59,16 @@ export async function createRequest(
   }
   if (input.items.length === 0) {
     return { ok: false, error: 'Добавьте хотя бы одну позицию' };
+  }
+
+  // Жёсткий фильтр категорий (agents.md §11.5) — именно здесь, в валидаторе
+  // на сервере, а не подсказкой в интерфейсе: клиентскую проверку можно
+  // обойти, отправив запрос напрямую. Позиции берутся из фиксированного
+  // каталога, где регулируемых категорий нет вовсе, поэтому проверяется
+  // свободный текст — название и описание заявки.
+  const restricted = findRestrictedCategory(input.title, input.description);
+  if (restricted) {
+    return { ok: false, error: restrictedCategoryMessage(restricted) };
   }
 
   const resolvedItems: {

@@ -82,6 +82,7 @@ async function logStageEvent(
   toState: OrderState,
   actorUserId: string,
   actor: OrderActor,
+  note?: string,
 ): Promise<string | null> {
   // Автотаймер (agents.md §9, autotimer.ts) — читает предыдущий
   // order_stage_events ДО вставки нового, иначе нашёл бы сам себя.
@@ -93,6 +94,7 @@ async function logStageEvent(
     from_state: fromState,
     to_state: toState,
     actor_user_id: actorUserId,
+    ...(note ? { note } : {}),
   });
   return error?.message ?? null;
 }
@@ -297,6 +299,18 @@ export async function approvePlan(orderId: string): Promise<ActionResult> {
   const { error: planError } = await supabase.rpc('approve_plan', { p_order_id: order.id });
   if (planError) return { ok: false, error: 'Нет доступа к этому плану' };
 
+  // Audit log §11.3: «кто → когда → какую версию плана → подтвердил».
+  // Кто и когда пишет сам order_stage_events (actor_user_id, at); версия
+  // плана — единственное, чего в событии не было, а без неё запись не
+  // отвечает на вопрос, ЧТО именно утвердили: план живёт версиями, и
+  // «утвердил план заказа» без номера версии не восстанавливает решение.
+  const { data: approvedPlan } = await supabase
+    .from('plans')
+    .select('version')
+    .eq('id', order.approved_plan_id)
+    .maybeSingle();
+  const auditNote = `Утверждена версия плана ${approvedPlan?.version ?? '?'} (${order.approved_plan_id})`;
+
   const { error: orderError } = await supabase
     .from('orders')
     .update({ state: 'plan_approved' })
@@ -310,6 +324,7 @@ export async function approvePlan(orderId: string): Promise<ActionResult> {
     'plan_approved',
     user.id,
     actor,
+    auditNote,
   );
   if (eventError) return { ok: false, error: eventError };
 
