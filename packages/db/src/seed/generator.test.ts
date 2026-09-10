@@ -238,4 +238,36 @@ describe('generateSeedDataset', () => {
     // §15: изменение утверждённого плана существует как отдельная сущность.
     expect(dataset.changeRequests.length).toBeGreaterThan(0);
   });
+  it('у демо-заказа дедлайн шире реальных сроков в КП — иначе сравнивать нечего', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    const order = dataset.orders.find((o) => o.state === 'quotes_received');
+    const request = dataset.requests.find((r) => r.id === order?.requestId);
+    expect(request?.deadlineDate).toBeDefined();
+
+    const rfqIds = new Set(
+      dataset.rfqs.filter((r) => r.requestId === request?.id).map((r) => r.id as string),
+    );
+    const quoteIds = new Set(
+      dataset.quotes.filter((q) => rfqIds.has(q.rfqId as string)).map((q) => q.id as string),
+    );
+    const leadDays = dataset.quoteLines
+      .filter((l) => quoteIds.has(l.quoteId as string))
+      .map((l) => l.leadTimeDays as number);
+
+    // Один намеренный выброс (§13, сцена 4) обязан НЕ проходить по сроку.
+    const outlier = Math.max(...leadDays);
+    expect(outlier).toBeGreaterThan(30);
+
+    const realistic = leadDays.filter((d) => d < 30);
+    const daysUntilDeadline = Math.round(
+      (new Date(`${request?.deadlineDate}T00:00:00.000Z`).getTime() -
+        new Date(PARAMS.referenceDateIso).getTime()) /
+        86_400_000,
+    );
+    // Самый долгий реальный срок плюс межгородний буфер логистики обязан
+    // помещаться в дедлайн: без этого combine() бракует все предложения и
+    // главный экран продукта показывает «ни один вариант не прошёл».
+    expect(daysUntilDeadline).toBeGreaterThan(Math.max(...realistic) + 3);
+    expect(daysUntilDeadline).toBeLessThan(outlier);
+  });
 });
