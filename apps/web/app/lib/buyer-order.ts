@@ -41,6 +41,27 @@ export interface BuyerOrderPlan {
   supplierCount: number;
 }
 
+/**
+ * Журнал отбраковки — §15 (обязательный пункт: «отбракованное предложение
+ * попадает в журнал с человеческой причиной и видно покупателю») и §16.2
+ * («отказ с причиной — доказательство работы, а не служебный лог»). Раньше
+ * `plan_rejections` читал только экран консьержа, хотя RLS
+ * `plan_rejections_select_via_request` пускает покупателя к своим строкам
+ * с самого начала.
+ *
+ * Причины сгруппированы по коду и показаны с количеством: покупателю важно
+ * «сколько предложений и почему не прошли», а не построчный список, из
+ * которого можно было бы восстановить число и состав участников тендера.
+ * Личность исполнителя тексты причин не содержат (ADR-0009) — спека прямо
+ * требует причины «по существу (срок, партия, требования), не „поставщик X
+ * отказал"».
+ */
+export interface RejectionSummary {
+  reasonCode: string;
+  reasonHuman: string;
+  count: number;
+}
+
 export interface BuyerOrderDetail {
   id: string;
   requestId: string;
@@ -53,6 +74,7 @@ export interface BuyerOrderDetail {
   settlementAmountKzt: number | null;
   plan: BuyerOrderPlan | null;
   events: StageEvent[];
+  rejections: RejectionSummary[];
 }
 
 export async function loadBuyerOrder(
@@ -90,6 +112,24 @@ export async function loadBuyerOrder(
     }
   }
 
+  const { data: rejectionRows } = await supabase
+    .from('plan_rejections')
+    .select('reason_code, reason_human')
+    .eq('request_id', order.request_id);
+
+  const rejectionByCode = new Map<string, RejectionSummary>();
+  for (const row of rejectionRows ?? []) {
+    const existing = rejectionByCode.get(row.reason_code);
+    if (existing) existing.count += 1;
+    else
+      rejectionByCode.set(row.reason_code, {
+        reasonCode: row.reason_code,
+        reasonHuman: row.reason_human,
+        count: 1,
+      });
+  }
+  const rejections = [...rejectionByCode.values()].sort((a, b) => b.count - a.count);
+
   const { data: eventRows } = await supabase
     .from('order_stage_events')
     .select('to_state, at, users(full_name)')
@@ -118,5 +158,6 @@ export async function loadBuyerOrder(
     settlementAmountKzt: order.settlement_amount_kzt,
     plan,
     events,
+    rejections,
   };
 }

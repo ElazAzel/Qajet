@@ -3,8 +3,9 @@
 import { Bell, Search } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
+import { CommandPalette, type CommandPaletteItem } from './command-palette';
 
 /**
  * Общая оболочка ролей — §12: сайдбар 240px + хедер 80px одинаковы для
@@ -75,6 +76,28 @@ export function ShellLayout({
   const pathname = usePathname();
   const router = useRouter();
   const ordersHref = navItems[0]?.href;
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Палитра (⌘K) монтируется здесь, а не в каждой роли: компонент был
+  // написан целиком, но не подключён нигде — ⌘K не работал, кнопка поиска
+  // в хедере не имела обработчика, а нативная оболочка (apps/desktop)
+  // слала глобальный хоткей `global-shortcut:command-palette` в пустоту.
+  // Пункты — та же навигация роли: палитра обязана вести туда же, куда
+  // ведёт сайдбар, а не заводить второй список маршрутов.
+  const paletteItems: CommandPaletteItem[] = useMemo(
+    () =>
+      navItems.map((item) => ({
+        key: item.key,
+        label: item.label,
+        hint: item.href,
+        group: 'Навигация',
+        onSelect: () => {
+          setPaletteOpen(false);
+          router.push(item.href);
+        },
+      })),
+    [navItems, router],
+  );
 
   // `g o` — план §"Оболочка ПК": «g o к заказам». Первый пункт навигации
   // каждой роли и есть её экран заказов (buyer/supplier/concierge/admin —
@@ -115,6 +138,7 @@ export function ShellLayout({
 
   return (
     <div className="flex min-h-screen bg-page">
+      <CommandPalette items={paletteItems} open={paletteOpen} onOpenChange={setPaletteOpen} />
       <aside
         className={cn(
           'hidden w-60 shrink-0 flex-col border-r px-4 py-6 md:flex',
@@ -167,6 +191,7 @@ export function ShellLayout({
             {search && (
               <button
                 type="button"
+                onClick={() => setPaletteOpen(true)}
                 className="hidden items-center gap-2 rounded-pill border border-rule bg-page px-4 py-2 text-sm text-muted md:flex"
               >
                 <Search size={16} aria-hidden="true" />

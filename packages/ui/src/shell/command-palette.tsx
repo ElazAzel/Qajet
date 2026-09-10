@@ -2,7 +2,7 @@
 
 import { Command } from 'cmdk';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { easing, seconds } from '../motion/tokens';
 
 /**
@@ -18,8 +18,31 @@ export interface CommandPaletteItem {
   group: string;
 }
 
-export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
-  const [open, setOpen] = useState(false);
+/**
+ * `open`/`onOpenChange` необязательны: без них палитра держит состояние
+ * сама (⌘K и глобальный хоткей Tauri), с ними — им может управлять и
+ * оболочка, чтобы кнопка поиска в хедере открывала то же самое окно, а не
+ * оставалась кнопкой без действия.
+ */
+export function CommandPalette({
+  items,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  items: CommandPaletteItem[];
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const resolve = (prev: boolean) => (typeof next === 'function' ? next(prev) : next);
+      if (onOpenChange) onOpenChange(resolve(controlledOpen ?? uncontrolledOpen));
+      else setUncontrolledOpen(resolve);
+    },
+    [controlledOpen, onOpenChange, uncontrolledOpen],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -31,7 +54,7 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [setOpen]);
 
   // Одна и та же страница открывается и в браузере, и в оболочке Tauri
   // (apps/desktop) — глобальный хоткей там ловит нативный слой ОС (браузер
@@ -48,7 +71,7 @@ export function CommandPalette({ items }: { items: CommandPaletteItem[] }) {
       });
     });
     return () => unlisten?.();
-  }, []);
+  }, [setOpen]);
 
   const groups = groupBy(items, (item) => item.group);
 

@@ -63,3 +63,65 @@ $$;
 -- никому не нужно, лучше отозвать, а не полагаться на то, что внутренняя
 -- проверка не даст им воспользоваться.
 REVOKE EXECUTE ON FUNCTION public.set_team_member_access(uuid, bigint, boolean) FROM anon;
+--> statement-breakpoint
+-- §15: «изменение утверждённого плана создаёт новую версию, а не правит
+-- заказ». До этого триггера правило жило только в приложении
+-- (PLAN_EDITABLE_STATES, apps/web/app/lib/order-state.ts), а
+-- plans_update_staff/plan_lines_update_staff позволяли staff-сессии
+-- переписать суммы уже утверждённого плана напрямую через PostgREST — то
+-- есть поменять цену задним числом после согласия покупателя. Второй,
+-- независимый барьер в Postgres — тот же приём, что enforce_order_transition
+-- (0001_pale_lockjaw.sql). Смена статуса approved → superseded остаётся
+-- разрешённой: именно так и выглядит «завести новую версию».
+CREATE OR REPLACE FUNCTION public.enforce_approved_plan_immutable()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF OLD.status <> 'approved' THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.total_supplier_kzt IS DISTINCT FROM OLD.total_supplier_kzt
+     OR NEW.delivery_kzt IS DISTINCT FROM OLD.delivery_kzt
+     OR NEW.commission_kzt IS DISTINCT FROM OLD.commission_kzt
+     OR NEW.commission_base IS DISTINCT FROM OLD.commission_base
+     OR NEW.tax_effect_kzt IS DISTINCT FROM OLD.tax_effect_kzt
+     OR NEW.total_kzt IS DISTINCT FROM OLD.total_kzt
+     OR NEW.eta_date IS DISTINCT FROM OLD.eta_date
+     OR NEW.slack_days IS DISTINCT FROM OLD.slack_days
+     OR NEW.supplier_count IS DISTINCT FROM OLD.supplier_count
+     OR NEW.version IS DISTINCT FROM OLD.version
+     OR NEW.request_id IS DISTINCT FROM OLD.request_id THEN
+    RAISE EXCEPTION 'Утверждённый план изменять нельзя — заведите новую версию плана (agents.md §15)';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS enforce_approved_plan_immutable ON public.plans;--> statement-breakpoint
+CREATE TRIGGER enforce_approved_plan_immutable
+  BEFORE UPDATE ON public.plans
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_approved_plan_immutable();--> statement-breakpoint
+-- Состав утверждённого плана — та же гарантия: переписать строку плана
+-- значит изменить и цену, и что именно закупается.
+CREATE OR REPLACE FUNCTION public.enforce_approved_plan_lines_immutable()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+  v_status text;
+BEGIN
+  SELECT status INTO v_status FROM public.plans WHERE id = OLD.plan_id;
+  IF v_status = 'approved' THEN
+    RAISE EXCEPTION 'Строки утверждённого плана изменять нельзя — заведите новую версию плана (agents.md §15)';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS enforce_approved_plan_lines_immutable ON public.plan_lines;--> statement-breakpoint
+CREATE TRIGGER enforce_approved_plan_lines_immutable
+  BEFORE UPDATE OR DELETE ON public.plan_lines
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_approved_plan_lines_immutable();

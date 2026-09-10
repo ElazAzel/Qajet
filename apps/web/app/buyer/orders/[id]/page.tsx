@@ -80,6 +80,29 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
         </Reveal>
       )}
 
+      {order.rejections.length > 0 && (
+        <Reveal className="mt-6" from="up">
+          <Card padding="sm">
+            <p className="text-sm font-bold text-ink">Что не прошло и почему</p>
+            <p className="mt-1 text-fine text-muted">
+              Предложения, отбракованные при сборке плана. Причины — по существу; кто именно
+              предлагал, подбирает и проверяет QAJET.
+            </p>
+            <ul className="mt-3 flex flex-col gap-2">
+              {order.rejections.map((rejection) => (
+                <li
+                  key={rejection.reasonCode}
+                  className="flex items-start justify-between gap-3 border-rule border-t pt-2 text-fine first:border-t-0 first:pt-0"
+                >
+                  <span className="text-ink">{rejection.reasonHuman}</span>
+                  <span className="numeric shrink-0 text-muted">{rejection.count}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </Reveal>
+      )}
+
       {canAccept && (
         <Reveal className="mt-6" from="up">
           <AcceptDeliveryCta orderId={order.id} />
