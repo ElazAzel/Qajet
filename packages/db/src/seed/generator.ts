@@ -1503,7 +1503,11 @@ function buildQuotesReceivedDemoOrder(args: {
   const catalog = catalogInCategory(category);
   const sixItems = [...catalog, ...catalog].slice(0, 6);
   const requestId = randomUUID();
-  const createdAt = addDays(referenceDate, -2);
+  // Пять стадий идут по дню на каждую и обязаны закончиться СЕГОДНЯ: заказ
+  // ждёт разбора КП прямо сейчас. При старте в -2 последние два события
+  // оказывались в будущем, и таймлайн у покупателя показывал даты, которые
+  // ещё не наступили.
+  const createdAt = addDays(referenceDate, -4);
   const deadlineDate = addDays(referenceDate, 6);
 
   const requestItems = sixItems.map((item) => ({
