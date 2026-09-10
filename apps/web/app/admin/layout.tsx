@@ -1,5 +1,5 @@
 import { AdminShell } from '@qajet/ui/shell';
-import { Gauge, LineChart, ShieldCheck } from 'lucide-react';
+import { Gauge, LineChart, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { requireActor, shellUserFrom } from '../lib/current-user';
 
@@ -8,7 +8,7 @@ import { requireActor, shellUserFrom } from '../lib/current-user';
  * с тёмным сайдбаром и лаймовым активным пунктом (§12) — единственная
  * инверсия тона во всём продукте.
  *
- * «Настройки»/«Финансы»/«Споры»/«Outbox» убраны из навигации — соответствующие
+ * «Финансы»/«Споры»/«Outbox» убраны из навигации — соответствующие
  * маршруты не реализованы, вели на 404. При реализации экранов вернуть
  * пункты сюда, не создавать новые.
  */
@@ -21,6 +21,12 @@ const NAV_ITEMS = [
     icon: <LineChart size={18} />,
   },
   { key: 'metrics', href: '/metrics', label: 'Метрики', icon: <Gauge size={18} /> },
+  {
+    key: 'settings',
+    href: '/admin/settings',
+    label: 'Параметры',
+    icon: <SlidersHorizontal size={18} />,
+  },
 ];
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {

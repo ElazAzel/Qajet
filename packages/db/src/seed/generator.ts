@@ -72,6 +72,8 @@ const ACTIVE_TIME_LEARNING_DROP = 0.45;
 const COMMISSION_RATE_PCT = 23;
 /** Ставка КПН РК, 2026 (agents.md §11.4). */
 const CIT_RATE_PCT = 20;
+/** Стоимость часа закупщика (agents.md §9) — параметр экономики, правится админом вживую. */
+const PROCUREMENT_HOUR_COST_KZT = 4500;
 const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
 const LOGISTICS_BUFFER_INTERCITY_DAYS = 3;
 
@@ -297,6 +299,10 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
     { key: 'commission_rate_pct', value: COMMISSION_RATE_PCT },
     { key: 'commission_base', value: 'supplier_ex_delivery' },
     { key: 'cit_rate_pct', value: CIT_RATE_PCT },
+    // Стоимость часа закупщика (agents.md §9) — из неё считается полная
+    // стоимость обслуживания заказа и вклад после прямых затрат. Параметра
+    // не было ни в сиде, ни в базе, поэтому метрика не считалась вовсе.
+    { key: 'procurement_hour_cost_kzt', value: PROCUREMENT_HOUR_COST_KZT },
     { key: 'logistics_buffer_days_almaty', value: LOGISTICS_BUFFER_ALMATY_DAYS },
     { key: 'logistics_buffer_days_intercity', value: LOGISTICS_BUFFER_INTERCITY_DAYS },
     // Подбор поставщиков под RFQ (agents.md §8C) — apps/web/app/lib/actions/order-actions.ts

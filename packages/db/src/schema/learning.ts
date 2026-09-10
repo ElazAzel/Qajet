@@ -314,6 +314,19 @@ export const settings = pgTable(
       to: authenticatedRole,
       using: sql`${t.key} = 'qajet_requisites'`,
     }),
+    // Правка параметров вживую — agents.md §9: «стоимость часа закупщика и
+    // ставка комиссии — параметры в settings, чтобы на сцене можно было при
+    // вопросе жюри поменять цифру и показать пересчёт вживую». До этого
+    // таблица была только на чтение из приложения, и «поменять цифру»
+    // означало лезть в базу руками. Только админ: комиссия и ставка часа
+    // определяют экономику всех заказов, консьержу этого не нужно.
+    pgPolicy('settings_write_admin', {
+      as: 'permissive',
+      for: 'all',
+      to: authenticatedRole,
+      using: sql`${currentRoleSubquery} = 'admin'`,
+      withCheck: sql`${currentRoleSubquery} = 'admin'`,
+    }),
     pgPolicy('settings_service_all', {
       as: 'permissive',
       for: 'all',

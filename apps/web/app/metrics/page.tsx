@@ -1,5 +1,5 @@
 import { Reveal, Stagger } from '@qajet/ui/motion';
-import { formatKzt, StatTile } from '@qajet/ui/primitives';
+import { Card, formatKzt, StatTile } from '@qajet/ui/primitives';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireActor } from '../lib/current-user';
 import { loadMetrics } from '../lib/metrics';
@@ -110,7 +110,55 @@ export default async function MetricsPage({
             tone="muted"
             className="p-6"
           />
+          <StatTile
+            title="Полная стоимость обслуживания заказа"
+            value={metrics.serviceCost ? formatKzt(metrics.serviceCost.fullCostKzt) : 'нет данных'}
+            note={
+              metrics.serviceCost
+                ? `${metrics.serviceCost.directHours.toFixed(1)} ч своих + ${metrics.serviceCost.allocatedHours.toFixed(1)} ч с несостоявшихся подборов · ставка ${formatKzt(metrics.serviceCost.hourCostKzt)}/ч`
+                : 'Нужны записи учёта времени и ставка часа закупщика в settings'
+            }
+            tone="muted"
+            className="p-6"
+          />
+          <StatTile
+            title="Вклад после прямых затрат"
+            value={
+              metrics.contributionPerOrderKzt !== null
+                ? formatKzt(metrics.contributionPerOrderKzt)
+                : 'нет данных'
+            }
+            note="Комиссия на заказ минус полная стоимость обслуживания, включая подборы без сделки (agents.md §9)"
+            className="p-6"
+          />
         </Stagger>
+
+        {metrics.hoursTrend.length > 1 && (
+          <Reveal className="mt-6">
+            <Card padding="sm">
+              <p className="text-sm font-bold text-ink">Часы на заказ по месяцам</p>
+              <p className="mt-1 text-fine text-muted">
+                Одно среднее не показывает, растёт эффективность или нет (agents.md §9).
+              </p>
+              <ul className="mt-4 flex flex-col gap-2">
+                {metrics.hoursTrend.map((point) => (
+                  <li key={point.month} className="flex items-center gap-3">
+                    <span className="w-16 shrink-0 text-fine text-muted">{point.month}</span>
+                    <span
+                      className="h-2 rounded-pill bg-purple"
+                      style={{ width: `${barWidthPct(point.hoursPerOrder, metrics.hoursTrend)}%` }}
+                      aria-hidden="true"
+                    />
+                    <span className="numeric shrink-0 text-fine text-ink">
+                      {point.hoursPerOrder.toFixed(1)} ч
+                    </span>
+                    <span className="shrink-0 text-fine text-muted">{point.orders} зак.</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </Reveal>
+        )}
       </div>
     </div>
   );
@@ -119,4 +167,11 @@ export default async function MetricsPage({
 async function requireAdminSession() {
   await requireActor('admin');
   return createSupabaseServerClient();
+}
+
+/** Ширина полосы относительно самого длинного месяца — сравнение внутри
+ *  ряда, а не абсолютная шкала: важно направление тренда. */
+function barWidthPct(hours: number, trend: { hoursPerOrder: number }[]): number {
+  const max = Math.max(...trend.map((p) => p.hoursPerOrder));
+  return max > 0 ? Math.max(4, Math.round((hours / max) * 100)) : 4;
 }

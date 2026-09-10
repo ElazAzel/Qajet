@@ -1,0 +1,1 @@
+CREATE POLICY "settings_write_admin" ON "settings" AS PERMISSIVE FOR ALL TO "authenticated" USING ((select public.current_role()) = 'admin') WITH CHECK ((select public.current_role()) = 'admin');

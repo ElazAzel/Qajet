@@ -7,6 +7,31 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * `null`, пока ни одной записи ещё нет, а не подрисованное число.
  */
 
+/**
+ * Полная стоимость обслуживания заказа (§9): время, потраченное на подборы,
+ * которые НЕ привели к заказу, разносится на выигранные через коэффициент
+ * конверсии. Спека требует показывать это открыто — «полная стоимость
+ * обслуживания заказа с учётом несостоявшихся подборов», а не прятать
+ * невыигранные RFQ из юнит-экономики.
+ */
+export interface ServiceCost {
+  /** Средние часы на выигранный заказ — только его собственное время. */
+  directHours: number;
+  /** Доля часов, разнесённая с несостоявшихся подборов. */
+  allocatedHours: number;
+  /** Ставка часа закупщика из settings — параметр, а не константа (§9). */
+  hourCostKzt: number;
+  /** Полная себестоимость обслуживания одного выигранного заказа. */
+  fullCostKzt: number;
+}
+
+export interface HoursTrendPoint {
+  /** YYYY-MM */
+  month: string;
+  hoursPerOrder: number;
+  orders: number;
+}
+
 export interface MetricsData {
   rfqConversion: { requestsWithRfq: number; requestsWithRfqAndOrder: number };
   estimatorMapePct: number | null;
@@ -14,7 +39,13 @@ export interface MetricsData {
   gmv: { closedOrders: number; totalKzt: number };
   commission: { closedOrders: number; totalKzt: number; avgKzt: number };
   avgHoursPerOrder: number | null;
+  /** Тренд активных часов на заказ по месяцам (§9) — одно среднее скрывает, растёт эффективность или нет. */
+  hoursTrend: HoursTrendPoint[];
+  serviceCost: ServiceCost | null;
+  /** Вклад после прямых затрат на заказ (§9): комиссия минус себестоимость обслуживания. */
+  contributionPerOrderKzt: number | null;
   commissionRatePct: number;
+  hourCostKzt: number;
 }
 
 export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData> {
@@ -79,7 +110,9 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
     .reduce((sum, o) => sum + (o.final_cost_kzt ?? 0), 0);
   const commissionTotal = (closedPlans ?? []).reduce((sum, p) => sum + p.commission_kzt, 0);
 
-  const { data: timeEntryRows } = await supabase.from('time_entries').select('order_id, seconds');
+  const { data: timeEntryRows } = await supabase
+    .from('time_entries')
+    .select('order_id, seconds, created_at');
   const secondsByOrder = new Map<string, number>();
   for (const row of timeEntryRows ?? []) {
     secondsByOrder.set(row.order_id, (secondsByOrder.get(row.order_id) ?? 0) + row.seconds);
@@ -89,11 +122,51 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
       ? [...secondsByOrder.values()].reduce((s, v) => s + v, 0) / secondsByOrder.size / 3600
       : null;
 
-  const { data: commissionSetting } = await supabase
+  // Тренд по месяцам (§9). Месяц берётся по времени самой записи учёта, а не
+  // по дате закрытия заказа: вопрос «сколько часов тратим сейчас» — про
+  // работу, которая идёт в этом месяце, а не про заказы, закрытые в нём.
+  const monthly = new Map<string, { seconds: number; orders: Set<string> }>();
+  for (const row of timeEntryRows ?? []) {
+    const month = String(row.created_at).slice(0, 7);
+    const bucket = monthly.get(month) ?? { seconds: 0, orders: new Set<string>() };
+    bucket.seconds += row.seconds;
+    bucket.orders.add(row.order_id);
+    monthly.set(month, bucket);
+  }
+  const hoursTrend: HoursTrendPoint[] = [...monthly.entries()]
+    .map(([month, bucket]) => ({
+      month,
+      hoursPerOrder: bucket.seconds / bucket.orders.size / 3600,
+      orders: bucket.orders.size,
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+
+  const { data: settingRows } = await supabase
     .from('settings')
-    .select('value')
-    .eq('key', 'commission_rate_pct')
-    .maybeSingle();
+    .select('key, value')
+    .in('key', ['commission_rate_pct', 'procurement_hour_cost_kzt']);
+  const settingValue = (key: string): number | null => {
+    const row = (settingRows ?? []).find((r) => r.key === key);
+    return typeof row?.value === 'number' ? row.value : null;
+  };
+  const commissionRatePct = settingValue('commission_rate_pct') ?? 23;
+  const hourCostKzt = settingValue('procurement_hour_cost_kzt') ?? 0;
+
+  // RFQ без сделки (§9): часы по подборам, не дошедшим до заказа,
+  // разносятся на выигранные — считает buildServiceCost ниже через ту же
+  // конверсию RFQ → сделка, что показана отдельной метрикой выше, а не
+  // через второй, отдельно посчитанный процент.
+  const serviceCost = buildServiceCost({
+    secondsByOrder,
+    closedOrderCount: closedOrderIds.length,
+    requestsWithRfq: requestIdsWithRfq.size,
+    requestsWithRfqAndOrder,
+    hourCostKzt,
+  });
+  const contributionPerOrderKzt =
+    serviceCost && closedPlans?.length
+      ? Math.round(commissionTotal / closedPlans.length - serviceCost.fullCostKzt)
+      : null;
 
   return {
     rfqConversion: {
@@ -109,6 +182,41 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
       avgKzt: closedPlans?.length ? Math.round(commissionTotal / closedPlans.length) : 0,
     },
     avgHoursPerOrder,
-    commissionRatePct: (commissionSetting?.value as number) ?? 23,
+    hoursTrend,
+    serviceCost,
+    contributionPerOrderKzt,
+    commissionRatePct,
+    hourCostKzt,
+  };
+}
+
+/**
+ * Разнос времени несостоявшихся подборов на выигранные заказы (§9).
+ * Коэффициент — конверсия RFQ → сделка: если из 10 подборов заказом
+ * стали 4, то на каждый выигранный заказ приходится ещё 1.5 подбора,
+ * которые тоже кто-то делал руками.
+ */
+function buildServiceCost(input: {
+  secondsByOrder: Map<string, number>;
+  closedOrderCount: number;
+  requestsWithRfq: number;
+  requestsWithRfqAndOrder: number;
+  hourCostKzt: number;
+}): ServiceCost | null {
+  const { secondsByOrder, requestsWithRfq, requestsWithRfqAndOrder, hourCostKzt } = input;
+  if (secondsByOrder.size === 0 || hourCostKzt <= 0) return null;
+
+  const totalHours = [...secondsByOrder.values()].reduce((s, v) => s + v, 0) / 3600;
+  const directHours = totalHours / secondsByOrder.size;
+
+  // Конверсия ниже 100% означает, что часть подборов не окупилась заказом.
+  const conversion = requestsWithRfq > 0 ? requestsWithRfqAndOrder / requestsWithRfq : 1;
+  const allocatedHours = conversion > 0 ? directHours * (1 / conversion - 1) : 0;
+
+  return {
+    directHours,
+    allocatedHours,
+    hourCostKzt,
+    fullCostKzt: Math.round((directHours + allocatedHours) * hourCostKzt),
   };
 }
