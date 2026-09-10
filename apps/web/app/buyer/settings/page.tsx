@@ -1,6 +1,7 @@
 import { cn } from '@qajet/ui/lib/cn';
 import { Reveal } from '@qajet/ui/motion';
-import { Button } from '@qajet/ui/primitives';
+import { buttonClass } from '@qajet/ui/primitives';
+import Link from 'next/link';
 import { requireCurrentUser } from '../../lib/current-user';
 
 /**
@@ -32,16 +33,6 @@ import { requireCurrentUser } from '../../lib/current-user';
  * навигации. Что реально есть на странице — обычные разделы ниже.
  */
 
-const TOGGLES = [
-  {
-    title: 'Обновления по заказам',
-    sub: 'Смена стадии, новые предложения, приближающийся срок',
-    on: true,
-  },
-  { title: 'Сообщения', sub: 'Новые сообщения от QAJET по вашим заказам', on: true },
-  { title: 'Новости продукта', sub: 'Обновления и советы от QAJET', on: false },
-];
-
 const ROLE_LABEL: Record<string, string> = {
   owner: 'Владелец компании',
   manager: 'Менеджер',
@@ -70,28 +61,44 @@ export default async function BuyerSettingsPage() {
               <p className="text-sm font-semibold">{user.fullName}</p>
               <p className="text-fine text-muted">{user.companyName ?? '—'}</p>
             </div>
-            <Button variant="secondary" size="sm">
-              Изменить фото
-            </Button>
           </div>
         </section>
 
         <section className="mb-5 rounded-card border border-rule bg-surface p-6">
-          <h3 className="mb-4 text-sm font-semibold">Личные данные</h3>
+          <h3 className="mb-1 text-sm font-semibold">Личные данные</h3>
+          <p className="mb-4 text-fine text-muted">
+            Профиль заводит QAJET. Смена имени или почты — через поддержку: у покупательской сессии
+            нет права переписывать учётную запись.
+          </p>
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-fine font-semibold">Имя</span>
-              <input type="text" defaultValue={first} className={inputClass} />
+              <input
+                type="text"
+                defaultValue={first}
+                disabled
+                className={cn(inputClass, 'text-muted')}
+              />
             </label>
             <label className="block">
               <span className="mb-2 block text-fine font-semibold">Фамилия</span>
-              <input type="text" defaultValue={last} className={inputClass} />
+              <input
+                type="text"
+                defaultValue={last}
+                disabled
+                className={cn(inputClass, 'text-muted')}
+              />
             </label>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-fine font-semibold">Email</span>
-              <input type="email" defaultValue={user.email} className={inputClass} />
+              <input
+                type="email"
+                defaultValue={user.email}
+                disabled
+                className={cn(inputClass, 'text-muted')}
+              />
             </label>
             <label className="block">
               <span className="mb-2 block text-fine font-semibold">Роль</span>
@@ -106,38 +113,14 @@ export default async function BuyerSettingsPage() {
         </section>
 
         <section className="mb-6 rounded-card border border-rule bg-surface p-6">
-          <h3 className="mb-1 text-sm font-semibold">Уведомления</h3>
-          <p className="mb-4 text-fine text-muted">Выберите, о чём вам сообщать.</p>
-          <div className="flex flex-col gap-4">
-            {TOGGLES.map((t) => (
-              <div key={t.title} className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold">{t.title}</p>
-                  <p className="text-fine text-muted">{t.sub}</p>
-                </div>
-                <button
-                  type="button"
-                  className={cn(
-                    'relative h-6 w-10 shrink-0 rounded-full',
-                    t.on ? 'bg-purple' : 'bg-page',
-                  )}
-                  role="switch"
-                  aria-checked={t.on}
-                  aria-label={t.title}
-                >
-                  <span
-                    className={cn(
-                      'absolute top-0.5 h-5 w-5 rounded-full bg-surface transition-[left] duration-[var(--duration-quick)]',
-                      t.on ? 'left-[19px]' : 'left-0.5',
-                    )}
-                  />
-                </button>
-              </div>
-            ))}
-          </div>
+          <h3 className="mb-1 text-sm font-semibold">Команда и доступы</h3>
+          <p className="mb-4 text-fine text-muted">
+            Лимиты согласования, права сотрудников и отзыв доступа — на отдельном экране.
+          </p>
+          <Link href="/buyer/team" className={buttonClass('secondary', 'sm')}>
+            Открыть команду
+          </Link>
         </section>
-
-        <Button variant="primary">Сохранить изменения</Button>
       </Reveal>
     </div>
   );

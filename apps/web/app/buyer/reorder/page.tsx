@@ -1,87 +1,61 @@
 import { Reveal, Stagger } from '@qajet/ui/motion';
-import { Button } from '@qajet/ui/primitives';
+import { buttonClass } from '@qajet/ui/primitives';
+import Link from 'next/link';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { loadReorderCandidates } from '../../lib/buyer-reorder';
+import { ReorderCard } from './_reorder-card';
 
 /**
  * Повтор заказа по истории — agents.md §10 «Покупатель»: личность
- * исполнителя покупателю не раскрывается, повтор идёт по истории СВОИХ
- * заказов через QAJET, не по каталогу исполнителей. Раньше здесь была
- * витрина карточек компаний-исполнителей — прямое нарушение этого правила.
- * До реального подключения к orders/plans — макет по категориям заказа,
- * без единого названия исполнителя.
+ * исполнителя не раскрывается, повтор идёт по истории СВОИХ заказов через
+ * QAJET, не по каталогу исполнителей.
+ *
+ * До этой правки экран показывал четыре выдуманные карточки («Футболки с
+ * логотипом, 50 шт, последний июль 2026») — несуществующую историю закупок
+ * покупателя, при том что в базе лежат его настоящие закрытые заказы.
  */
 
-interface ReorderCard {
-  title: string;
-  category: string;
-  lastOrderedAt: string;
-  timesOrdered: number;
-}
+export default async function BuyerReorderPage() {
+  const supabase = await createSupabaseServerClient();
+  const candidates = await loadReorderCandidates(supabase);
 
-const REORDERS: ReorderCard[] = [
-  {
-    title: 'Футболки с логотипом, 50 шт',
-    category: 'Печать и мерч',
-    lastOrderedAt: 'июль 2026',
-    timesOrdered: 6,
-  },
-  {
-    title: 'Буклеты А5, 200 шт',
-    category: 'Полиграфия',
-    lastOrderedAt: 'июнь 2026',
-    timesOrdered: 3,
-  },
-  {
-    title: 'Подарочные наборы, 30 шт',
-    category: 'Подарки и наборы',
-    lastOrderedAt: 'май 2026',
-    timesOrdered: 2,
-  },
-  {
-    title: 'Организация корпоратива, 80 чел.',
-    category: 'Мероприятия',
-    lastOrderedAt: 'апрель 2026',
-    timesOrdered: 1,
-  },
-];
-
-export default function BuyerReorderPage() {
   return (
     <div>
       <Reveal className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold">Повтор заказа</h1>
           <p className="mt-2 text-sm text-muted">
-            Заказы, которые вы уже делали через QAJET. Повторите с новым количеством в один клик —
-            кто именно исполнит заказ, подбирает QAJET.
+            Позиции из ваших закрытых заказов. Повторите с новым количеством в один клик — кто
+            именно исполнит заказ, подбирает QAJET.
           </p>
         </div>
-        <Button variant="secondary">Новая заявка</Button>
+        <Link href="/buyer/requests/new" className={buttonClass('secondary')}>
+          Новая заявка
+        </Link>
       </Reveal>
 
-      <Stagger
-        startIndex={1}
-        as="div"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-      >
-        {REORDERS.map((r) => (
-          <div key={r.title} className="rounded-card border border-rule bg-surface p-5">
-            <p className="mb-1 text-sm font-semibold">{r.title}</p>
-            <p className="mb-3 text-fine text-muted">{r.category}</p>
-            <div className="flex justify-between border-rule border-t pt-3 text-fine text-muted">
-              <span>
-                {r.timesOrdered} {pluralOrders(r.timesOrdered)} · последний {r.lastOrderedAt}
-              </span>
-            </div>
-          </div>
-        ))}
-      </Stagger>
+      {candidates.length === 0 ? (
+        <Reveal className="rounded-card border border-rule bg-surface p-8 text-center">
+          <p className="text-sm font-semibold">Повторять пока нечего</p>
+          <p className="mx-auto mt-2 max-w-sm text-fine text-muted">
+            Здесь появятся позиции из ваших закрытых заказов. Первый заказ нужно завести обычной
+            заявкой.
+          </p>
+          <Link href="/buyer/requests/new" className={buttonClass('primary', 'sm', 'mt-4')}>
+            Создать заявку
+          </Link>
+        </Reveal>
+      ) : (
+        <Stagger
+          startIndex={1}
+          as="div"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {candidates.map((candidate) => (
+            <ReorderCard key={candidate.name} candidate={candidate} />
+          ))}
+        </Stagger>
+      )}
     </div>
   );
-}
-
-function pluralOrders(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'раз';
-  return 'раза';
 }

@@ -1,5 +1,5 @@
 import { BuyerShell } from '@qajet/ui/shell';
-import { FilePlus, ListChecks, MessageSquare, Repeat, Settings } from 'lucide-react';
+import { FilePlus, ListChecks, MessageSquare, Repeat, Settings, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { requireActor, shellUserFrom } from '../lib/current-user';
 
@@ -23,11 +23,9 @@ const NAV_ITEMS = [
     label: 'Сообщения',
     icon: <MessageSquare size={18} />,
   },
+  { key: 'team', href: '/buyer/team', label: 'Команда', icon: <Users size={18} /> },
   { key: 'settings', href: '/buyer/settings', label: 'Настройки', icon: <Settings size={18} /> },
 ];
-// «Команда» (agents.md §10 «Покупатель»: приглашение, лимиты, отзыв доступа)
-// убрана из навигации — /buyer/team не существует, вела на 404. Экран не
-// реализован; при реализации вернуть пункт сюда, не создавать новый.
 
 export default async function BuyerLayout({ children }: { children: ReactNode }) {
   const user = await requireActor('buyer');

@@ -159,6 +159,22 @@ export const permissions = pgTable(
       to: authenticatedRole,
       using: sql`${t.userId} in (select id from ${users} where company_id = ${currentCompanyIdSubquery})`,
     }),
+    // Права сотрудникам выдаёт и отзывает владелец компании (agents.md §10
+    // «Команда и доступы»). Менеджер видит доступы коллег (политика выше),
+    // но менять их не может — иначе «лимит согласования» не ограничение, а
+    // приглашение поднять себе лимит самому.
+    pgPolicy('permissions_insert_owner', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${currentRoleSubquery} = 'owner' and ${t.userId} in (select id from ${users} where company_id = ${currentCompanyIdSubquery})`,
+    }),
+    pgPolicy('permissions_update_owner', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: sql`${currentRoleSubquery} = 'owner' and ${t.userId} in (select id from ${users} where company_id = ${currentCompanyIdSubquery})`,
+    }),
     pgPolicy('permissions_service_all', {
       as: 'permissive',
       for: 'all',

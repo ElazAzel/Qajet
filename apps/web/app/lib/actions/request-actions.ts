@@ -114,3 +114,37 @@ export async function createRequest(
   revalidatePath('/concierge');
   return { ok: true, requestId: request.id };
 }
+
+/**
+ * Повтор заказа в один клик с новым количеством (agents.md §10) — обёртка
+ * над `createRequest()`, а не второй путь записи: та же проверка роли, те
+ * же `request_items` с категорией и техпроцессами из каталога.
+ *
+ * Город и адрес доставки берутся из последней заявки этой компании, а не
+ * спрашиваются заново: повтор — это ровно «то же самое, только другой
+ * тираж», и заставлять покупателя вводить адрес во второй раз значит
+ * превращать один клик в форму.
+ */
+export async function reorderItem(
+  itemKey: string,
+  qty: number,
+): Promise<ActionResult & { requestId?: string }> {
+  const catalogItem = CATALOG_BY_KEY.get(itemKey);
+  if (!catalogItem) return { ok: false, error: 'Позиции больше нет в каталоге' };
+
+  const supabase = await createSupabaseServerClient();
+  const { data: previous } = await supabase
+    .from('requests')
+    .select('city, delivery_address')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return createRequest({
+    title: `${catalogItem.name} — повтор`,
+    city: previous?.city ?? 'Алматы',
+    description: `Повтор заказа: ${catalogItem.name} — ${qty} ${catalogItem.unit}.`,
+    deliveryAddress: previous?.delivery_address ?? undefined,
+    items: [{ itemKey, qty }],
+  });
+}

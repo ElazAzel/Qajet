@@ -29,6 +29,21 @@ const sizeClass: Record<ButtonSize, string> = {
   md: 'h-10 px-4 text-sm',
 };
 
+/**
+ * Те же классы для ссылки, которая по смыслу кнопка (CTA ведёт на другой
+ * маршрут). `<Button>` рендерит `<button>` и навигацией не занимается, а
+ * оборачивать ссылку в кнопку — ломать семантику и Cmd+клик. До этого
+ * такие ссылки повторяли строку классов руками (`app/page.tsx`,
+ * `app/not-found.tsx`), и каждая копия расходилась со временем.
+ */
+export function buttonClass(
+  variant: ButtonVariant = 'secondary',
+  size: ButtonSize = 'md',
+  className?: string,
+): string {
+  return cn(base, variantClass[variant], sizeClass[size], className);
+}
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
