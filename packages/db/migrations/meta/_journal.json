@@ -127,6 +127,20 @@
       "when": 1789010925942,
       "tag": "0017_fuzzy_blacklash",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789026452152,
+      "tag": "0018_dizzy_veda",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789026717386,
+      "tag": "0019_wooden_quicksilver",
+      "breakpoints": true
     }
   ]
 }

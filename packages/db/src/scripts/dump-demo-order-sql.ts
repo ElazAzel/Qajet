@@ -1,5 +1,5 @@
 import * as schema from '../schema/index.js';
-import { generateSeedDataset } from '../seed/generator.js';
+import { DEMO_ORDER_REQUEST_TITLE, generateSeedDataset } from '../seed/generator.js';
 import { insertStatements, quote } from './_sql-literal.js';
 
 /**
@@ -121,8 +121,12 @@ function main(): void {
 
   const lines: string[] = [
     '-- Демо-заказ agents.md §13, сгенерирован pnpm db:demo-order.',
-    `-- Снимает предыдущий демо-заказ на той же стадии, чтобы их не стало два.`,
-    `delete from requests where id in (select request_id from orders where state = 'quotes_received');`,
+    '-- Снимает ПРЕДЫДУЩИЙ демо-заказ, чтобы их не стало два. Условие — по',
+    '-- заголовку демо-заявки и компании-покупателю, а не по стадии',
+    "-- 'quotes_received': стадия это нормальное рабочее состояние, и на базе",
+    '-- с живыми заказами такое удаление снесло бы чужую заявку со всем, что',
+    '-- на неё завязано каскадом.',
+    `delete from requests where title = ${quote(DEMO_ORDER_REQUEST_TITLE)} and buyer_company_id = ${quote(args.buyerCompanyId)};`,
   ];
   for (const [table, rows] of blocks) lines.push(...insertStatements(table, rows, 10));
 

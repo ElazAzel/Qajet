@@ -84,9 +84,14 @@ export const ORDER_TRANSITION_GRAPH: Record<OrderState, readonly Edge[]> = {
     { to: 'accepted', actors: ['buyer'] },
     { to: 'disputed', actors: BUYER_OR_STAFF },
   ],
+  // Спор завершается приёмкой или отменой — но не паузой. Ребро
+  // disputed → on_hold существовало и было дефектом: из on_hold выход
+  // только в suppliers_paid, то есть уже доставленный и оспоренный заказ
+  // возвращался к стадии «поставщики оплачены», назад по жизненному циклу.
+  // Найдено и честно описано в журнале 2026-09-08, но не исправлено.
   disputed: [
     { to: 'accepted', actors: STAFF },
-    { to: 'on_hold', actors: STAFF },
+    { to: 'cancelled', actors: STAFF },
   ],
   accepted: [{ to: 'closed', actors: BUYER_OR_STAFF }],
   closed: [],

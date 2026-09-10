@@ -25,23 +25,31 @@ import { generateSeedDataset } from './generator.js';
  * этот же `runSeed()`.
  */
 
-export async function runSeed(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
+/**
+ * Проверка окружения отдельно от самого сида — чтобы `db:reset` мог позвать
+ * её ДО первого `delete`. Иначе при заданном DATABASE_URL, но отсутствующем
+ * SUPABASE_SERVICE_ROLE_KEY сброс успевал снести данные и падал уже на
+ * сиде, оставляя базу пустой: ошибка конфигурации превращалась в потерю
+ * данных.
+ */
+export function assertSeedEnv(): void {
   const missing = [
-    !databaseUrl && 'DATABASE_URL',
-    !supabaseUrl && 'NEXT_PUBLIC_SUPABASE_URL',
-    !serviceRoleKey && 'SUPABASE_SERVICE_ROLE_KEY',
+    !process.env.DATABASE_URL && 'DATABASE_URL',
+    !process.env.NEXT_PUBLIC_SUPABASE_URL && 'NEXT_PUBLIC_SUPABASE_URL',
+    !process.env.SUPABASE_SERVICE_ROLE_KEY && 'SUPABASE_SERVICE_ROLE_KEY',
   ].filter((v): v is string => Boolean(v));
   if (missing.length > 0) {
-    // Бросаем, а не выходим тихо: `db:reset` сначала сносит данные и только
-    // потом зовёт сид — молчаливый выход оставил бы базу пустой.
     throw new Error(
       `не заданы переменные окружения: ${missing.join(', ')}. См. .env.example — локально это \`supabase start\`, в облаке — настройки проекта Supabase.`,
     );
   }
+}
+
+export async function runSeed(): Promise<void> {
+  assertSeedEnv();
+  const databaseUrl = process.env.DATABASE_URL;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   const db = createDbClient(databaseUrl as string);
 

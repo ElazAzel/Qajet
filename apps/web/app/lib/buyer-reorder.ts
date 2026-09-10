@@ -29,26 +29,41 @@ export interface ReorderCandidate {
   lastOrderedAt: string;
 }
 
+interface RequestRow {
+  created_at: string;
+  orders: { state: string }[] | { state: string } | null;
+}
+
 interface ItemRow {
   name: string;
   category: string;
   qty: number;
-  requests:
-    | { status: string; created_at: string }
-    | { status: string; created_at: string }[]
-    | null;
+  requests: RequestRow | RequestRow[] | null;
 }
 
 export async function loadReorderCandidates(supabase: SupabaseClient): Promise<ReorderCandidate[]> {
+  // Исполненность читается по состоянию ЗАКАЗА, а не по `requests.status`.
+  // Живой путь доводит заявку до 'closed' только начиная с этой ревизии
+  // (см. advanceOrderStage), а исторические строки, закрытые до неё,
+  // остались в 'estimated' — по ним экран показал бы пусто, хотя заказы
+  // закрыты. Состояние заказа — единственный источник истины жизненного
+  // цикла (agents.md §6), и он верен для любой строки независимо от того,
+  // когда она была создана.
   const { data } = await supabase
     .from('request_items')
-    .select('name, category, qty, requests(status, created_at)');
+    .select('name, category, qty, requests(created_at, orders(state))');
 
   const byName = new Map<string, { row: ItemRow; at: string; count: number }>();
   for (const row of (data ?? []) as ItemRow[]) {
     const request = Array.isArray(row.requests) ? row.requests[0] : row.requests;
+    if (!request) continue;
+    const orders = Array.isArray(request.orders)
+      ? request.orders
+      : request.orders
+        ? [request.orders]
+        : [];
     // Повторять имеет смысл только то, что действительно было исполнено.
-    if (!request || request.status !== 'closed') continue;
+    if (!orders.some((o) => o.state === 'closed')) continue;
     const existing = byName.get(row.name);
     if (!existing) {
       byName.set(row.name, { row, at: request.created_at, count: 1 });

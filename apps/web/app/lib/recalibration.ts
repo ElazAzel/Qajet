@@ -3,7 +3,11 @@ import {
   calculateSupplierReliability,
   type SupplierLeadHistoryEntry,
 } from '@qajet/engine/leadtime';
-import { type MatchOutcome, recalibrateMatchWeights } from '@qajet/engine/learn';
+import {
+  type MatchOutcome,
+  recalibrateEstimators,
+  recalibrateMatchWeights,
+} from '@qajet/engine/learn';
 import { DEFAULT_WEIGHTS, type MatchWeights, type ScoringFeatures } from '@qajet/engine/match';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -222,5 +226,111 @@ export async function recalibrateMatcherForOrder(
     params: { weights: result.weights },
     metrics: { nSamples: result.nSamples },
     n_samples: result.nSamples,
+  });
+}
+
+/**
+ * Пересчёт калькулятора по факту закрытого заказа (agents.md §8B, §8G).
+ *
+ * До этого `recalibrateEstimators()` из `packages/engine/learn` не
+ * вызывался из `apps/web` ни разу: движок был написан и протестирован, но
+ * точность калькулятора в проде не улучшалась никогда, а график на
+ * `/admin/learning` показывал тренд, целиком сгенерированный сидом. То
+ * есть «система учится» было правдой про демо-историю и неправдой про
+ * живую работу.
+ *
+ * Считается по всем закрытым заказам компании, а не инкрементально: пул
+ * наблюдений на демо-объёмах небольшой, а полный пересчёт исключает
+ * расхождение снапшота с историей, из которой он выведен.
+ */
+export async function recalibrateEstimatorForOrder(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<void> {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('request_id, final_cost_kzt, approved_plan_id')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (!order?.final_cost_kzt || !order.approved_plan_id) return;
+
+  // Оценка против факта — относительная ошибка этого заказа. Сравнение
+  // продукт-к-продукту: p50 покрывает только товар, а final_cost включает
+  // доставку и комиссию, поэтому берётся plan.total_supplier_kzt.
+  const { data: estimate } = await supabase
+    .from('estimates')
+    .select('p50_kzt, request_id')
+    .eq('request_id', order.request_id)
+    .maybeSingle();
+  if (!estimate?.p50_kzt) return;
+
+  const { data: items } = await supabase
+    .from('request_items')
+    .select('category, qty')
+    .eq('request_id', order.request_id);
+  const category = items?.[0]?.category;
+  if (!category) return;
+
+  // История наблюдений по этой категории — то же, из чего estimate() и
+  // считает: пары (qty, цена) и накопленные относительные ошибки.
+  const { data: observations } = await supabase
+    .from('price_observations')
+    .select('qty, unit_price_kzt, category')
+    .eq('category', category);
+
+  const { data: snapshots } = await supabase
+    .from('model_snapshots')
+    .select('metrics')
+    .eq('model', 'estimator')
+    .order('trained_at', { ascending: false })
+    .limit(1);
+
+  const previous = snapshots?.[0]?.metrics as
+    | { byCategory?: { category: string; relativeErrors?: number[] }[] }
+    | undefined;
+  const previousErrors =
+    previous?.byCategory?.find((c) => c.category === category)?.relativeErrors ?? [];
+
+  const { data: plan } = await supabase
+    .from('plans')
+    .select('total_supplier_kzt')
+    .eq('id', order.approved_plan_id)
+    .maybeSingle();
+  if (!plan?.total_supplier_kzt) return;
+
+  const relativeError = (plan.total_supplier_kzt - estimate.p50_kzt) / estimate.p50_kzt;
+  // Скользящее окно последних 6 ошибок: без него P80-запас считался бы по
+  // всей истории с начала времён и никогда не улучшался — старый шум
+  // держал бы квантиль вверху. Тот же приём уже применён в генераторе сида.
+  const relativeErrors = [...previousErrors, relativeError].slice(-6);
+
+  const [estimatorSnapshot] = recalibrateEstimators([
+    {
+      category,
+      observations: (observations ?? []).map((o) => ({
+        qty: o.qty,
+        unitPriceKzt: o.unit_price_kzt,
+      })),
+      relativeErrors,
+    },
+  ]);
+  if (!estimatorSnapshot) return;
+
+  const byCategory = [
+    ...(previous?.byCategory ?? []).filter((c) => c.category !== category),
+    {
+      category,
+      mape: Number.isNaN(estimatorSnapshot.mape) ? null : estimatorSnapshot.mape,
+      marginPct: estimatorSnapshot.marginPct,
+      nSamples: estimatorSnapshot.nSamples,
+      relativeErrors,
+    },
+  ];
+
+  await supabase.from('model_snapshots').insert({
+    model: 'estimator',
+    params: { regression: estimatorSnapshot.regression, marginPct: estimatorSnapshot.marginPct },
+    metrics: { byCategory },
+    trained_at: new Date().toISOString(),
   });
 }

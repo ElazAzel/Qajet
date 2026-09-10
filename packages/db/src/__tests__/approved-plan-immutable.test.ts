@@ -87,6 +87,23 @@ describeIfConfigured('Утверждённый план неизменяем (§
           returning id
         `,
       );
+      const rfq = one(
+        await admin<{ id: string }[]>`
+          insert into rfqs (request_id, supplier_company_id, token)
+          values (${request.id}, ${supplierCompany.id}, ${`tok-${crypto.randomUUID()}`})
+          returning id
+        `,
+      );
+      const quote = one(
+        await admin<{ id: string }[]>`insert into quotes (rfq_id) values (${rfq.id}) returning id`,
+      );
+      const quoteLine = one(
+        await admin<{ id: string }[]>`
+          insert into quote_lines (quote_id, request_item_id, unit_price_kzt, lead_time_days)
+          values (${quote.id}, ${item.id}, 10000, 5)
+          returning id
+        `,
+      );
       const approvedPlan = one(
         await admin<{ id: string }[]>`
           insert into plans (
@@ -99,13 +116,16 @@ describeIfConfigured('Утверждённый план неизменяем (§
           returning id
         `,
       );
+      // Строка плана заводится под service_role/postgres — эта роль
+      // намеренно проходит мимо триггера (иначе сид, который вставляет
+      // approved-план и его строки двумя запросами, был бы невозможен).
       await admin`
         insert into plan_lines (
-          plan_id, request_item_id, supplier_company_id, qty, unit_price_kzt,
-          line_total_kzt, commission_pct, commission_kzt, lead_time_days
+          plan_id, request_item_id, supplier_company_id, quote_line_id,
+          qty, line_total_kzt, commission_pct, commission_kzt
         ) values (
-          ${approvedPlan.id}, ${item.id}, ${supplierCompany.id}, 10, 10000,
-          100000, 23, 23000, 7
+          ${approvedPlan.id}, ${item.id}, ${supplierCompany.id}, ${quoteLine.id},
+          10, 100000, 23, 23000
         )
       `;
 
@@ -128,6 +148,32 @@ describeIfConfigured('Утверждённый план неизменяем (§
             await tx`update plan_lines set line_total_kzt = line_total_kzt + 1 where plan_id = ${approvedPlan.id}`;
           }),
         ).rejects.toThrow(/Строки утверждённого плана изменять нельзя/);
+
+        // Добавить строку — тоже изменение состава плана. Первая версия
+        // триггера висела только на UPDATE/DELETE, и этот путь был открыт.
+        await expect(
+          asConcierge.begin(async (tx) => {
+            await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
+            await tx`
+              insert into plan_lines (
+                plan_id, request_item_id, supplier_company_id, quote_line_id,
+                qty, line_total_kzt, commission_pct, commission_kzt
+              ) values (
+                ${approvedPlan.id}, ${item.id}, ${supplierCompany.id}, ${quoteLine.id},
+                1, 10000, 23, 2300
+              )
+            `;
+          }),
+        ).rejects.toThrow(/Строки утверждённого плана изменять нельзя/);
+
+        // Снять защиту в два запроса (approved → draft, затем правка сумм)
+        // тоже нельзя: выход из approved разрешён только в superseded.
+        await expect(
+          asConcierge.begin(async (tx) => {
+            await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
+            await tx`update plans set status = 'draft' where id = ${approvedPlan.id}`;
+          }),
+        ).rejects.toThrow(/можно только пометить superseded/);
 
         // Ничего не поменялось на самом деле, а не только «запрос упал».
         const unchanged = one(
@@ -153,6 +199,16 @@ describeIfConfigured('Утверждённый план неизменяем (§
         await asConcierge.end();
       }
 
+      // Уборка. Первая версия триггера отменяла DELETE любой строки плана
+      // (возвращала NEW, а на DELETE это NULL) — эта уборка проходит только
+      // потому, что service_role/postgres триггер пропускает, а на DELETE
+      // возвращается OLD.
+      await admin`delete from plan_lines where plan_id = ${approvedPlan.id}`;
+      await admin`delete from plans where id = ${approvedPlan.id}`;
+      await admin`delete from quote_lines where id = ${quoteLine.id}`;
+      await admin`delete from quotes where id = ${quote.id}`;
+      await admin`delete from rfqs where id = ${rfq.id}`;
+      await admin`delete from request_items where id = ${item.id}`;
       await admin`delete from requests where id = ${request.id}`;
       await admin`delete from public.users where id in (${authBuyer.id}, ${authConcierge.id})`;
       await admin`delete from auth.users where id in (${authBuyer.id}, ${authConcierge.id})`;

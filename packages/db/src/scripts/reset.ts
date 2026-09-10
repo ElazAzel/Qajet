@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { createDbClient } from '../client.js';
 import { SEED_ACCOUNTS } from '../seed/accounts.js';
-import { runSeed } from '../seed/run.js';
+import { assertSeedEnv, runSeed } from '../seed/run.js';
 
 /**
  * `pnpm db:reset` — agents.md §15, первый пункт чек-листа готовности:
@@ -63,10 +63,20 @@ async function main(): Promise<void> {
     );
   }
 
+  // Полная проверка окружения ДО первого delete. Без неё заданный
+  // DATABASE_URL при отсутствующем SUPABASE_SERVICE_ROLE_KEY означал:
+  // данные снесены, `runSeed()` падает на своей проверке, база пуста и
+  // восстановить её нечем.
+  assertSeedEnv();
+
   const db = createDbClient(databaseUrl);
   const keepEmails = SEED_ACCOUNTS.map((a) => a.email);
 
   console.log('Сношу демо-данные…');
+  // Одной транзакцией снос и пересев не обёрнуты сознательно: `runSeed()`
+  // открывает своё соединение и вдобавок ходит в Admin API GoTrue за
+  // аккаунтами — общий BEGIN/COMMIT покрыл бы только половину работы и
+  // создавал бы ложное чувство атомарности. Защита здесь — preflight выше.
   for (const table of TABLES_IN_DELETE_ORDER) {
     await db.execute(sql.raw(`delete from ${table}`));
   }

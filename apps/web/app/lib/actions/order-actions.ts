@@ -14,6 +14,8 @@ import {
 } from '@qajet/engine/match';
 import { percentOfKzt, roundKzt } from '@qajet/engine/money';
 import { transition } from '@qajet/engine/order';
+import { formatKzt } from '@qajet/ui/primitives';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { logAutoTimeEntry } from '../autotimer';
@@ -22,7 +24,11 @@ import { loadRequestComparison } from '../comparison';
 import { type OrderActor, orderActorFor, requireCurrentUser } from '../current-user';
 import { createActDocument, createPrepayInvoiceDocument } from '../documents';
 import type { OrderState } from '../order-state';
-import { recalibrateLeadTimeForSupplier, recalibrateMatcherForOrder } from '../recalibration';
+import {
+  recalibrateEstimatorForOrder,
+  recalibrateLeadTimeForSupplier,
+  recalibrateMatcherForOrder,
+} from '../recalibration';
 
 /** Ставка за единицу для позиций вне справочника каталога (не должно случаться
  *  для заявок, созданных через createRequest, — только защита от старых данных). */
@@ -280,6 +286,50 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
 }
 
 /** Покупатель утверждает предложенный план — plan_proposed/awaiting_internal_approval → plan_approved. */
+/**
+ * Возвращает текст ошибки, если пользователю нельзя утверждать этот план,
+ * и null, если можно.
+ *
+ * Строка в `permissions` — явная выдача или отзыв: её отсутствие ничего не
+ * запрещает (у владельца компании прав может не быть заведено вовсе),
+ * запрещает только явное `false`. Лимит NULL означает «без лимита».
+ */
+async function checkApprovalAuthority(
+  supabase: SupabaseClient,
+  userId: string,
+  planId: string,
+): Promise<string | null> {
+  const { data: permission } = await supabase
+    .from('permissions')
+    .select('value')
+    .eq('user_id', userId)
+    .eq('key', 'can_approve_plan')
+    .maybeSingle();
+  if (permission && permission.value !== true) {
+    return 'У вас отозвано право утверждать планы — обратитесь к владельцу компании';
+  }
+
+  const { data: me } = await supabase
+    .from('users')
+    .select('approval_limit_kzt')
+    .eq('id', userId)
+    .maybeSingle();
+  const limit = me?.approval_limit_kzt ?? null;
+  if (limit === null) return null;
+
+  const { data: plan } = await supabase
+    .from('plans')
+    .select('total_kzt')
+    .eq('id', planId)
+    .maybeSingle();
+  const total = plan?.total_kzt ?? 0;
+  if (total <= limit) return null;
+
+  // Ровно для этого случая в графе состояний есть awaiting_internal_approval
+  // — покупателю нужно назвать выход, а не просто отказать.
+  return `Сумма плана ${formatKzt(total)} превышает ваш лимит согласования ${formatKzt(limit)} — отправьте на внутреннее согласование`;
+}
+
 export async function approvePlan(orderId: string): Promise<ActionResult> {
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
@@ -291,6 +341,15 @@ export async function approvePlan(orderId: string): Promise<ActionResult> {
 
   const check = transition(order.state, 'plan_approved', actor);
   if (!check.ok) return { ok: false, error: check.reason };
+
+  // Полномочия согласования — §10 «Команда и доступы». Экран команды даёт
+  // владельцу отзывать право и ставить лимит, но до этой ревизии ни одно
+  // из двух значений не проверялось нигде: обещанная денежная граница
+  // полномочий не существовала. Настоящий барьер — в approve_plan()
+  // (миграция 0019), здесь та же проверка ради человеческого текста
+  // ошибки вместо исключения Postgres.
+  const limitError = await checkApprovalAuthority(supabase, user.id, order.approved_plan_id);
+  if (limitError) return { ok: false, error: limitError };
 
   // RPC вместо прямого update — plans_update_buyer_own снята (была без
   // ограничения по колонкам, покупатель мог бы переписать commission_kzt/
@@ -424,6 +483,16 @@ export async function advanceOrderStage(
   const eventError = await logStageEvent(supabase, order.id, order.state, toState, user.id, actor);
   if (eventError) return { ok: false, error: eventError };
 
+  if (toState === 'closed') {
+    // `requests.status` доводится до 'closed' вместе с заказом. Значение
+    // существовало в enum с самого начала, но живой путь его не выставлял
+    // никогда — его писал только генератор сида. Из-за этого заявка,
+    // прошедшая весь цикл в приложении, навсегда оставалась в статусе
+    // 'estimated', и всё, что читает историю по нему (повтор заказа),
+    // видело только демо-историю.
+    await supabase.from('requests').update({ status: 'closed' }).eq('id', order.request_id);
+  }
+
   if (toState === 'closed' && closedSettlement) {
     const { data: itemRows } = await supabase
       .from('request_items')
@@ -456,6 +525,13 @@ export async function advanceOrderStage(
       requestId: order.request_id,
       approvedPlanId: order.approved_plan_id,
     }).catch(() => undefined);
+    // Калькулятор — вторая половина того же контура и до сих пор
+    // единственная незамкнутая: recalibrateEstimators() существовал в
+    // packages/engine/src/learn с самого начала, но из apps/web не
+    // вызывался ни разу. Точность оценки в проде поэтому не улучшалась
+    // никогда, а тренд на /admin/learning показывал историю, целиком
+    // сгенерированную сидом.
+    await recalibrateEstimatorForOrder(supabase, order.id).catch(() => undefined);
   }
 
   revalidateOrder(order.id);

@@ -79,4 +79,21 @@ describe('transition', () => {
     expect(transition('rfq_sent', 'cancelled', 'buyer')).toEqual({ ok: true });
     expect(transition('rfq_sent', 'cancelled', 'concierge')).toEqual({ ok: true });
   });
+  it('спор завершается приёмкой или отменой, но не паузой — иначе заказ уезжает назад по циклу', () => {
+    // Ребро disputed → on_hold было дефектом: из on_hold выход только в
+    // suppliers_paid, то есть доставленный и оспоренный заказ возвращался к
+    // стадии «поставщики оплачены».
+    expect(transition('disputed', 'on_hold', 'concierge').ok).toBe(false);
+    expect(transition('disputed', 'accepted', 'concierge').ok).toBe(true);
+    expect(transition('disputed', 'cancelled', 'concierge').ok).toBe(true);
+
+    // Ни одно состояние не должно уметь уводить заказ назад через паузу:
+    // в on_hold можно попасть только оттуда, откуда suppliers_paid ещё
+    // впереди.
+    for (const [from, edges] of Object.entries(ORDER_TRANSITION_GRAPH)) {
+      if (edges.some((e) => e.to === 'on_hold')) {
+        expect(from).toBe('plan_approved');
+      }
+    }
+  });
 });

@@ -74,6 +74,14 @@ const COMMISSION_RATE_PCT = 23;
 const CIT_RATE_PCT = 20;
 /** Стоимость часа закупщика (agents.md §9) — параметр экономики, правится админом вживую. */
 const PROCUREMENT_HOUR_COST_KZT = 4500;
+/**
+ * Заголовок заявки демо-заказа §13 — единственный устойчивый признак, по
+ * которому его можно отличить от боевых заказов. Экспортируется, потому что
+ * `pnpm db:demo-order` обязан сносить ПРЕДЫДУЩИЙ демо-заказ, а не любой
+ * заказ на стадии `quotes_received`: на непустой базе это удаляло бы чужую
+ * живую заявку вместе со всем, что на неё каскадом завязано.
+ */
+export const DEMO_ORDER_REQUEST_TITLE = 'Демо: мерч к корпоративному мероприятию';
 const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
 const LOGISTICS_BUFFER_INTERCITY_DAYS = 3;
 
@@ -1534,7 +1542,7 @@ function buildQuotesReceivedDemoOrder(args: {
     id: requestId,
     buyerCompanyId,
     createdBy: buyerUserId,
-    title: 'Демо: мерч к корпоративному мероприятию',
+    title: DEMO_ORDER_REQUEST_TITLE,
     rawText: `Нужно к мероприятию: ${requestItems.map((ri) => `${ri.item.name} — ${ri.qty} ${ri.item.unit}`).join('; ')}. Дедлайн ${isoDateOnly(deadlineDate)}.`,
     deadlineDate: isoDateOnly(deadlineDate),
     budgetKzt: roundKzt(requestItems.reduce((s, ri) => s + ri.item.baseUnitPriceKzt * ri.qty, 0)),
