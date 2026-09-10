@@ -56,3 +56,10 @@ BEGIN
   RETURN v_row;
 END;
 $$;
+--> statement-breakpoint
+-- Supabase выдаёт EXECUTE на новые функции роли anon по умолчанию, и линтер
+-- базы это справедливо помечает. Анонимный вызов и так падал бы на первой
+-- же строке (auth.uid() пуст → вызывающий не найден), но право, которое
+-- никому не нужно, лучше отозвать, а не полагаться на то, что внутренняя
+-- проверка не даст им воспользоваться.
+REVOKE EXECUTE ON FUNCTION public.set_team_member_access(uuid, bigint, boolean) FROM anon;
