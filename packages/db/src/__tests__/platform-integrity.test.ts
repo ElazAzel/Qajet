@@ -309,13 +309,26 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
         values (${quoteLine}, ${quote}, ${f[7]}, 100000, 2)`;
       await tx`insert into plan_lines (id, plan_id, request_item_id, supplier_company_id, quote_line_id, qty, line_total_kzt, commission_pct, commission_kzt)
         values (${planLine}, ${f[10]}, ${f[7]}, ${f[1]}, ${quoteLine}, 10, 100000, 23, 23000)`;
-      await tx`update plans set status = 'approved' where id = ${f[10]}`;
-      await tx`update orders
-        set state = 'closed', settlement = 'exact', settlement_amount_kzt = 0,
-            final_cost_kzt = 123000, accepted_at = now(), closed_at = now()
-        where id = ${f[11]}`;
 
       await asUser(tx, f[2]);
+      await tx`select approve_plan(${f[11]})`;
+      await asUser(tx, f[3]);
+      await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at)
+        values (${f[11]}, ${f[1]}, 100000, 'paid', now())`;
+      await tx`update orders set state = 'suppliers_paid' where id = ${f[11]}`;
+      await tx`update orders set state = 'in_production' where id = ${f[11]}`;
+      await tx`update orders set state = 'shipped' where id = ${f[11]}`;
+      await asUser(tx, f[4]);
+      expect(
+        (await tx`select confirm_supplier_delivery(${f[11]})`)[0]?.confirm_supplier_delivery,
+      ).toBe(true);
+      await asUser(tx, f[2]);
+      await tx`update orders set state = 'accepted', accepted_at = now() where id = ${f[11]}`;
+      await tx`update orders
+        set state = 'closed', settlement = 'exact', settlement_amount_kzt = 0,
+            final_cost_kzt = 123000, closed_at = now()
+        where id = ${f[11]}`;
+
       await expect(
         tx.savepoint(
           (
