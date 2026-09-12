@@ -821,9 +821,10 @@ BEGIN
   END IF;
 
   IF v_role IN ('concierge', 'admin') THEN
-    IF NEW.state IN ('plan_approved', 'awaiting_internal_approval')
-      OR (OLD.state IN ('delivered', 'disputed') AND NEW.state = 'accepted')
-      OR (OLD.state = 'shipped' AND NEW.state = 'delivered') THEN
+    IF OLD.state = 'shipped' AND NEW.state = 'delivered' THEN
+      RAISE EXCEPTION 'Доставку подтверждает поставщик';
+    ELSIF NEW.state IN ('plan_approved', 'awaiting_internal_approval')
+      OR (OLD.state IN ('delivered', 'disputed') AND NEW.state = 'accepted') THEN
       RAISE EXCEPTION 'Этот переход выполняет другой участник процесса';
     END IF;
   ELSIF v_buyer THEN
