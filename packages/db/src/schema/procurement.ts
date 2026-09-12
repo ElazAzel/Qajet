@@ -619,6 +619,16 @@ export const planLines = pgTable(
       to: authenticatedRole,
       using: staffOnly,
     }),
+    // Поставщик видит только собственные строки утверждённых планов. Это
+    // нужно не для раскрытия чужих КП, а чтобы RLS мог показать поставщику
+    // сам заказ и его статус через orders_select_supplier_in_plan.
+    pgPolicy('plan_lines_select_own_supplier', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}
+        and ${currentRoleSubquery} in ('owner', 'manager')`,
+    }),
     pgPolicy('plan_lines_insert_staff', {
       as: 'permissive',
       for: 'insert',

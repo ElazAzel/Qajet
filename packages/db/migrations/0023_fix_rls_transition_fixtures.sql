@@ -268,3 +268,14 @@ END;
 $$;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public.confirm_supplier_delivery(uuid) FROM public, anon;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.confirm_supplier_delivery(uuid) TO authenticated;
+
+-- Supplier order visibility depends on plan_lines, but plan_lines are not
+-- buyer-readable. Expose only the current supplier's own plan rows so the
+-- existing orders_select_supplier_in_plan policy can resolve the assignment.
+DROP POLICY IF EXISTS plan_lines_select_own_supplier ON public.plan_lines;--> statement-breakpoint
+CREATE POLICY plan_lines_select_own_supplier ON public.plan_lines
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    supplier_company_id = public.current_company_id()
+    AND public.current_role() IN ('owner', 'manager')
+  );
