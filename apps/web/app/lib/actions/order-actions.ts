@@ -20,7 +20,9 @@ import { CATALOG_BY_KEY } from '../catalog';
 import { loadRequestComparison } from '../comparison';
 import { type OrderActor, orderActorFor, requireCurrentUser } from '../current-user';
 import { createActDocument, createPrepayInvoiceDocument } from '../documents';
+import { enqueueOutbox } from '../notifications';
 import type { OrderState } from '../order-state';
+import { buildRfqNotification } from '../outbox';
 import {
   recalibrateEstimatorForOrder,
   recalibrateLeadTimeForSupplier,
@@ -733,7 +735,7 @@ async function createRfqsForOrder(
 
   const { data: requestRow } = await supabase
     .from('requests')
-    .select('city, budget_kzt')
+    .select('city, budget_kzt, title')
     .eq('id', order.request_id)
     .maybeSingle();
   const city = requestRow?.city ?? '';
@@ -938,19 +940,56 @@ async function createRfqsForOrder(
   const respondBy = new Date(sentAt);
   respondBy.setUTCDate(respondBy.getUTCDate() + RFQ_RESPOND_WINDOW_DAYS);
 
-  const { error } = await supabase.from('rfqs').insert(
-    [...chosenIds].map((supplierId) => ({
-      request_id: order.request_id,
-      supplier_company_id: supplierId,
-      token: crypto.randomUUID(),
-      sent_at: sentAt.toISOString(),
-      respond_by: respondBy.toISOString(),
-      status: 'sent',
-      is_exploration: explorationIds.has(supplierId),
-      selection_reason: selectionReasonById.get(supplierId) ?? { reason: 'scored' },
-    })),
+  const rfqDrafts = [...chosenIds].map((supplierId) => ({
+    request_id: order.request_id,
+    supplier_company_id: supplierId,
+    token: crypto.randomUUID(),
+    sent_at: sentAt.toISOString(),
+    respond_by: respondBy.toISOString(),
+    status: 'sent',
+    is_exploration: explorationIds.has(supplierId),
+    selection_reason: selectionReasonById.get(supplierId) ?? { reason: 'scored' },
+  }));
+  const { data: insertedRfqs, error } = await supabase
+    .from('rfqs')
+    .insert(rfqDrafts)
+    .select('id, supplier_company_id, token');
+  if (error) return error.message;
+  if (!insertedRfqs || insertedRfqs.length === 0) return 'Не удалось создать RFQ';
+
+  // В очередь попадают только активные owner/manager поставщика. Адреса
+  // читаются staff-сессией, а покупатель никогда не получает эту выборку.
+  const { data: recipients, error: recipientsError } = await supabase
+    .from('users')
+    .select('company_id, email')
+    .in('company_id', [...chosenIds])
+    .in('role', ['owner', 'manager'])
+    .eq('is_active', true);
+  if (recipientsError) return recipientsError.message;
+
+  const outboxError = await enqueueOutbox(
+    supabase,
+    insertedRfqs.flatMap((rfq) =>
+      (recipients ?? [])
+        .filter((recipient) => recipient.company_id === rfq.supplier_company_id)
+        .map((recipient) =>
+          buildRfqNotification({
+            rfqId: rfq.id,
+            token: rfq.token,
+            requestTitle: requestRow?.title ?? 'Новая заявка',
+            respondBy: respondBy.toISOString(),
+            recipient: recipient.email,
+          }),
+        ),
+    ),
   );
-  return error?.message ?? null;
+  if (outboxError) {
+    // Уведомление — производный канал: отсутствие миграции/ключа почты не
+    // должно откатывать созданные RFQ и ломать закупочный цикл. Ошибка
+    // остаётся в server log, а админ увидит пустой/недоступный outbox.
+    console.error('[outbox] Не удалось поставить RFQ-уведомления в очередь', outboxError);
+  }
+  return null;
 }
 
 async function recordSupplierPayouts(

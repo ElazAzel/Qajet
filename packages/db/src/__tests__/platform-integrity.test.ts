@@ -366,6 +366,25 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
         rfq_answered: 1,
       });
     }));
+  it('outbox is readable and writable only by staff', async () =>
+    scenario(async (tx, f) => {
+      const message = crypto.randomUUID();
+      await asUser(tx, f[2]);
+      await expect(
+        tx.savepoint(
+          (sp) => sp`insert into outbox(id, kind, recipient, subject, body)
+            values (${message}, 'test', 'supplier@example.com', 'Test', 'Test')`,
+        ),
+      ).rejects.toThrow();
+
+      await asUser(tx, f[3]);
+      await tx`insert into outbox(id, kind, recipient, subject, body)
+        values (${message}, 'test', 'supplier@example.com', 'Test', 'Test')`;
+      expect(await tx`select id from outbox where id = ${message}`).toHaveLength(1);
+
+      await asUser(tx, f[2]);
+      expect(await tx`select id from outbox where id = ${message}`).toHaveLength(0);
+    }));
   it('commission edit updates the plan total atomically and freezes after approval', async () =>
     scenario(async (tx, f) => {
       const quote = crypto.randomUUID();

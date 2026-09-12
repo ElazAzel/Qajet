@@ -1,0 +1,67 @@
+export type OutboxStatus = 'pending' | 'sent' | 'failed';
+export type OutboxStatusTone = 'attention' | 'success' | 'danger' | 'neutral';
+
+export interface OutboxMessageInput {
+  channel?: string;
+  kind: string;
+  recipient: string;
+  subject: string;
+  body: string;
+  payload?: Record<string, unknown>;
+}
+
+const STATUS_LABELS: Record<OutboxStatus, string> = {
+  pending: 'В очереди',
+  sent: 'Отправлено',
+  failed: 'Ошибка',
+};
+
+const STATUS_TONES: Record<OutboxStatus, OutboxStatusTone> = {
+  pending: 'attention',
+  sent: 'success',
+  failed: 'danger',
+};
+
+/** Подготовить тело уведомления к однострочному превью в админке. */
+export function formatOutboxBody(body: string, maxLength = 96): string {
+  const normalized = body.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+export function outboxStatusLabel(status: string): string {
+  return STATUS_LABELS[status as OutboxStatus] ?? 'Неизвестно';
+}
+
+export function outboxStatusTone(status: string): OutboxStatusTone {
+  return STATUS_TONES[status as OutboxStatus] ?? 'neutral';
+}
+
+export function buildRfqNotification(input: {
+  rfqId: string;
+  token: string;
+  requestTitle: string;
+  respondBy: string;
+  recipient: string;
+}): OutboxMessageInput {
+  const path = `/rfq/respond/${encodeURIComponent(input.token)}`;
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
+  const responseUrl = baseUrl ? `${baseUrl}${path}` : path;
+
+  return {
+    kind: 'rfq_invitation',
+    recipient: input.recipient,
+    subject: `QAJET: запрос предложения — ${input.requestTitle}`,
+    body: [
+      `Новая заявка QAJET: ${input.requestTitle}.`,
+      `Ответьте до ${new Date(input.respondBy).toLocaleDateString('ru-RU')}.`,
+      `Открыть RFQ: ${responseUrl}`,
+    ].join('\n'),
+    payload: {
+      rfqId: input.rfqId,
+      token: input.token,
+      requestTitle: input.requestTitle,
+      respondBy: input.respondBy,
+    },
+  };
+}

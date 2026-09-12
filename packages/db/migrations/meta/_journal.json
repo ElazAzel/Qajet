@@ -176,6 +176,13 @@
       "when": 1789200000001,
       "tag": "0024_ratings_and_live_supplier_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789204960739,
+      "tag": "0025_wandering_wither",
+      "breakpoints": true
     }
   ]
 }
