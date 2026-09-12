@@ -66,4 +66,13 @@ describe('unmaskPII', () => {
   it('не трогает текст без токенов', () => {
     expect(unmaskPII('обычный текст без токенов', {})).toBe('обычный текст без токенов');
   });
+
+  it('заменяет более длинные токены раньше коротких и не повреждает EMAIL_10', () => {
+    expect(
+      unmaskPII('EMAIL_1 и EMAIL_10', {
+        EMAIL_1: 'short@example.kz',
+        EMAIL_10: 'long@example.kz',
+      }),
+    ).toBe('short@example.kz и long@example.kz');
+  });
 });

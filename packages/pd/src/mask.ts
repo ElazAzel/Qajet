@@ -99,7 +99,9 @@ export function maskPII(text: string, knownEntities: readonly PiiEntity[] = []):
 /** Обратная подстановка после ответа внешней модели — agents.md §11.2. */
 export function unmaskPII(text: string, unmaskMap: UnmaskMap): string {
   let result = text;
-  for (const [token, value] of Object.entries(unmaskMap)) {
+  for (const [token, value] of Object.entries(unmaskMap).sort(
+    ([left], [right]) => right.length - left.length,
+  )) {
     result = result.replaceAll(token, value);
   }
   return result;

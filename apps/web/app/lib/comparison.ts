@@ -1,6 +1,7 @@
 import { type CombineResult, combine, type QuoteOffer } from '@qajet/engine/combine';
 import { applyReliability } from '@qajet/engine/leadtime';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { deliveryRoute } from './delivery-route';
 import { loadSupplierReliabilityMap } from './recalibration';
 
 /**
@@ -28,10 +29,6 @@ import { loadSupplierReliabilityMap } from './recalibration';
  * глубину), но эта функция не должна давать шанс проверить это на практике.
  */
 
-const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
-const LOGISTICS_BUFFER_INTERCITY_DAYS = 3;
-const DELIVERY_ALMATY_KZT = 5_000;
-const DELIVERY_INTERCITY_KZT = 15_000;
 const FALLBACK_COMMISSION_RATE_PCT = 23;
 const FALLBACK_CIT_RATE_PCT = 20;
 
@@ -62,7 +59,7 @@ export async function loadRequestComparison(
 ): Promise<RequestComparison | null> {
   const { data: request } = await supabase
     .from('requests')
-    .select('id, title, deadline_date')
+    .select('id, title, deadline_date, city')
     .eq('id', requestId)
     .maybeSingle();
   if (!request) return null;
@@ -123,10 +120,7 @@ export async function loadRequestComparison(
     const supplier = supplierId ? supplierById.get(supplierId) : undefined;
     if (!supplierId || !supplier) continue;
 
-    const isAlmaty = supplier.city === 'Алматы';
-    const logisticsBufferDays = isAlmaty
-      ? LOGISTICS_BUFFER_ALMATY_DAYS
-      : LOGISTICS_BUFFER_INTERCITY_DAYS;
+    const route = deliveryRoute(supplier.city, request.city);
     const kShrunk = reliabilityBySupplierId.get(supplierId) ?? 1.0;
     const bundleRule = line.bundle_rule as { thresholdKzt: number; discountPct: number } | null;
     const fieldFlags = (line.field_flags ?? {}) as Record<string, unknown>;
@@ -137,7 +131,7 @@ export async function loadRequestComparison(
       supplierId,
       unitPriceKzt: line.unit_price_kzt,
       setupFeeKzt: line.setup_fee_kzt,
-      predictedLeadDays: applyReliability(line.lead_time_days, { kShrunk }, logisticsBufferDays),
+      predictedLeadDays: applyReliability(line.lead_time_days, { kShrunk }, route.bufferDays),
       minQty: line.min_qty,
       orderMultiple: null,
       bundleRule,
@@ -145,7 +139,7 @@ export async function loadRequestComparison(
       hasOpenFieldFlags: Object.keys(fieldFlags).length > 0,
       validUntil: validUntilByQuoteId.get(line.quote_id) ?? null,
       supplierTaxMode: supplier.tax_mode as QuoteOffer['supplierTaxMode'],
-      supplierDeliveryKzt: isAlmaty ? DELIVERY_ALMATY_KZT : DELIVERY_INTERCITY_KZT,
+      supplierDeliveryKzt: route.deliveryKzt,
     });
     offerSupplierNames.set(line.id, supplier.name);
   }
