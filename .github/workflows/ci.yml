@@ -91,19 +91,36 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Проверить конфигурацию live E2E
-        run: node tools/ci/check-live-e2e-env.mjs
+        id: live-env
+        shell: bash
+        run: |
+          set +e
+          node tools/ci/check-live-e2e-env.mjs
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 2 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Live E2E skipped: repository Supabase secrets are not configured. The public-e2e job remains active."
+          else
+            exit "$status"
+          fi
         env:
           CI: true
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
       - name: Playwright Chromium
+        if: steps.live-env.outputs.configured == 'true'
         working-directory: apps/web
         run: pnpm exec playwright install --with-deps chromium
 
       - run: pnpm --filter @qajet/web build
+        if: steps.live-env.outputs.configured == 'true'
 
       - name: pnpm e2e
+        if: steps.live-env.outputs.configured == 'true'
         working-directory: apps/web
         run: pnpm e2e
         env:

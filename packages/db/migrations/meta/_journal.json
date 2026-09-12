@@ -162,6 +162,13 @@
       "when": 1789153200000,
       "tag": "0022_supplier_delivery_and_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789200000000,
+      "tag": "0023_fix_rls_transition_fixtures",
+      "breakpoints": true
     }
   ]
 }
