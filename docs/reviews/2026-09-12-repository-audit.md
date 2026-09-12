@@ -14,7 +14,9 @@
 - оценка закрытого заказа покупателем и транзакционный пересчёт
   `supplier_stats` по RFQ/КП/оценкам;
 - dev-first очередь уведомлений RFQ с админским просмотром `/admin/outbox`;
-- CI-предварительная проверка live E2E и документация.
+- CI-предварительная проверка live E2E и документация;
+- транзакционные server actions и защиту от прямых обходов жизненного цикла;
+- полноту данных КП и остаточный AI-slop в коде/миграциях.
 
 iOS/Android native-проекты в объём не входят по решению пользователя.
 
@@ -38,39 +40,52 @@ iOS/Android native-проекты в объём не входят по реше�
     защищённой ссылкой, адресатом и trace-payload; `/admin/outbox` показывает
     статус, попытки и ошибку доставки. Реальный Resend-worker остаётся
     внешним подключаемым контуром и не является обязательным для демо.
+11. Критические write-пути теперь транзакционные: создание заявки, intake,
+    предложение плана и продвижение заказа выполняются через PostgreSQL RPC.
+    Estimate, prepayment, RFQ, outbox, выплаты, документы и audit-событие не
+    остаются сиротами, если следующий шаг не прошёл.
+12. Приёмка заказа разрешена только покупателю, включая переход из `disputed`;
+    консьерж больше не может закрыть поставочный спор от имени покупателя.
+    Истечение `respond_by` проверяется и в публичном, и в авторизованном RFQ
+    RPC, а также прямыми database-триггерами.
+13. Входные числа на server actions валидируются как безопасные целые с
+    корректными границами; лимит согласования не может быть отрицательным,
+    отзыв сотрудника фиксирует `deactivated_at`, а split заявки проверяет
+    сумму частей до записи.
+14. Исправление классификации позиции обновляет связанно название, категорию,
+    единицу, capabilities и `specs.itemKey`. Публичная и авторизованная форма
+    КП передают setup fee и минимальную партию явно; пропуск сохраняется в
+    `field_flags`, поэтому неполная строка не выглядит заполненной и не входит
+    в исполнимый рекомендованный план.
+15. Удалён неиспользуемый `ScreenLedger`, исправлены stale-комментарии и
+    бессмысленное имя новой миграции `lame_loki` заменено на
+    `0027_data_integrity_constraints`.
 
 ## Проверка в этой среде
 
-- `corepack pnpm install --frozen-lockfile` — pass.
+- `corepack pnpm install --frozen-lockfile` — pass: lockfile актуален.
 - `corepack pnpm lint` — pass, без warnings.
 - `corepack pnpm typecheck` — pass.
 - `corepack pnpm test` — pass: 218 тестов, 24 skipped; из них DB/RLS — 23 skipped, PD RLS — 1 skipped.
 - `corepack pnpm --filter @qajet/web build` — pass: Next.js собрал 25 static pages; в сборку вошёл `/admin/outbox`, metadata base задан явно.
 - `corepack pnpm --filter @qajet/web e2e` — pass: 8 passed, 3 skipped; public landing, startupbattle и fail-closed RFQ smoke проходят без Supabase.
 - `corepack pnpm --filter @qajet/db test:rls` — выполнен без ошибок, 23 теста skipped из-за отсутствия `DATABASE_URL`.
+- `corepack pnpm --filter @qajet/db db:generate` — pass: schema и migration snapshot синхронны, новых изменений не найдено.
 - `corepack pnpm --filter @qajet/db exec drizzle-kit check` — pass.
-- `corepack pnpm rag:check` — pass: индекс актуален.
+- `git diff --check` — pass.
+- `corepack pnpm rag:sync` / `corepack pnpm rag:check` — pass: 55 документов, индекс актуален.
 
 ## Подтверждение после GitHub/Vercel
 
-- GitHub Actions run `34686363385` — pass: lint/typecheck, unit tests, build,
-  public smoke, real PostgreSQL/RLS isolation (23 теста), PD RLS и RAG
-  freshness. Live Supabase E2E — skipped с warning,
-  потому что в репозитории не заданы `NEXT_PUBLIC_SUPABASE_URL` и
-  `NEXT_PUBLIC_SUPABASE_ANON_KEY` secrets.
-- GitHub `main` синхронен с `origin/main`; Vercel автоматически получает
-  изменения из этой ветки.
-- Текущий Vercel production deployment — `READY`, алиас
-  [qajet-seven.vercel.app](https://qajet-seven.vercel.app/); smoke: `/` — 200,
-  `/startupbattle` — 200, некорректный `/rfq/respond/not-a-token` — 404.
-- В production Vercel заданы `NEXT_PUBLIC_SITE_URL` и чувствительный
-  `LINK_SIGNING_SECRET`; значения секретов в репозиторий и отчёт не попали.
+- Будет добавлено после публикации текущего commit: свежий GitHub Actions run
+  с PostgreSQL/RLS и свежий Vercel production smoke. Предыдущий run
+  `34686363385` относится к предыдущему commit и не заменяет текущую проверку.
 
 ## Внешние gates
 
 Следующие проверки нельзя честно заменить локальным кодом:
 
-- применение миграций `0022`–`0025` к production Supabase и наличие
+- применение миграций `0022`–`0027` к production Supabase и наличие
   production seed/live Auth — доступного `DATABASE_URL` или service-role
   ключа в этой сессии не было;
 - live Supabase lifecycle с демо-аккаунтами и двуфазной доставкой;

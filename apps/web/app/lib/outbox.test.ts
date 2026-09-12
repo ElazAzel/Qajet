@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildRfqNotification,
   formatOutboxBody,
   outboxStatusLabel,
   outboxStatusTone,
 } from './outbox';
+import { verifyRfqResponseToken } from './rfq-response';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('outbox presentation helpers', () => {
   it('uses a bounded single-line preview for an outgoing message', () => {
@@ -29,6 +34,7 @@ describe('outbox presentation helpers', () => {
   });
 
   it('builds a notification with an encoded public RFQ path and trace payload', () => {
+    vi.stubEnv('LINK_SIGNING_SECRET', 'rfq-test-secret');
     const message = buildRfqNotification({
       rfqId: 'rfq-1',
       token: 'token/with space',
@@ -38,7 +44,12 @@ describe('outbox presentation helpers', () => {
     });
 
     expect(message.kind).toBe('rfq_invitation');
-    expect(message.body).toContain('/rfq/respond/token%2Fwith%20space');
+    const responseUrl = message.body.match(/\/rfq\/respond\/([^\n]+)/)?.[1];
+    expect(responseUrl).toBeTruthy();
+    expect(verifyRfqResponseToken(decodeURIComponent(responseUrl ?? ''))).toEqual({
+      rfqId: 'rfq-1',
+      nonce: 'token/with space',
+    });
     expect(message.payload).toEqual({
       rfqId: 'rfq-1',
       token: 'token/with space',

@@ -60,7 +60,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   // `pnpm start` (production-режим Next), не `pnpm dev`: живой прогон трёх
-  // параллельных ролей (покупатель/концьерж/поставщик) под `next dev`
+  // параллельных ролей (покупатель/консьерж/поставщик) под `next dev`
   // ловил недетерминированный сбой — HMR/webpack-рекомпиляция при заходе
   // одной роли на ещё не скомпилированный маршрут может прервать ВЫПОЛНЯЮЩИЙСЯ
   // server action другой роли: auth-логи Supabase подтверждали, что вход
@@ -72,12 +72,10 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          // `next start` отказывается работать с `output: 'standalone'`
-          // (ADR-0002) — сама сборка это предупреждает. `.next/standalone`
-          // не несёт `.next/static`/`public` (Next их туда не копирует,
-          // это явный шаг — Vercel делает его в своём билдере, локально
-          // нужно руками), без копии сервер поднимется, но отдаст 404 на
-          // все ассеты и chunk'и.
+          // Standalone-сервер не несёт `.next/static`/`public` (Next их туда
+          // не копирует; это явный шаг — Vercel делает его в своём билдере,
+          // локально нужно выполнить копирование), без копии сервер
+          // поднимется, но отдаст 404 на все ассеты и chunk'и.
           command:
             'node scripts/prepare-standalone.mjs && ' + 'node .next/standalone/apps/web/server.js',
           url: 'http://localhost:3000',

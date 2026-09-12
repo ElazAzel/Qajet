@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -83,6 +84,7 @@ export const requests = pgTable(
     ...timestamps,
   },
   (t) => [
+    check('requests_budget_nonnegative', sql`${t.budgetKzt} is null or ${t.budgetKzt} >= 0`),
     index('requests_buyer_company_id_idx').on(t.buyerCompanyId),
     index('requests_created_by_idx').on(t.createdBy),
     pgPolicy('requests_select_own_company', {
@@ -153,6 +155,7 @@ export const requestItems = pgTable(
     ...timestamps,
   },
   (t) => [
+    check('request_items_qty_positive', sql`${t.qty} > 0`),
     index('request_items_request_id_idx').on(t.requestId),
     // Позиции нужны и поставщику с RFQ по этой заявке (без них нечего
     // оценивать в форме ответа) — единственная из этой группы policy, где
@@ -165,7 +168,7 @@ export const requestItems = pgTable(
     }),
     // Мастер заявки (agents.md §10 «Покупатель») пишет позиции сам, от
     // своей же компании — единственная точка входа для request_items,
-    // orders для этой заявки появится позже, отдельным действием концьержа.
+    // orders для этой заявки появится позже, отдельным действием консьержа.
     pgPolicy('request_items_insert_buyer_own', {
       as: 'permissive',
       for: 'insert',
@@ -232,7 +235,8 @@ export const estimates = pgTable(
     ...timestamps,
   },
   (t) => [
-    index('estimates_request_id_idx').on(t.requestId),
+    check('estimates_amounts_nonnegative', sql`${t.p50Kzt} >= 0 and ${t.p80Kzt} >= 0`),
+    uniqueIndex('estimates_request_id_idx').on(t.requestId),
     pgPolicy('estimates_select_via_request', {
       as: 'permissive',
       for: 'select',
@@ -270,7 +274,8 @@ export const prepayments = pgTable(
     ...timestamps,
   },
   (t) => [
-    index('prepayments_request_id_idx').on(t.requestId),
+    check('prepayments_amount_nonnegative', sql`${t.amountKzt} >= 0`),
+    uniqueIndex('prepayments_request_id_idx').on(t.requestId),
     pgPolicy('prepayments_select_via_request', {
       as: 'permissive',
       for: 'select',
@@ -598,6 +603,7 @@ export const planLines = pgTable(
     ...timestamps,
   },
   (t) => [
+    check('plan_lines_qty_positive', sql`${t.qty} > 0`),
     index('plan_lines_plan_id_idx').on(t.planId),
     index('plan_lines_request_item_id_idx').on(t.requestItemId),
     index('plan_lines_supplier_company_id_idx').on(t.supplierCompanyId),
@@ -737,7 +743,7 @@ export const orders = pgTable(
     // Триггер enforce_order_transition (см. миграцию) — второй, независимый
     // барьер на уровне БД: запрещает переход, которого нет в графе, даже
     // если бы кто-то обошёл приложение и написал UPDATE напрямую.
-    // Заказ физически появляется, когда концьерж берёт заявку в работу
+    // Заказ физически появляется, когда консьерж берёт заявку в работу
     // (intakeRequest — плейсхолдер-план + orders на state='draft') — до
     // этого момента заявка существует сама по себе, без orders-строки.
     pgPolicy('orders_insert_staff', {
@@ -911,6 +917,7 @@ export const supplierPayouts = pgTable(
   },
   (t) => [
     uniqueIndex('supplier_payouts_order_supplier_idx').on(t.orderId, t.supplierCompanyId),
+    check('supplier_payouts_amount_nonnegative', sql`${t.amountKzt} >= 0`),
     index('supplier_payouts_order_id_idx').on(t.orderId),
     index('supplier_payouts_supplier_company_id_idx').on(t.supplierCompanyId),
     pgPolicy('supplier_payouts_select_own_supplier', {

@@ -10,7 +10,7 @@ import {
 /**
  * Сквозной сценарий — agents.md фаза 7 чек-лист: заявка → закрытие,
  * в двух вариантах (возврат/доплата). Ведёт заказ через реальные экраны
- * трёх ролей (покупатель, концьерж, поставщик) теми же формами и кнопками,
+ * трёх ролей (покупатель, консьерж, поставщик) теми же формами и кнопками,
  * что и живой пользователь — ни одного прямого вызова server action или
  * SQL в обход UI. Доводит заявку до `quotes_received` через
  * `createQuotesReceivedOrder()` (e2e/fixtures.ts, общий фрагмент с
@@ -73,7 +73,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       await approvePlanButton.click();
       await expect(buyer.getByRole('button', { name: 'Утвердить план' })).toHaveCount(0);
 
-      // 8. Концьерж проводит заказ до отгрузки
+      // 8. Консьерж проводит заказ до отгрузки
       await advanceStage(concierge, orderUrl, '→ Поставщики оплачены');
       await advanceStage(concierge, orderUrl, '→ В производстве');
       await advanceStage(concierge, orderUrl, '→ Отгружен');

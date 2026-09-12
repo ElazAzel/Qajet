@@ -67,7 +67,7 @@ export async function updatePlanLineCommission(
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
   if (actor !== 'concierge' && actor !== 'admin') {
-    return { ok: false, error: 'Только концьерж может менять комиссию по позиции' };
+    return { ok: false, error: 'Только консьерж может менять комиссию по позиции' };
   }
   if (!isValidCommissionPct(pct)) {
     return { ok: false, error: 'Комиссия по позиции — от 21% до 24%' };

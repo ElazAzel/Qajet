@@ -131,6 +131,7 @@ export default async function ConciergeOrderItemsPage({
           qty: item.qty,
           unit: item.unit,
           requiredCapabilities: item.required_capabilities,
+          itemKey: (item.specs as { itemKey?: string } | null)?.itemKey,
           sourceText: (item.specs as { sourceText?: string } | null)?.sourceText,
           needsClarification: item.needs_clarification,
           clarificationReason: item.clarification_reason,

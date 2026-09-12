@@ -2,13 +2,14 @@
 
 import { findRestrictedCategory, restrictedCategoryMessage } from '@qajet/engine/compliance';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { CATALOG_BY_KEY, type CatalogItem } from '../catalog';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 
 /**
  * Создание заявки покупателем — agents.md §10. Пишет только requests +
- * request_items; orders для этой заявки ещё нет — концьерж заводит его
+ * request_items; orders для этой заявки ещё нет — консьерж заводит его
  * отдельным действием (intakeRequest, order-actions.ts), когда берёт
  * заявку в работу. До этого момента заявка существует сама по себе.
  *
@@ -30,7 +31,7 @@ export interface CreateRequestItemInput {
   qty: number;
   /** Исходная фраза, если позиция добавлена через быстрый разбор текста
    *  (@qajet/engine/intake) — сохраняется в specs.sourceText, чтобы
-   *  концьерж видел, из чего резолвнута позиция, при правке категории. */
+   *  консьерж видел, из чего резолвнута позиция, при правке категории. */
   sourceText?: string | undefined;
 }
 
@@ -44,6 +45,42 @@ export interface CreateRequestInput {
   items: CreateRequestItemInput[];
 }
 
+const safeKztSchema = z
+  .number()
+  .finite()
+  .nonnegative()
+  .refine(Number.isSafeInteger, 'Число должно быть целым');
+const positiveQuantitySchema = z
+  .number()
+  .finite()
+  .positive()
+  .refine(Number.isSafeInteger, 'Количество должно быть целым');
+const createRequestSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    city: z.string().trim().min(1).max(120),
+    description: z.string().max(5000),
+    budgetKzt: safeKztSchema.optional(),
+    deadlineDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    deliveryAddress: z.string().trim().max(500).optional(),
+    items: z
+      .array(
+        z
+          .object({
+            itemKey: z.string().trim().min(1).max(120),
+            qty: positiveQuantitySchema,
+            sourceText: z.string().max(500).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict();
+
 export async function createRequest(
   input: CreateRequestInput,
 ): Promise<ActionResult & { requestId?: string }> {
@@ -54,19 +91,16 @@ export async function createRequest(
   if (!user.companyId) {
     return { ok: false, error: 'У пользователя нет компании' };
   }
-  if (!input.title.trim()) {
-    return { ok: false, error: 'Укажите название заявки' };
-  }
-  if (input.items.length === 0) {
-    return { ok: false, error: 'Добавьте хотя бы одну позицию' };
-  }
+  const parsedInput = createRequestSchema.safeParse(input);
+  if (!parsedInput.success) return { ok: false, error: 'Данные заявки указаны некорректно' };
+  const requestInput = parsedInput.data;
 
   // Жёсткий фильтр категорий (agents.md §11.5) — именно здесь, в валидаторе
   // на сервере, а не подсказкой в интерфейсе: клиентскую проверку можно
   // обойти, отправив запрос напрямую. Позиции берутся из фиксированного
   // каталога, где регулируемых категорий нет вовсе, поэтому проверяется
   // свободный текст — название и описание заявки.
-  const restricted = findRestrictedCategory(input.title, input.description);
+  const restricted = findRestrictedCategory(requestInput.title, requestInput.description);
   if (restricted) {
     return { ok: false, error: restrictedCategoryMessage(restricted) };
   }
@@ -76,39 +110,22 @@ export async function createRequest(
     qty: number;
     sourceText?: string | undefined;
   }[] = [];
-  for (const item of input.items) {
+  for (const item of requestInput.items) {
     const catalogItem = CATALOG_BY_KEY.get(item.itemKey);
     if (!catalogItem) return { ok: false, error: `Неизвестная позиция каталога: ${item.itemKey}` };
-    if (!Number.isFinite(item.qty) || item.qty <= 0) {
-      return { ok: false, error: `Некорректное количество для «${catalogItem.name}»` };
-    }
-    resolvedItems.push({ catalogItem, qty: Math.round(item.qty), sourceText: item.sourceText });
+    resolvedItems.push({ catalogItem, qty: item.qty, sourceText: item.sourceText });
   }
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: request, error: requestError } = await supabase
-    .from('requests')
-    .insert({
-      buyer_company_id: user.companyId,
-      created_by: user.id,
-      title: input.title.trim(),
-      raw_text: input.description.trim(),
-      deadline_date: input.deadlineDate || null,
-      budget_kzt: input.budgetKzt ?? null,
-      delivery_address: input.deliveryAddress?.trim() || null,
-      city: input.city,
-      status: 'submitted',
-    })
-    .select('id')
-    .single();
-  if (requestError || !request) {
-    return { ok: false, error: requestError?.message ?? 'Не удалось создать заявку' };
-  }
-
-  const { error: itemsError } = await supabase.from('request_items').insert(
-    resolvedItems.map(({ catalogItem, qty, sourceText }) => ({
-      request_id: request.id,
+  const { data: requestId, error: requestError } = await supabase.rpc('create_request_with_items', {
+    p_title: requestInput.title,
+    p_raw_text: requestInput.description.trim(),
+    p_deadline_date: requestInput.deadlineDate || null,
+    p_budget_kzt: requestInput.budgetKzt ?? null,
+    p_delivery_address: requestInput.deliveryAddress?.trim() || null,
+    p_city: requestInput.city,
+    p_items: resolvedItems.map(({ catalogItem, qty, sourceText }) => ({
       name: catalogItem.name,
       category: catalogItem.category,
       qty,
@@ -118,12 +135,14 @@ export async function createRequest(
         : { itemKey: catalogItem.itemKey },
       required_capabilities: catalogItem.requiredCapabilities,
     })),
-  );
-  if (itemsError) return { ok: false, error: itemsError.message };
+  });
+  if (requestError || !requestId) {
+    return { ok: false, error: requestError?.message ?? 'Не удалось создать заявку' };
+  }
 
   revalidatePath('/buyer');
   revalidatePath('/concierge');
-  return { ok: true, requestId: request.id };
+  return { ok: true, requestId: requestId as string };
 }
 
 /**

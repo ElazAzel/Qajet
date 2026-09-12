@@ -87,6 +87,7 @@ function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem
           unitPriceKzt,
           leadTimeDays,
           setupFeeKzt: draft.setupFeeKzt ? Number(draft.setupFeeKzt) : undefined,
+          minQty: draft.minQty ? Number(draft.minQty) : undefined,
         },
       ];
     });
@@ -106,7 +107,7 @@ function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem
             <p className="mb-3 text-fine text-muted">
               {item.qty} {item.unit}
             </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <PublicNumberInput
                 label="Цена за ед., ₸"
                 value={draft.unitPriceKzt ?? ''}
@@ -118,16 +119,23 @@ function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem
                 onChange={(value) => patch(item.id, 'leadTimeDays', value)}
               />
               <PublicNumberInput
-                label="Подготовка, ₸ (опц.)"
+                label="Подготовка, ₸"
                 value={draft.setupFeeKzt ?? ''}
                 onChange={(value) => patch(item.id, 'setupFeeKzt', value)}
+              />
+              <PublicNumberInput
+                label="Мин. партия, шт."
+                value={draft.minQty ?? ''}
+                onChange={(value) => patch(item.id, 'minQty', value)}
               />
             </div>
           </div>
         );
       })}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-fine text-muted">Пустые строки не попадут в КП.</p>
+        <p className="text-fine text-muted">
+          Пустые строки не попадут в КП. Незаполненные условия сохранятся как требующие уточнения.
+        </p>
         <Button loading={pending} onClick={submit}>
           {pending ? 'Отправляю…' : 'Отправить КП'}
         </Button>

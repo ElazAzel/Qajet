@@ -144,7 +144,7 @@ describeIfConfigured('Document Engine + контур обучения (RLS)', ()
           .catch(() => null);
         expect(otherBuyerDocument === null || otherBuyerDocument.length === 0).toBe(true);
 
-        // Концьерж может вставить документ по любому видимому заказу.
+        // Консьерж может вставить документ по любому видимому заказу.
         const conciergeDocument = await asConcierge.begin(async (tx) => {
           await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
           return tx<{ id: string }[]>`
@@ -155,7 +155,7 @@ describeIfConfigured('Document Engine + контур обучения (RLS)', ()
         });
         expect(conciergeDocument).toHaveLength(1);
 
-        // Концьерж может писать model_snapshots (замыкание контура обучения).
+        // Консьерж может писать model_snapshots (замыкание контура обучения).
         const conciergeSnapshot = await asConcierge.begin(async (tx) => {
           await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
           return tx<{ id: string }[]>`

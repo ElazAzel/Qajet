@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../current-user';
@@ -77,6 +78,18 @@ export async function setTeamMemberAccess(
 ): Promise<ActionResult> {
   const gate = await requireOwner();
   if (!gate.ok) return gate;
+  if (!z.string().uuid().safeParse(userId).success) {
+    return { ok: false, error: 'Сотрудник указан некорректно' };
+  }
+  if (
+    approvalLimitKzt !== null &&
+    (!Number.isSafeInteger(approvalLimitKzt) || approvalLimitKzt < 0)
+  ) {
+    return { ok: false, error: 'Лимит должен быть целым неотрицательным числом' };
+  }
+  if (typeof isActive !== 'boolean') {
+    return { ok: false, error: 'Статус доступа указан некорректно' };
+  }
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('set_team_member_access', {
@@ -97,18 +110,28 @@ export async function setTeamMemberPermission(
 ): Promise<ActionResult> {
   const gate = await requireOwner();
   if (!gate.ok) return gate;
+  if (!z.string().uuid().safeParse(userId).success) {
+    return { ok: false, error: 'Сотрудник указан некорректно' };
+  }
+  if (!z.string().trim().min(1).max(120).safeParse(key).success) {
+    return { ok: false, error: 'Право указано некорректно' };
+  }
+  if (typeof value !== 'boolean') {
+    return { ok: false, error: 'Значение права указано некорректно' };
+  }
+  const normalizedKey = key.trim();
 
   const supabase = await createSupabaseServerClient();
   const { data: existing } = await supabase
     .from('permissions')
     .select('id')
     .eq('user_id', userId)
-    .eq('key', key)
+    .eq('key', normalizedKey)
     .maybeSingle();
 
   const { error } = existing
     ? await supabase.from('permissions').update({ value }).eq('id', existing.id)
-    : await supabase.from('permissions').insert({ user_id: userId, key, value });
+    : await supabase.from('permissions').insert({ user_id: userId, key: normalizedKey, value });
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/buyer/team');

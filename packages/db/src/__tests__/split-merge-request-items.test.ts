@@ -49,7 +49,7 @@ async function insertAuthUser(admin: postgres.Sql, email: string): Promise<{ id:
 }
 
 describeIfConfigured('split_request_item/merge_request_items (RLS)', () => {
-  it('концьерж может разделить и объединить позицию, покупатель — нет', async () => {
+  it('консьерж может разделить и объединить позицию, покупатель — нет', async () => {
     const admin = postgres(DATABASE_URL as string, { prepare: false });
 
     try {
@@ -130,7 +130,26 @@ describeIfConfigured('split_request_item/merge_request_items (RLS)', () => {
         `;
         expect(itemsForRequest).toHaveLength(1);
 
-        // Концьерж — split проходит: исходная позиция удаляется, вместо
+        const mismatchedParts = [
+          { name: 'Футболки с логотипом', qty: 99 },
+          { name: 'Кепки с логотипом', qty: 50 },
+        ];
+        const rejectedMismatchedSplit = await asConcierge
+          .begin(async (tx) => {
+            await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
+            return tx.savepoint(
+              (sp) => sp`select * from split_request_item(${item.id}, ${sp.json(mismatchedParts)})`,
+            );
+          })
+          .catch(() => null);
+        expect(rejectedMismatchedSplit).toBeNull();
+        expect(
+          await admin<{ id: string }[]>`
+            select id from request_items where request_id = ${request.id}
+          `,
+        ).toHaveLength(1);
+
+        // Консьерж — split проходит: исходная позиция удаляется, вместо
         // неё 2 новые с needs_clarification=true (Completeness Engine,
         // шаг 1 волны — новые строки требуют подтверждения).
         const conciergeSplit = await asConcierge.begin(async (tx) => {
@@ -163,7 +182,7 @@ describeIfConfigured('split_request_item/merge_request_items (RLS)', () => {
         `;
         expect(itemsBeforeMerge).toHaveLength(2);
 
-        // Концьерж объединяет обратно — 1 новая строка с суммой qty,
+        // Консьерж объединяет обратно — 1 новая строка с суммой qty,
         // обе части удалены.
         const conciergeMerge = await asConcierge.begin(async (tx) => {
           await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;

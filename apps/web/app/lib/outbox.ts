@@ -1,3 +1,5 @@
+import { createRfqResponseToken } from './rfq-response';
+
 export type OutboxStatus = 'pending' | 'sent' | 'failed';
 export type OutboxStatusTone = 'attention' | 'success' | 'danger' | 'neutral';
 
@@ -44,7 +46,8 @@ export function buildRfqNotification(input: {
   respondBy: string;
   recipient: string;
 }): OutboxMessageInput {
-  const path = `/rfq/respond/${encodeURIComponent(input.token)}`;
+  const signedToken = createRfqResponseToken(input.rfqId, input.token);
+  const path = `/rfq/respond/${encodeURIComponent(signedToken)}`;
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
   const responseUrl = baseUrl ? `${baseUrl}${path}` : path;
 

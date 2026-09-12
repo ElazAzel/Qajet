@@ -2,8 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { ORDER_STATE_PRIORITY, type OrderState } from './order-state';
 
 /**
- * Данные для главной покупателя — реальные заказы его компании, а не
- * заглушка ScreenLedger. RLS (`requests_select_own_company`) сам ограничивает
+ * Данные для главной покупателя — реальные заказы его компании. RLS
+ * (`requests_select_own_company`) сам ограничивает
  * выборку компанией текущего пользователя — здесь нет отдельного .eq на
  * company_id, фильтрация уже произошла на уровне Postgres.
  */

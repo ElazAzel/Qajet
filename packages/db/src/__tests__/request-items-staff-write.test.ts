@@ -51,7 +51,7 @@ async function insertAuthUser(admin: postgres.Sql, email: string): Promise<{ id:
 describeIfConfigured(
   'write-политики request_items/learning_events/extraction_aliases (RLS)',
   () => {
-    it('концьерж может править категорию позиции, покупатель — нет', async () => {
+    it('консьерж может править категорию позиции, покупатель — нет', async () => {
       const admin = postgres(DATABASE_URL as string, { prepare: false });
 
       try {

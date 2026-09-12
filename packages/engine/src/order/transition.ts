@@ -89,7 +89,7 @@ export const ORDER_TRANSITION_GRAPH: Record<OrderState, readonly Edge[]> = {
   // возвращался к стадии «поставщики оплачены», назад по жизненному циклу.
   // Исправлено одновременно в TypeScript-графе и SQL guard.
   disputed: [
-    { to: 'accepted', actors: STAFF },
+    { to: 'accepted', actors: ['buyer'] },
     { to: 'cancelled', actors: STAFF },
   ],
   accepted: [{ to: 'closed', actors: BUYER_OR_STAFF }],

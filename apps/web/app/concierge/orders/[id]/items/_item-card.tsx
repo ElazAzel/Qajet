@@ -5,9 +5,7 @@ import { Stamp } from '@qajet/ui/motion';
 import { Button, Card } from '@qajet/ui/primitives';
 import { useState } from 'react';
 import { correctItemClassification, splitRequestItem } from '../../../../lib/actions/item-actions';
-import { CATEGORY_LABEL, type CatalogCategory } from '../../../../lib/catalog';
-
-const CATEGORIES: CatalogCategory[] = ['merch', 'corporate-gifts', 'printing'];
+import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../../lib/catalog';
 
 const inputClass =
   'w-full rounded-control border border-transparent bg-page px-3 py-2 text-fine text-ink focus-visible:border-purple';
@@ -19,6 +17,7 @@ export interface ItemCardData {
   qty: number;
   unit: string;
   requiredCapabilities: string[];
+  itemKey?: string | undefined;
   sourceText?: string | undefined;
   needsClarification: boolean;
   clarificationReason: string | null;
@@ -41,7 +40,7 @@ function evenSplitRows(item: ItemCardData): SplitRow[] {
 }
 
 /**
- * Карточка позиции заявки — просмотр + правка категории/названия
+ * Карточка позиции заявки — просмотр + подтверждение каталожной позиции
  * (Classification Engine, agents.md §8A) + split (Dependency Engine,
  * шаг 7 волны — merge живёт на уровне списка, `_items-list.tsx`, потому
  * что объединяет несколько карточек сразу). Изменение категории и split
@@ -61,8 +60,7 @@ export function ItemCard({
   onToggleSelect?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [category, setCategory] = useState(item.category);
-  const [name, setName] = useState(item.name);
+  const [itemKey, setItemKey] = useState(item.itemKey ?? '');
   const { run, pending, error } = useAsyncAction(correctItemClassification, () =>
     setEditing(false),
   );
@@ -98,24 +96,18 @@ export function ItemCard({
       {editing ? (
         <div className="flex flex-col gap-2.5">
           <label className="block">
-            <span className="mb-1 block text-micro font-semibold text-muted">Название</span>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={inputClass}
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-micro font-semibold text-muted">Категория</span>
+            <span className="mb-1 block text-micro font-semibold text-muted">
+              Подтвердить позицию каталога
+            </span>
             <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              value={itemKey}
+              onChange={(e) => setItemKey(e.target.value)}
               className={inputClass}
             >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABEL[c]}
+              <option value="">Выберите позицию</option>
+              {CATALOG.map((catalogItem) => (
+                <option key={catalogItem.itemKey} value={catalogItem.itemKey}>
+                  {catalogItem.name} · {CATEGORY_LABEL[catalogItem.category]}
                 </option>
               ))}
             </select>
@@ -125,9 +117,10 @@ export function ItemCard({
               variant="primary"
               size="sm"
               loading={pending}
-              onClick={() => run(item.id, { category, name })}
+              disabled={!itemKey}
+              onClick={() => run(item.id, { itemKey })}
             >
-              Сохранить
+              Подтвердить
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>
               Отмена
@@ -223,7 +216,7 @@ export function ItemCard({
           {editable && (
             <div className="mt-3 flex gap-2">
               <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-                Изменить категорию
+                {item.needsClarification ? 'Уточнить позицию' : 'Изменить позицию'}
               </Button>
               <Button variant="secondary" size="sm" onClick={() => setSplitting(true)}>
                 Разделить

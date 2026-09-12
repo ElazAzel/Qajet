@@ -18,6 +18,7 @@ interface LineDraft {
   unitPriceKzt: string;
   leadTimeDays: string;
   setupFeeKzt: string;
+  minQty: string;
 }
 
 const inputClass =
@@ -38,6 +39,7 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
         unitPriceKzt: '',
         leadTimeDays: '',
         setupFeeKzt: '',
+        minQty: '',
         ...prev[itemId],
         [field]: value,
       },
@@ -56,6 +58,7 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
           unitPriceKzt,
           leadTimeDays,
           setupFeeKzt: draft.setupFeeKzt ? Number(draft.setupFeeKzt) : undefined,
+          minQty: draft.minQty ? Number(draft.minQty) : undefined,
         };
       })
       .filter((line): line is NonNullable<typeof line> => line !== null);
@@ -65,14 +68,19 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
   return (
     <div className="mt-6 flex flex-col gap-4">
       {items.map((item) => {
-        const draft = drafts[item.id] ?? { unitPriceKzt: '', leadTimeDays: '', setupFeeKzt: '' };
+        const draft = drafts[item.id] ?? {
+          unitPriceKzt: '',
+          leadTimeDays: '',
+          setupFeeKzt: '',
+          minQty: '',
+        };
         return (
           <div key={item.id} className="rounded-card border border-rule bg-surface p-4">
             <p className="text-sm font-semibold">{item.name}</p>
             <p className="mb-3 text-fine text-muted">
               {item.qty} {item.unit}
             </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <label className="block">
                 <span className="mb-1 block text-micro font-semibold text-muted">
                   Цена за ед., ₸
@@ -96,14 +104,24 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-micro font-semibold text-muted">
-                  Setup fee, ₸ (опц.)
-                </span>
+                <span className="mb-1 block text-micro font-semibold text-muted">Setup fee, ₸</span>
                 <input
                   type="number"
                   min={0}
                   value={draft.setupFeeKzt}
                   onChange={(e) => patch(item.id, 'setupFeeKzt', e.target.value)}
+                  className={inputClass}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-micro font-semibold text-muted">
+                  Мин. партия, шт.
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  value={draft.minQty}
+                  onChange={(e) => patch(item.id, 'minQty', e.target.value)}
                   className={inputClass}
                 />
               </label>
@@ -113,7 +131,10 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
       })}
 
       <div className="flex items-center justify-between">
-        <p className="text-fine text-muted">Оставьте пустыми позиции, по которым не даёте цену.</p>
+        <p className="text-fine text-muted">
+          Оставьте пустыми позиции, по которым не даёте цену. Незаполненные условия сохранятся как
+          требующие уточнения.
+        </p>
         <Button variant="primary" loading={pending} onClick={handleSubmit}>
           {pending ? 'Отправляю…' : 'Отправить КП'}
         </Button>

@@ -29,6 +29,11 @@ export interface QajetRequisites {
   email: string;
 }
 
+export interface BuiltDocument {
+  url: string;
+  meta: Record<string, unknown>;
+}
+
 /** Реквизиты QAJET (agents.md §11.3) — settings.qajet_requisites, читается
  *  и покупателем (RLS settings_select_public_requisites), не только staff. */
 export async function loadQajetRequisites(
@@ -65,22 +70,19 @@ async function loadBuyerCompanyForRequest(
   return company ? { name: company.name, bin: company.bin } : null;
 }
 
-/** Счёт на предоплату — order-actions.ts вызывает при переходе в 'prepaid'. */
-export async function createPrepayInvoiceDocument(
+/** Счёт на предоплату — строится до транзакционного перехода в 'prepaid'. */
+export async function buildPrepayInvoiceDocument(
   supabase: SupabaseClient,
   order: { id: string; requestId: string },
   invoiceNo: string,
   amountKzt: number,
-): Promise<string | null> {
+): Promise<BuiltDocument> {
   const [requisites, buyerCompany] = await Promise.all([
     loadQajetRequisites(supabase),
     loadBuyerCompanyForRequest(supabase, order.requestId),
   ]);
 
-  const { error } = await supabase.from('documents').insert({
-    order_id: order.id,
-    stage: 'prepaid',
-    type: 'prepay_invoice',
+  return {
     url: `/documents/${order.id}?type=prepay_invoice`,
     meta: {
       invoiceNo,
@@ -89,6 +91,23 @@ export async function createPrepayInvoiceDocument(
       qajetRequisites: requisites,
       issuedAt: new Date().toISOString(),
     },
+  };
+}
+
+/** Сохраняет счёт на предоплату. Используется legacy-путём и тестами. */
+export async function createPrepayInvoiceDocument(
+  supabase: SupabaseClient,
+  order: { id: string; requestId: string },
+  invoiceNo: string,
+  amountKzt: number,
+): Promise<string | null> {
+  const document = await buildPrepayInvoiceDocument(supabase, order, invoiceNo, amountKzt);
+  const { error } = await supabase.from('documents').insert({
+    order_id: order.id,
+    stage: 'prepaid',
+    type: 'prepay_invoice',
+    url: document.url,
+    meta: document.meta,
   });
   return error?.message ?? null;
 }
@@ -99,8 +118,8 @@ export interface ActItem {
   unit: string;
 }
 
-/** Акт выполненных работ — order-actions.ts вызывает при переходе в 'closed'. */
-export async function createActDocument(
+/** Акт выполненных работ — строится до транзакционного перехода в 'closed'. */
+export async function buildActDocument(
   supabase: SupabaseClient,
   order: {
     id: string;
@@ -111,16 +130,13 @@ export async function createActDocument(
     finalCostKzt: number;
   },
   items: readonly ActItem[],
-): Promise<string | null> {
+): Promise<BuiltDocument> {
   const [requisites, buyerCompany] = await Promise.all([
     loadQajetRequisites(supabase),
     loadBuyerCompanyForRequest(supabase, order.requestId),
   ]);
 
-  const { error } = await supabase.from('documents').insert({
-    order_id: order.id,
-    stage: 'closed',
-    type: 'act',
+  return {
     url: `/documents/${order.id}?type=act`,
     meta: {
       actNo: `ACT-${order.id.slice(0, 8)}`,
@@ -133,6 +149,29 @@ export async function createActDocument(
       items,
       closedAt: new Date().toISOString(),
     },
+  };
+}
+
+/** Сохраняет акт. Используется legacy-путём и тестами. */
+export async function createActDocument(
+  supabase: SupabaseClient,
+  order: {
+    id: string;
+    requestId: string;
+    settlement: 'refund' | 'surcharge' | 'exact';
+    settlementAmountKzt: number;
+    planTotalKzt: number;
+    finalCostKzt: number;
+  },
+  items: readonly ActItem[],
+): Promise<string | null> {
+  const document = await buildActDocument(supabase, order, items);
+  const { error } = await supabase.from('documents').insert({
+    order_id: order.id,
+    stage: 'closed',
+    type: 'act',
+    url: document.url,
+    meta: document.meta,
   });
   return error?.message ?? null;
 }

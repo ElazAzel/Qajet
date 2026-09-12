@@ -21,7 +21,7 @@ export default async function DemoPage() {
     return (
       <div className="mx-auto max-w-md px-6 py-20 text-center">
         <p className="text-sm text-muted">
-          /demo показывает внутреннюю логику подбора поставщиков — доступно только концьержу и
+          /demo показывает внутреннюю логику подбора поставщиков — доступно только консьержу и
           админу.
         </p>
       </div>

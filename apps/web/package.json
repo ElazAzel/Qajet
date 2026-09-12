@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --webpack --port 3000",
     "build": "next build --webpack",
-    "start": "next start",
+    "start": "node scripts/prepare-standalone.mjs && node .next/standalone/apps/web/server.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
     "e2e": "playwright test",
     "test": "vitest run --passWithNoTests",

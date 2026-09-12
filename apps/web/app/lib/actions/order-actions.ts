@@ -14,15 +14,15 @@ import {
 import { percentOfKzt, roundKzt } from '@qajet/engine/money';
 import { transition } from '@qajet/engine/order';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { logAutoTimeEntry } from '../autotimer';
 import { CATALOG_BY_KEY } from '../catalog';
 import { loadRequestComparison } from '../comparison';
 import { type OrderActor, orderActorFor, requireCurrentUser } from '../current-user';
-import { createActDocument, createPrepayInvoiceDocument } from '../documents';
-import { enqueueOutbox } from '../notifications';
+import { buildActDocument, buildPrepayInvoiceDocument } from '../documents';
 import type { OrderState } from '../order-state';
-import { buildRfqNotification } from '../outbox';
+import { buildRfqNotification, type OutboxMessageInput } from '../outbox';
 import {
   recalibrateEstimatorForOrder,
   recalibrateLeadTimeForSupplier,
@@ -64,6 +64,37 @@ export interface SupplierRatingInput {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ORDER_STATE_VALUES = [
+  'draft',
+  'estimated',
+  'prepaid',
+  'rfq_sent',
+  'quotes_received',
+  'plan_proposed',
+  'plan_approved',
+  'suppliers_paid',
+  'in_production',
+  'shipped',
+  'delivered',
+  'accepted',
+  'closed',
+  'awaiting_internal_approval',
+  'on_hold',
+  'cancelled',
+  'disputed',
+] as const;
+const orderStateSchema = z.enum(ORDER_STATE_VALUES);
+const advanceOptionsSchema = z
+  .object({
+    settlement: z.enum(['refund', 'surcharge', 'exact']).optional(),
+    settlementAmountKzt: z
+      .number()
+      .finite()
+      .nonnegative()
+      .refine(Number.isSafeInteger, 'Сумма должна быть целым числом')
+      .optional(),
+  })
+  .strict();
 
 export type OrderRow = {
   id: string;
@@ -191,7 +222,7 @@ function revalidateOrder(orderId: string): void {
 }
 
 /**
- * Концьерж берёт поданную заявку в работу — создаёт плейсхолдер-план и
+ * Консьерж берёт поданную заявку в работу — создаёт плейсхолдер-план и
  * orders(state='draft'), тем же приёмом, что и packages/db/src/seed/
  * generator.ts (approved_plan_id NOT NULL с самого начала, реальный план
  * появится только после КП). До этого действия заявка существует сама по
@@ -203,8 +234,9 @@ export async function intakeRequest(
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
   if (actor !== 'concierge' && actor !== 'admin') {
-    return { ok: false, error: 'Только концьерж может взять заявку в работу' };
+    return { ok: false, error: 'Только консьерж может взять заявку в работу' };
   }
+  if (!UUID_RE.test(requestId)) return { ok: false, error: 'Заявка указана некорректно' };
 
   const supabase = await createSupabaseServerClient();
 
@@ -215,54 +247,26 @@ export async function intakeRequest(
     .maybeSingle();
   if (existing) return { ok: false, error: 'Заявка уже взята в работу' };
 
-  const { data: placeholderPlan, error: planError } = await supabase
-    .from('plans')
-    .insert({
-      request_id: requestId,
-      version: 1,
-      kind: 'manual',
-      total_supplier_kzt: 0,
-      delivery_kzt: 0,
-      commission_kzt: 0,
-      commission_base: 'supplier_ex_delivery',
-      tax_effect_kzt: 0,
-      total_kzt: 0,
-      supplier_count: 0,
-      explanation: {
-        decomposition: [],
-        notes: ['Черновик — реальный план появится после получения КП.'],
-      },
-      status: 'draft',
-    })
-    .select('id')
-    .single();
-  if (planError || !placeholderPlan) {
-    return { ok: false, error: planError?.message ?? 'Не удалось создать план' };
-  }
-
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert({
-      request_id: requestId,
-      approved_plan_id: placeholderPlan.id,
-      state: 'draft',
-      concierge_user_id: user.id,
-    })
-    .select('id')
-    .single();
-  if (orderError || !order) {
+  const { data: orderId, error: orderError } = await supabase.rpc('intake_request', {
+    p_request_id: requestId,
+  });
+  if (orderError || !orderId) {
     return { ok: false, error: orderError?.message ?? 'Не удалось создать заказ' };
   }
 
   revalidatePath('/concierge');
   revalidatePath('/buyer');
-  return { ok: true, orderId: order.id };
+  return { ok: true, orderId: orderId as string };
 }
 
-/** Концьерж/админ предлагает план — quotes_received → plan_proposed. */
+/** Консьерж/админ предлагает план — quotes_received → plan_proposed. */
 export async function proposePlan(requestId: string, kind: PlanKind): Promise<ActionResult> {
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
+  if (!UUID_RE.test(requestId)) return { ok: false, error: 'Заявка указана некорректно' };
+  if (!['recommended', 'cheaper', 'more_slack'].includes(kind)) {
+    return { ok: false, error: 'Вариант плана указан некорректно' };
+  }
   const supabase = await createSupabaseServerClient();
 
   const order = await loadOrder(supabase, { requestId });
@@ -275,20 +279,11 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
   const chosen = comparison?.result.plans.find((p) => p.kind === kind);
   if (!comparison || !chosen) return { ok: false, error: 'Этот вариант плана не найден' };
 
-  const { data: versionRow } = await supabase
-    .from('plans')
-    .select('version')
-    .eq('request_id', requestId)
-    .order('version', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextVersion = (versionRow?.version ?? 0) + 1;
-
-  const { data: newPlan, error: planError } = await supabase
-    .from('plans')
-    .insert({
-      request_id: requestId,
-      version: nextVersion,
+  const stageStartedAt = await captureStageStart(supabase, order.id, actor);
+  const { error: planError } = await supabase.rpc('propose_order_plan', {
+    p_order_id: order.id,
+    p_expected_state: order.state,
+    p_plan: {
       kind: chosen.kind,
       total_supplier_kzt: chosen.totalSupplierKzt,
       delivery_kzt: chosen.deliveryKzt,
@@ -300,57 +295,23 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
       slack_days: chosen.slackDays,
       supplier_count: chosen.supplierCount,
       explanation: chosen.explanation,
-      status: 'proposed',
-    })
-    .select('id')
-    .single();
-  if (planError || !newPlan)
-    return { ok: false, error: planError?.message ?? 'Не удалось создать план' };
-
-  if (order.approved_plan_id) {
-    await supabase.from('plans').update({ status: 'superseded' }).eq('id', order.approved_plan_id);
-  }
-
-  if (chosen.lines.length > 0) {
-    const { error: linesError } = await supabase.from('plan_lines').insert(
-      chosen.lines.map((line) => ({
-        plan_id: newPlan.id,
-        request_item_id: line.requestItemId,
-        supplier_company_id: line.supplierId,
-        quote_line_id: line.offerId,
-        qty: line.qty,
-        line_total_kzt: line.lineTotalKzt,
-        // По умолчанию — та же плоская ставка, что уже использовалась при
-        // подборе вариантов (comparison.commissionRatePct); консьерж правит
-        // точечно по позиции на экране плана, 21-24% (agents.md §7).
-        commission_pct: comparison.commissionRatePct,
-        commission_kzt: percentOfKzt(line.lineTotalKzt, comparison.commissionRatePct),
-      })),
-    );
-    if (linesError) return { ok: false, error: linesError.message };
-  }
-
-  if (comparison.result.rejections.length > 0) {
-    const { error: rejectionsError } = await supabase.from('plan_rejections').insert(
-      comparison.result.rejections.map((r) => ({
-        request_id: requestId,
-        plan_context: 'concierge_propose',
-        quote_line_id: r.offerId,
-        reason_code: r.code,
-        reason_human: r.reasonHuman,
-      })),
-    );
-    if (rejectionsError) return { ok: false, error: rejectionsError.message };
-  }
-
-  const stageStartedAt = await captureStageStart(supabase, order.id, actor);
-  const { error: orderError } = await supabase
-    .from('orders')
-    .update({ approved_plan_id: newPlan.id, state: 'plan_proposed' })
-    .eq('id', order.id);
-  if (orderError) return { ok: false, error: orderError.message };
-  // Аудит перехода создаётся триггером orders в той же транзакции, что и
-  // смена стадии; таймер пишется только после успешного UPDATE.
+    },
+    p_lines: chosen.lines.map((line) => ({
+      request_item_id: line.requestItemId,
+      supplier_company_id: line.supplierId,
+      quote_line_id: line.offerId,
+      qty: line.qty,
+      line_total_kzt: line.lineTotalKzt,
+      commission_pct: comparison.commissionRatePct,
+      commission_kzt: percentOfKzt(line.lineTotalKzt, comparison.commissionRatePct),
+    })),
+    p_rejections: comparison.result.rejections.map((r) => ({
+      quote_line_id: r.offerId,
+      reason_code: r.code,
+      reason_human: r.reasonHuman,
+    })),
+  });
+  if (planError) return { ok: false, error: planError.message };
   await logStageWork(supabase, order.id, order.state, user.id, actor, stageStartedAt);
 
   revalidateOrder(order.id);
@@ -361,6 +322,7 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
 export async function approvePlan(orderId: string): Promise<ActionResult> {
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
+  if (!UUID_RE.test(orderId)) return { ok: false, error: 'Заказ указан некорректно' };
   const supabase = await createSupabaseServerClient();
 
   const order = await loadOrder(supabase, { orderId });
@@ -387,17 +349,31 @@ export interface AdvanceOptions {
 }
 
 /**
- * Все остальные рёбра графа: suppliers_paid…shipped (концьерж/админ),
- * accepted/disputed/on_hold/cancelled (покупатель или staff — см. граф).
+ * Все остальные рёбра графа: suppliers_paid…shipped (консьерж/админ),
+ * accepted (покупатель), disputed/on_hold/cancelled (покупатель или staff — см. граф).
  */
 export async function advanceOrderStage(
   orderId: string,
   toState: OrderState,
-  options: AdvanceOptions = {},
+  rawOptions: AdvanceOptions = {},
 ): Promise<ActionResult> {
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
   const supabase = await createSupabaseServerClient();
+
+  if (!UUID_RE.test(orderId)) return { ok: false, error: 'Заказ указан некорректно' };
+  const parsedState = orderStateSchema.safeParse(toState);
+  if (!parsedState.success) return { ok: false, error: 'Стадия заказа указана некорректно' };
+  const parsedOptions = advanceOptionsSchema.safeParse(rawOptions ?? {});
+  if (!parsedOptions.success) return { ok: false, error: 'Параметры перехода указаны некорректно' };
+  toState = parsedState.data;
+  const options: AdvanceOptions = {};
+  if (parsedOptions.data.settlement !== undefined) {
+    options.settlement = parsedOptions.data.settlement;
+  }
+  if (parsedOptions.data.settlementAmountKzt !== undefined) {
+    options.settlementAmountKzt = parsedOptions.data.settlementAmountKzt;
+  }
 
   const order = await loadOrder(supabase, { orderId });
   if (!order) return { ok: false, error: 'Заказ не найден' };
@@ -405,30 +381,37 @@ export async function advanceOrderStage(
   const check = transition(order.state, toState, actor);
   if (!check.ok) return { ok: false, error: check.reason };
 
+  let estimatePayload: Record<string, unknown> | null = null;
+  let prepaymentPayload: Record<string, unknown> | null = null;
+  let rfqPayload: PreparedRfqs | null = null;
+  let payoutPayload: PreparedPayout[] | null = null;
+
   if (toState === 'estimated') {
-    const estimateError = await computeAndInsertEstimate(supabase, order);
-    if (estimateError) return { ok: false, error: estimateError };
-    await supabase.from('requests').update({ status: 'estimated' }).eq('id', order.request_id);
+    const estimate = await computeEstimate(supabase, order);
+    if (typeof estimate === 'string') return { ok: false, error: estimate };
+    estimatePayload = estimate;
   }
   if (toState === 'prepaid') {
-    const prepaymentError = await insertPrepayment(supabase, order);
-    if (prepaymentError) return { ok: false, error: prepaymentError };
+    const prepayment = await preparePrepayment(supabase, order);
+    if (typeof prepayment === 'string') return { ok: false, error: prepayment };
+    prepaymentPayload = prepayment;
   }
   if (toState === 'rfq_sent') {
     const completenessError = await checkCompletenessBeforeRfq(supabase, order);
     if (completenessError) return { ok: false, error: completenessError };
-    const rfqError = await createRfqsForOrder(supabase, order);
-    if (rfqError) return { ok: false, error: rfqError };
+    const rfqs = await prepareRfqsForOrder(supabase, order);
+    if (typeof rfqs === 'string') return { ok: false, error: rfqs };
+    rfqPayload = rfqs;
   }
   if (toState === 'suppliers_paid') {
-    const payoutError = await recordSupplierPayouts(supabase, order);
-    if (payoutError) return { ok: false, error: payoutError };
+    const payouts = await prepareSupplierPayouts(supabase, order);
+    if (typeof payouts === 'string') return { ok: false, error: payouts };
+    payoutPayload = payouts;
   }
 
-  const payload: Record<string, unknown> = { state: toState };
+  const payload: Record<string, unknown> = {};
+  let closeDocument: { url: string; meta: Record<string, unknown> } | null = null;
   if (toState === 'accepted') payload.accepted_at = new Date().toISOString();
-  // Захвачено вне if-блока — нужно и для payload, и для Document Engine
-  // (акт выполненных работ) после успешного update() ниже.
   let closedSettlement: {
     settlement: 'refund' | 'surcharge' | 'exact';
     settlementAmountKzt: number;
@@ -460,41 +443,35 @@ export async function advanceOrderStage(
       planTotalKzt: planTotal,
       finalCostKzt: planTotal + settlementAmountKzt,
     };
-  }
 
-  const stageStartedAt = await captureStageStart(supabase, order.id, actor);
-  const { error: orderError, count } = await supabase
-    .from('orders')
-    .update(payload, { count: 'exact' })
-    .eq('id', order.id);
-  if (orderError) return { ok: false, error: orderError.message };
-  if (count === 0) return { ok: false, error: 'Нет доступа к этому заказу' };
-  // Используем timestamp, захваченный до UPDATE, потому что audit event уже
-  // создан триггером к моменту записи времени.
-  await logStageWork(supabase, order.id, order.state, user.id, actor, stageStartedAt);
-
-  if (toState === 'closed') {
-    // `requests.status` доводится до 'closed' вместе с заказом. Значение
-    // существовало в enum с самого начала, но живой путь его не выставлял
-    // никогда — его писал только генератор сида. Из-за этого заявка,
-    // прошедшая весь цикл в приложении, навсегда оставалась в статусе
-    // 'estimated', и всё, что читает историю по нему (повтор заказа),
-    // видело только демо-историю.
-    await supabase.from('requests').update({ status: 'closed' }).eq('id', order.request_id);
-  }
-
-  if (toState === 'closed' && closedSettlement) {
     const { data: itemRows } = await supabase
       .from('request_items')
       .select('name, qty, unit')
       .eq('request_id', order.request_id);
-    const documentError = await createActDocument(
+    closeDocument = await buildActDocument(
       supabase,
       { id: order.id, requestId: order.request_id, ...closedSettlement },
       itemRows ?? [],
     );
-    if (documentError) return { ok: false, error: documentError };
   }
+
+  const stageStartedAt = await captureStageStart(supabase, order.id, actor);
+  const { error: orderError } = await supabase.rpc('advance_order_stage', {
+    p_order_id: order.id,
+    p_expected_state: order.state,
+    p_to_state: toState,
+    p_estimate: estimatePayload,
+    p_prepayment: prepaymentPayload,
+    p_rfqs: rfqPayload?.rfqs ?? null,
+    p_outbox: rfqPayload?.outbox ?? null,
+    p_payouts: payoutPayload,
+    p_payload: payload,
+    p_close_document: closeDocument,
+  });
+  if (orderError) return { ok: false, error: orderError.message };
+  // Timestamp захвачен до RPC: audit event создаётся триггером внутри той же
+  // транзакции, что и все зависимые записи стадии.
+  await logStageWork(supabase, order.id, order.state, user.id, actor, stageStartedAt);
 
   // Замыкание контура обучения (agents.md §8G, §14 шаг 10) — best-effort,
   // никогда не проваливает сам переход стадии: это фоновое обучение, а не
@@ -536,10 +513,10 @@ export async function advanceOrderStage(
  * Суммирование по позициям и marginPct = max по позициям — дословно тот же
  * метод агрегации, что в generator.ts, для сопоставимости с демо-историей.
  */
-async function computeAndInsertEstimate(
+async function computeEstimate(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   order: OrderRow,
-): Promise<string | null> {
+): Promise<Record<string, unknown> | string> {
   const { data: items } = await supabase
     .from('request_items')
     .select('qty, specs')
@@ -601,22 +578,20 @@ async function computeAndInsertEstimate(
     maxMargin = Math.max(maxMargin, est.marginPct);
   }
 
-  const { error } = await supabase.from('estimates').insert({
-    request_id: order.request_id,
+  return {
     p50_kzt: roundKzt(totalP50),
     p80_kzt: roundKzt(totalP80),
     margin_pct: maxMargin,
     basis: { nSamples: nSamplesTotal, method: 'engine.estimate log-log + Bayesian shrinkage' },
-  });
-  return error?.message ?? null;
+  };
 }
 
 /** Предоплата — 50% от p50, без эквайринга (agents.md §17): факт фиксируется
  *  вручную, счёт/подтверждение — не платёжный шлюз. */
-async function insertPrepayment(
+async function preparePrepayment(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   order: OrderRow,
-): Promise<string | null> {
+): Promise<Record<string, unknown> | string> {
   const { data: estimateRow } = await supabase
     .from('estimates')
     .select('p50_kzt')
@@ -627,22 +602,20 @@ async function insertPrepayment(
   const p50 = estimateRow?.p50_kzt ?? 0;
   const amountKzt = roundKzt(p50 * 0.5);
   const invoiceNo = `PRE-${order.id.slice(0, 8)}`;
-
-  const { error } = await supabase.from('prepayments').insert({
-    request_id: order.request_id,
-    amount_kzt: amountKzt,
-    invoice_no: invoiceNo,
-    status: 'paid',
-    paid_at: new Date().toISOString(),
-  });
-  if (error) return error.message;
-
-  return createPrepayInvoiceDocument(
+  const paidAt = new Date().toISOString();
+  const document = await buildPrepayInvoiceDocument(
     supabase,
     { id: order.id, requestId: order.request_id },
     invoiceNo,
     amountKzt,
   );
+  return {
+    amount_kzt: amountKzt,
+    invoice_no: invoiceNo,
+    status: 'paid',
+    paid_at: paidAt,
+    document,
+  };
 }
 
 interface SupplierCandidateRow {
@@ -663,6 +636,29 @@ interface SupplierCandidateRow {
     rfqAnswered: number;
     medianResponseHours: number | null;
   };
+}
+
+interface PreparedRfq {
+  id: string;
+  supplier_company_id: string;
+  token: string;
+  sent_at: string;
+  respond_by: string;
+  status: 'sent';
+  is_exploration: boolean;
+  selection_reason: Record<string, unknown>;
+}
+
+interface PreparedRfqs {
+  rfqs: PreparedRfq[];
+  outbox: OutboxMessageInput[];
+}
+
+interface PreparedPayout {
+  supplier_company_id: string;
+  amount_kzt: number;
+  status: 'paid';
+  paid_at: string;
 }
 
 /** Поставщик без единого закрытого заказа или отправленного RFQ — кандидат в слот исследования (agents.md §8C). */
@@ -723,10 +719,10 @@ async function checkCompletenessBeforeRfq(
   return completeness.blockers.map((b) => b.humanReason).join(' ');
 }
 
-async function createRfqsForOrder(
+async function prepareRfqsForOrder(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   order: OrderRow,
-): Promise<string | null> {
+): Promise<PreparedRfqs | string> {
   const { data: items } = await supabase
     .from('request_items')
     .select('category, required_capabilities')
@@ -940,8 +936,8 @@ async function createRfqsForOrder(
   const respondBy = new Date(sentAt);
   respondBy.setUTCDate(respondBy.getUTCDate() + RFQ_RESPOND_WINDOW_DAYS);
 
-  const rfqDrafts = [...chosenIds].map((supplierId) => ({
-    request_id: order.request_id,
+  const rfqDrafts: PreparedRfq[] = [...chosenIds].map((supplierId) => ({
+    id: crypto.randomUUID(),
     supplier_company_id: supplierId,
     token: crypto.randomUUID(),
     sent_at: sentAt.toISOString(),
@@ -950,12 +946,6 @@ async function createRfqsForOrder(
     is_exploration: explorationIds.has(supplierId),
     selection_reason: selectionReasonById.get(supplierId) ?? { reason: 'scored' },
   }));
-  const { data: insertedRfqs, error } = await supabase
-    .from('rfqs')
-    .insert(rfqDrafts)
-    .select('id, supplier_company_id, token');
-  if (error) return error.message;
-  if (!insertedRfqs || insertedRfqs.length === 0) return 'Не удалось создать RFQ';
 
   // В очередь попадают только активные owner/manager поставщика. Адреса
   // читаются staff-сессией, а покупатель никогда не получает эту выборку.
@@ -967,41 +957,32 @@ async function createRfqsForOrder(
     .eq('is_active', true);
   if (recipientsError) return recipientsError.message;
 
-  const outboxError = await enqueueOutbox(
-    supabase,
-    insertedRfqs.flatMap((rfq) =>
-      (recipients ?? [])
-        .filter((recipient) => recipient.company_id === rfq.supplier_company_id)
-        .map((recipient) =>
-          buildRfqNotification({
-            rfqId: rfq.id,
-            token: rfq.token,
-            requestTitle: requestRow?.title ?? 'Новая заявка',
-            respondBy: respondBy.toISOString(),
-            recipient: recipient.email,
-          }),
-        ),
-    ),
+  const outbox = rfqDrafts.flatMap((rfq) =>
+    (recipients ?? [])
+      .filter((recipient) => recipient.company_id === rfq.supplier_company_id)
+      .map((recipient) =>
+        buildRfqNotification({
+          rfqId: rfq.id,
+          token: rfq.token,
+          requestTitle: requestRow?.title ?? 'Новая заявка',
+          respondBy: respondBy.toISOString(),
+          recipient: recipient.email,
+        }),
+      ),
   );
-  if (outboxError) {
-    // Уведомление — производный канал: отсутствие миграции/ключа почты не
-    // должно откатывать созданные RFQ и ломать закупочный цикл. Ошибка
-    // остаётся в server log, а админ увидит пустой/недоступный outbox.
-    console.error('[outbox] Не удалось поставить RFQ-уведомления в очередь', outboxError);
-  }
-  return null;
+  return { rfqs: rfqDrafts, outbox };
 }
 
-async function recordSupplierPayouts(
+async function prepareSupplierPayouts(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   order: OrderRow,
-): Promise<string | null> {
-  if (!order.approved_plan_id) return null;
+): Promise<PreparedPayout[] | string> {
+  if (!order.approved_plan_id) return [];
   const { data: lines } = await supabase
     .from('plan_lines')
     .select('supplier_company_id, line_total_kzt')
     .eq('plan_id', order.approved_plan_id);
-  if (!lines || lines.length === 0) return null;
+  if (!lines || lines.length === 0) return [];
 
   const totalsBySupplier = new Map<string, number>();
   for (const line of lines) {
@@ -1012,15 +993,10 @@ async function recordSupplierPayouts(
   }
 
   const paidAt = new Date().toISOString();
-  const { error } = await supabase.from('supplier_payouts').upsert(
-    [...totalsBySupplier.entries()].map(([supplierCompanyId, amountKzt]) => ({
-      order_id: order.id,
-      supplier_company_id: supplierCompanyId,
-      amount_kzt: amountKzt,
-      status: 'paid',
-      paid_at: paidAt,
-    })),
-    { onConflict: 'order_id,supplier_company_id' },
-  );
-  return error?.message ?? null;
+  return [...totalsBySupplier.entries()].map(([supplierCompanyId, amountKzt]) => ({
+    supplier_company_id: supplierCompanyId,
+    amount_kzt: amountKzt,
+    status: 'paid',
+    paid_at: paidAt,
+  }));
 }

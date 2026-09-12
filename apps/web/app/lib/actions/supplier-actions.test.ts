@@ -33,6 +33,7 @@ const valid: QuoteLineInput = {
   unitPriceKzt: 100,
   leadTimeDays: 2,
 };
+const validRfqId = '00000000-0000-4000-8000-000000000002';
 
 describe('supplier RFQ actions', () => {
   beforeEach(() => {
@@ -50,15 +51,16 @@ describe('supplier RFQ actions', () => {
     { leadTimeDays: 0.1 },
     { leadTimeDays: 2147483648 },
   ])('не принимает некорректные числа %j', async (patch) => {
-    expect(await submitQuote('rfq', [{ ...valid, ...patch }])).toMatchObject({ ok: false });
+    expect(await submitQuote(validRfqId, [{ ...valid, ...patch }])).toMatchObject({ ok: false });
   });
   it('отклоняет повтор одной позиции', async () => {
-    expect(await submitQuote('rfq', [valid, valid])).toMatchObject({ ok: false });
+    expect(await submitQuote(validRfqId, [valid, valid])).toMatchObject({ ok: false });
   });
   it('не сообщает об успешном отказе, если запрос недоступен или уже отвечен', async () => {
-    expect(await declineRfq('rfq')).toMatchObject({ ok: false });
+    mocks.rpc.mockResolvedValueOnce({ error: { message: 'RFQ недоступен' } });
+    expect(await declineRfq(validRfqId)).toMatchObject({ ok: false });
   });
   it('принимает корректное предложение', async () => {
-    expect(await submitQuote('rfq', [valid])).toEqual({ ok: true });
+    expect(await submitQuote(validRfqId, [valid])).toEqual({ ok: true });
   });
 });

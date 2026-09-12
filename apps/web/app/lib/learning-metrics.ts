@@ -62,7 +62,7 @@ const AUTO_APPLY_HITS_THRESHOLD = 3;
 
 /**
  * Видимость Classification Engine (agents.md §8A, волна 1 шаг 4) — сколько
- * раз концьерж поправил категорию (learning_events{type:'extraction_fix'})
+ * раз консьерж поправил категорию (learning_events{type:'extraction_fix'})
  * и какие алиасы это уже накопило (extraction_aliases). Обе таблицы уже
  * staff-select (learning.ts) — RLS не меняется, чисто аддитивный шаг.
  */

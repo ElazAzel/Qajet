@@ -55,10 +55,10 @@ const secondaryLinkClass =
 const NEXT_STEPS = [
   {
     title: 'Вы выбираете позиции и описываете задачу',
-    sub: 'Каталог + свободное описание для концьержа',
+    sub: 'Каталог + свободное описание для консьержа',
   },
   {
-    title: 'Концьерж берёт заявку в работу и оценивает её',
+    title: 'Консьерж берёт заявку в работу и оценивает её',
     sub: 'Реальный расчёт по истории цен, не догадка',
   },
   {
@@ -154,7 +154,7 @@ export default function NewRequestPage() {
         </p>
         <h1 className="mt-4 text-2xl font-extrabold text-ink">Заявка отправлена</h1>
         <p className="mt-2 text-sm text-muted">
-          Концьерж QAJET возьмёт её в работу и сделает оценку — заказ появится в «Мои заказы», как
+          Консьерж QAJET возьмёт её в работу и сделает оценку — заказ появится в «Мои заказы», как
           только это произойдёт.
         </p>
         <Link href="/buyer" className="mt-6 inline-block">
@@ -177,7 +177,7 @@ export default function NewRequestPage() {
       <Reveal className="mb-7">
         <h1 className="text-3xl font-extrabold">Новая заявка</h1>
         <p className="mt-2 text-sm text-muted">
-          Выберите позиции и опишите задачу — концьерж оценит стоимость и подберёт поставщиков.
+          Выберите позиции и опишите задачу — консьерж оценит стоимость и подберёт поставщиков.
         </p>
       </Reveal>
 
@@ -186,7 +186,7 @@ export default function NewRequestPage() {
           <Card className="p-7">
             <h3 className="text-lg font-bold">Расскажите о задаче</h3>
             <p className="mt-1.5 mb-5 text-fine text-muted">
-              Название и позиции обязательны, остальное поможет концьержу точнее оценить сроки.
+              Название и позиции обязательны, остальное поможет консьержу точнее оценить сроки.
             </p>
 
             <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">

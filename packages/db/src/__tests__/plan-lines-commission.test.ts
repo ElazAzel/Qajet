@@ -49,7 +49,7 @@ async function insertAuthUser(admin: postgres.Sql, email: string): Promise<{ id:
 }
 
 describeIfConfigured('комиссия по позиции плана (RLS + approve_plan RPC)', () => {
-  it('концьерж может править commission_pct, покупатель не видит plan_lines и не может UPDATE plans напрямую', async () => {
+  it('консьерж может править commission_pct, покупатель не видит plan_lines и не может UPDATE plans напрямую', async () => {
     const admin = postgres(DATABASE_URL as string, { prepare: false });
 
     try {
@@ -189,7 +189,7 @@ describeIfConfigured('комиссия по позиции плана (RLS + app
         });
         expect(buyerUpdatePlan).toHaveLength(0);
 
-        // Концьерж может UPDATE commission_pct/commission_kzt на plan_lines.
+        // Консьерж может UPDATE commission_pct/commission_kzt на plan_lines.
         const conciergeUpdateLine = await asConcierge.begin(async (tx) => {
           await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authConcierge.id, role: 'authenticated' })}, true)`;
           return tx<{ id: string; commission_pct: number; commission_kzt: string }[]>`

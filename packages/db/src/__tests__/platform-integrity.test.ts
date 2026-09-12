@@ -162,6 +162,15 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       expect(event).toHaveLength(1);
       expect(event[0]?.actor_user_id).toBe(f[4]);
       expect(event[0]?.from_state).toBe('shipped');
+
+      await asUser(tx, f[3]);
+      await expect(
+        tx.savepoint((sp) => sp`update orders set state = 'accepted' where id = ${f[11]}`),
+      ).rejects.toThrow('другой участник');
+
+      await asUser(tx, f[2]);
+      await tx`update orders set state = 'accepted', accepted_at = now() where id = ${f[11]}`;
+      expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe('accepted');
     }));
   it('a multi-supplier order waits for every supplier confirmation', async () =>
     scenario(async (tx, f) => {

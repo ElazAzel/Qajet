@@ -21,7 +21,7 @@ describe('transition', () => {
     expect(transition('accepted', 'closed', 'buyer')).toEqual({ ok: true });
   });
 
-  it('концьерж не может утвердить план за покупателя', () => {
+  it('консьерж не может утвердить план за покупателя', () => {
     const result = transition('plan_proposed', 'plan_approved', 'concierge');
     expect(result.ok).toBe(false);
   });
@@ -78,12 +78,13 @@ describe('transition', () => {
     expect(transition('rfq_sent', 'cancelled', 'buyer')).toEqual({ ok: true });
     expect(transition('rfq_sent', 'cancelled', 'concierge')).toEqual({ ok: true });
   });
-  it('спор завершается приёмкой или отменой, но не паузой — иначе заказ уезжает назад по циклу', () => {
+  it('спор завершается приёмкой покупателем или отменой staff, но не паузой', () => {
     // Ребро disputed → on_hold было дефектом: из on_hold выход только в
     // suppliers_paid, то есть доставленный и оспоренный заказ возвращался к
     // стадии «поставщики оплачены».
     expect(transition('disputed', 'on_hold', 'concierge').ok).toBe(false);
-    expect(transition('disputed', 'accepted', 'concierge').ok).toBe(true);
+    expect(transition('disputed', 'accepted', 'buyer')).toEqual({ ok: true });
+    expect(transition('disputed', 'accepted', 'concierge').ok).toBe(false);
     expect(transition('disputed', 'cancelled', 'concierge').ok).toBe(true);
 
     // Ни одно состояние не должно уметь уводить заказ назад через паузу:

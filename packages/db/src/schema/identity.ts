@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -106,6 +107,10 @@ export const users = pgTable(
     ...timestamps,
   },
   (t) => [
+    check(
+      'users_approval_limit_nonnegative',
+      sql`${t.approvalLimitKzt} is null or ${t.approvalLimitKzt} >= 0`,
+    ),
     index('users_company_id_idx').on(t.companyId),
     // Своя запись — всегда видна, это и есть точка входа для company_id/role
     // подзапросов у всех остальных таблиц.

@@ -2,7 +2,9 @@
 
 import { normalizeText } from '@qajet/engine/intake';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { CATALOG_BY_KEY } from '../catalog';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import { ITEMS_EDITABLE_STATES } from '../order-state';
 import { loadOrder } from './order-actions';
@@ -22,6 +24,23 @@ export interface ActionResult {
   error?: string;
 }
 
+const itemClassificationSchema = z.object({ itemKey: z.string().trim().min(1).max(120) }).strict();
+const splitPartSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    qty: z.number().positive().refine(Number.isSafeInteger),
+    category: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+const splitPartsSchema = z.array(splitPartSchema).min(2).max(100);
+const itemIdsSchema = z.array(z.string().uuid()).min(2).max(100);
+const mergeOverridesSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    category: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+
 async function assertItemsEditable(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   requestId: string,
@@ -35,29 +54,36 @@ async function assertItemsEditable(
 }
 
 /**
- * Смена категории/названия позиции. Если категория реально изменилась —
- * это и есть исправление классификации: пишет learning_events и апсертит
- * extraction_aliases со счётчиком hits (agents.md §8A: «hits ≥ 3 начинает
- * применяться автоматически» — используется в шаге 5 волны).
+ * Подтверждение классификации через каталог. Каталожная позиция — единый
+ * источник name/category/unit/required_capabilities/itemKey: нельзя оставить
+ * старые зависимости после ручной правки только названия или категории.
  */
 export async function correctItemClassification(
   itemId: string,
-  patch: { category: string; name: string },
+  patch: { itemKey: string },
 ): Promise<ActionResult> {
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
   if (actor !== 'concierge' && actor !== 'admin') {
-    return { ok: false, error: 'Только концьерж может править позиции заявки' };
+    return { ok: false, error: 'Только консьерж может править позиции заявки' };
   }
-  if (!patch.category.trim() || !patch.name.trim()) {
-    return { ok: false, error: 'Категория и название не могут быть пустыми' };
+  if (!z.string().uuid().safeParse(itemId).success) {
+    return { ok: false, error: 'Позиция указана некорректно' };
+  }
+  const parsedPatch = itemClassificationSchema.safeParse(patch);
+  if (!parsedPatch.success) {
+    return { ok: false, error: 'Выберите корректную позицию каталога' };
+  }
+  const catalogItem = CATALOG_BY_KEY.get(parsedPatch.data.itemKey);
+  if (!catalogItem) {
+    return { ok: false, error: 'Выбранной позиции нет в каталоге' };
   }
 
   const supabase = await createSupabaseServerClient();
 
   const { data: item } = await supabase
     .from('request_items')
-    .select('id, request_id, name, category, specs')
+    .select('id, request_id, name, category, specs, needs_clarification')
     .eq('id', itemId)
     .maybeSingle();
   if (!item) return { ok: false, error: 'Позиция не найдена' };
@@ -65,15 +91,25 @@ export async function correctItemClassification(
   const editError = await assertItemsEditable(supabase, item.request_id);
   if (editError) return { ok: false, error: editError };
 
-  const categoryChanged = item.category !== patch.category;
+  const previousItemKey = (item.specs as { itemKey?: unknown } | null)?.itemKey;
+  const classificationChanged =
+    item.category !== catalogItem.category || previousItemKey !== catalogItem.itemKey;
 
   const { error: updateError } = await supabase
     .from('request_items')
-    .update({ category: patch.category, name: patch.name })
+    .update({
+      category: catalogItem.category,
+      name: catalogItem.name,
+      unit: catalogItem.unit,
+      required_capabilities: catalogItem.requiredCapabilities,
+      specs: { itemKey: catalogItem.itemKey },
+      needs_clarification: false,
+      clarification_reason: null,
+    })
     .eq('id', itemId);
   if (updateError) return { ok: false, error: updateError.message };
 
-  if (categoryChanged) {
+  if (classificationChanged) {
     const sourceText = (item.specs as { sourceText?: string } | null)?.sourceText;
     const alias = normalizeText(sourceText ?? item.name);
 
@@ -81,11 +117,13 @@ export async function correctItemClassification(
       type: 'extraction_fix',
       payload: {
         requestItemId: itemId,
-        itemName: item.name,
+        itemName: catalogItem.name,
         fromCategory: item.category,
-        toCategory: patch.category,
+        toCategory: catalogItem.category,
         correctedBy: user.id,
         sourceText: sourceText ?? null,
+        fromItemKey: typeof previousItemKey === 'string' ? previousItemKey : null,
+        toItemKey: catalogItem.itemKey,
       },
     });
 
@@ -99,12 +137,16 @@ export async function correctItemClassification(
     if (existingAlias) {
       await supabase
         .from('extraction_aliases')
-        .update({ canonical: patch.category, hits: existingAlias.hits + 1, confirmed_by: user.id })
+        .update({
+          canonical: catalogItem.category,
+          hits: existingAlias.hits + 1,
+          confirmed_by: user.id,
+        })
         .eq('id', existingAlias.id);
     } else {
       await supabase.from('extraction_aliases').insert({
         alias,
-        canonical: patch.category,
+        canonical: catalogItem.category,
         kind: 'category',
         hits: 1,
         confirmed_by: user.id,
@@ -112,7 +154,7 @@ export async function correctItemClassification(
     }
   }
 
-  revalidatePath(`/concierge/orders`);
+  revalidatePath('/concierge');
   return { ok: true };
 }
 
@@ -135,20 +177,21 @@ export async function splitRequestItem(itemId: string, parts: SplitPart[]): Prom
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
   if (actor !== 'concierge' && actor !== 'admin') {
-    return { ok: false, error: 'Только концьерж может разделять позиции заявки' };
+    return { ok: false, error: 'Только консьерж может разделять позиции заявки' };
   }
-  if (parts.length < 2) {
-    return { ok: false, error: 'Нужно минимум 2 части' };
+  if (!z.string().uuid().safeParse(itemId).success) {
+    return { ok: false, error: 'Позиция указана некорректно' };
   }
-  if (parts.some((p) => !p.name.trim() || !Number.isInteger(p.qty) || p.qty <= 0)) {
-    return { ok: false, error: 'У каждой части должны быть название и количество больше 0' };
+  const parsedParts = splitPartsSchema.safeParse(parts);
+  if (!parsedParts.success) {
+    return { ok: false, error: 'У каждой части должны быть название и целое количество больше 0' };
   }
 
   const supabase = await createSupabaseServerClient();
 
   const { data: item } = await supabase
     .from('request_items')
-    .select('request_id')
+    .select('request_id, qty')
     .eq('id', itemId)
     .maybeSingle();
   if (!item) return { ok: false, error: 'Позиция не найдена' };
@@ -156,13 +199,18 @@ export async function splitRequestItem(itemId: string, parts: SplitPart[]): Prom
   const editError = await assertItemsEditable(supabase, item.request_id);
   if (editError) return { ok: false, error: editError };
 
+  const partsQty = parsedParts.data.reduce((sum, part) => sum + part.qty, 0);
+  if (partsQty !== item.qty) {
+    return { ok: false, error: `Количество частей должно равняться исходному: ${item.qty}` };
+  }
+
   const { error } = await supabase.rpc('split_request_item', {
     p_item_id: itemId,
-    p_parts: parts,
+    p_parts: parsedParts.data,
   });
   if (error) return { ok: false, error: error.message };
 
-  revalidatePath(`/concierge/orders`);
+  revalidatePath('/concierge');
   return { ok: true };
 }
 
@@ -173,18 +221,22 @@ export async function mergeRequestItems(
   const user = await requireCurrentUser();
   const actor = orderActorFor(user);
   if (actor !== 'concierge' && actor !== 'admin') {
-    return { ok: false, error: 'Только концьерж может объединять позиции заявки' };
+    return { ok: false, error: 'Только консьерж может объединять позиции заявки' };
   }
-  if (itemIds.length < 2) {
-    return { ok: false, error: 'Нужно выбрать минимум 2 позиции' };
+  const parsedIds = itemIdsSchema.safeParse(itemIds);
+  if (!parsedIds.success || new Set(parsedIds.data).size !== parsedIds.data.length) {
+    return { ok: false, error: 'Выберите минимум две разные позиции' };
   }
+  const parsedOverrides = mergeOverridesSchema.safeParse(overrides ?? {});
+  if (!parsedOverrides.success)
+    return { ok: false, error: 'Параметры объединения указаны некорректно' };
 
   const supabase = await createSupabaseServerClient();
 
   const { data: item } = await supabase
     .from('request_items')
     .select('request_id')
-    .eq('id', itemIds[0])
+    .eq('id', parsedIds.data[0])
     .maybeSingle();
   if (!item) return { ok: false, error: 'Позиция не найдена' };
 
@@ -192,12 +244,12 @@ export async function mergeRequestItems(
   if (editError) return { ok: false, error: editError };
 
   const { error } = await supabase.rpc('merge_request_items', {
-    p_item_ids: itemIds,
-    p_name: overrides?.name ?? null,
-    p_category: overrides?.category ?? null,
+    p_item_ids: parsedIds.data,
+    p_name: parsedOverrides.data.name ?? null,
+    p_category: parsedOverrides.data.category ?? null,
   });
   if (error) return { ok: false, error: error.message };
 
-  revalidatePath(`/concierge/orders`);
+  revalidatePath('/concierge');
   return { ok: true };
 }

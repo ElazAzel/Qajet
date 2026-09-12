@@ -33,15 +33,19 @@ export function useAsyncAction<
   async function run(...args: Args): Promise<void> {
     setPending(true);
     setError(null);
-    const result = await action(...args);
-    if (result.ok) {
-      onSuccess?.(result);
-      router.refresh();
+    try {
+      const result = await action(...args);
+      if (result.ok) {
+        onSuccess?.(result);
+        router.refresh();
+        return;
+      }
+      setError(result.error ?? 'Не удалось выполнить действие');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Не удалось выполнить действие');
+    } finally {
       setPending(false);
-      return;
     }
-    setPending(false);
-    setError(result.error ?? 'Не удалось выполнить действие');
   }
 
   return { run, pending, error };

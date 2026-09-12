@@ -183,6 +183,20 @@
       "when": 1789204960739,
       "tag": "0025_wandering_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789204960740,
+      "tag": "0026_transactional_lifecycle_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789210862992,
+      "tag": "0027_data_integrity_constraints",
+      "breakpoints": true
     }
   ]
 }

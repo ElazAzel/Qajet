@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * agents.md §10: покупателю личность исполнителя не раскрывается, но
  * консьерж/админ должны сохранять ПОЛНУЮ историю «кто поставлял куда» — и
- * эта видимость обязана пережить смену/деактивацию конкретного концьержа,
+ * эта видимость обязана пережить смену/деактивацию конкретного консьержа,
  * который вёл заказ (staff-роль будет меняться людьми).
  *
  * Два факта проверяются здесь через реальный RLS (impersonation через
@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
  *    (current_role() in ('concierge','admin')), а не завязана на
  *    concierge_user_id/actor_user_id этого конкретного заказа.
  * 2. Деактивация — единственный физически возможный способ «убрать»
- *    концьержа, который уже что-то сделал: order_stage_events.actor_user_id
+ *    консьержа, который уже что-то сделал: order_stage_events.actor_user_id
  *    references users(restrict) не даёт его удалить. После is_active=false
  *    у A current_role() больше не возвращает 'concierge' (миграция
  *    0008_deactivated_staff_lose_access) — A теряет staffOnly-доступ,
@@ -68,8 +68,8 @@ function openSession(databaseUrl: string): postgres.Sql {
   });
 }
 
-describeIfConfigured('история заказа переживает смену/деактивацию концьержа (RLS)', () => {
-  it('другой концьерж видит заказ и RFQ; деактивированный — больше нет', async () => {
+describeIfConfigured('история заказа переживает смену/деактивацию консьержа (RLS)', () => {
+  it('другой консьерж видит заказ и RFQ; деактивированный — больше нет', async () => {
     const admin = postgres(DATABASE_URL as string, { prepare: false });
 
     try {
@@ -164,7 +164,7 @@ describeIfConfigured('история заказа переживает смен�
         await conciergeBSession.end();
       }
 
-      // Концьерж A деактивирован (agents.md §10 «Админ»: «отзыв доступа») —
+      // Консьерж A деактивирован (agents.md §10 «Админ»: «отзыв доступа») —
       // удалить строку нельзя (order_stage_events.actor_user_id restrict),
       // единственный физически доступный путь.
       await admin`update public.users set is_active = false where id = ${authConciergeA.id}`;

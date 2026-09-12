@@ -69,6 +69,9 @@ export async function submitQuote(rfqId: string, lines: QuoteLineInput[]): Promi
   if (orderActorFor(user) !== 'supplier') {
     return { ok: false, error: 'Только поставщик может ответить на RFQ' };
   }
+  if (!UUID_RE.test(rfqId)) {
+    return { ok: false, error: 'RFQ указан некорректно' };
+  }
   const validationError = validateQuoteLines(lines);
   if (validationError) return { ok: false, error: validationError };
 
@@ -92,15 +95,13 @@ export async function declineRfq(rfqId: string): Promise<ActionResult> {
   if (orderActorFor(user) !== 'supplier') {
     return { ok: false, error: 'Только поставщик может отказаться от RFQ' };
   }
+  if (!UUID_RE.test(rfqId)) {
+    return { ok: false, error: 'RFQ указан некорректно' };
+  }
 
   const supabase = await createSupabaseServerClient();
-  const { error, count } = await supabase
-    .from('rfqs')
-    .update({ status: 'declined' }, { count: 'exact' })
-    .eq('id', rfqId)
-    .eq('status', 'sent');
+  const { error } = await supabase.rpc('decline_supplier_rfq', { p_rfq_id: rfqId });
   if (error) return { ok: false, error: error.message };
-  if (count !== 1) return { ok: false, error: 'Запрос недоступен или на него уже дан ответ' };
 
   revalidatePath('/supplier');
   revalidatePath(`/supplier/rfq/${rfqId}`);
@@ -114,6 +115,9 @@ export async function confirmSupplierDelivery(
   const user = await requireCurrentUser();
   if (orderActorFor(user) !== 'supplier') {
     return { ok: false, error: 'Только поставщик может подтвердить доставку' };
+  }
+  if (!UUID_RE.test(orderId)) {
+    return { ok: false, error: 'Заказ указан некорректно' };
   }
 
   const supabase = await createSupabaseServerClient();
