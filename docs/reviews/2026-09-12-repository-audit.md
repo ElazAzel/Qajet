@@ -20,7 +20,7 @@ iOS/Android native-проекты в объём не входят по реше�
 3. Выплаты поставщикам используют уникальность `(order_id, supplier_company_id)` и conflict-safe upsert.
 4. Публичный RFQ использует HMAC scope `rfq_respond`, TTL, nonce из строки RFQ и отдельные security-definer RPC для чтения, быстрого ответа, отказа и отправки КП. Неправильная/просроченная ссылка завершается 404, повторный ответ блокируется статусом RFQ.
 5. Владелец buyer-компании может пригласить менеджера. Service-role клиент находится в server-only модуле и вызывается только после owner/buyer проверки; профиль `public.users` создаётся с ролью `manager`.
-6. Playwright startup больше не зависит от Unix `cp`; public smoke вынесен в отдельную always-on CI job. Live E2E получает явный preflight и падает с actionable GitHub notice при отсутствии Supabase secrets.
+6. Playwright startup больше не зависит от Unix `cp`; public smoke вынесен в отдельную always-on CI job. Live E2E получает явный preflight и корректно пропускается с warning при отсутствии Supabase secrets.
 7. README и экран команды больше не описывают уже реализованные маршруты как отсутствующие. Ограничения внешней инфраструктуры и native mobile оставлены явно.
 
 ## Проверка в этой среде
@@ -35,13 +35,31 @@ iOS/Android native-проекты в объём не входят по реше�
 - `corepack pnpm --filter @qajet/db exec drizzle-kit check` — pass.
 - `corepack pnpm rag:check` — pass: индекс актуален.
 
+## Подтверждение после GitHub/Vercel
+
+- GitHub Actions run `34678577930` — pass: real PostgreSQL/RLS isolation
+  (21 тест) и PD RLS; run `34678853200` — pass: lint/typecheck, unit tests,
+  build, public smoke и RAG freshness. Live Supabase E2E — skipped с warning,
+  потому что в репозитории не заданы `NEXT_PUBLIC_SUPABASE_URL` и
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` secrets.
+- GitHub `main` синхронен с `origin/main` на `038a3e4`.
+- Vercel production deployment `dpl_2ePAAhY5kSU342bvN52yijaHEi71` —
+  `READY`, алиас [qajet-seven.vercel.app](https://qajet-seven.vercel.app/),
+  сборка коммита `038a3e4`; smoke: `/` — 200, `/startupbattle` — 200,
+  некорректный `/rfq/respond/not-a-token` — 404.
+- В production Vercel заданы `NEXT_PUBLIC_SITE_URL` и чувствительный
+  `LINK_SIGNING_SECRET`; значения секретов в репозиторий и отчёт не попали.
+
 ## Внешние gates
 
 Следующие проверки нельзя честно заменить локальным кодом:
 
-- реальный PostgreSQL/Supabase RLS прогон (`DATABASE_URL` или CI Postgres);
-- live Playwright lifecycle с демо-аккаунтами и двуфазной доставкой;
-- production secrets, домен, deployment и реальные Resend/Storage/календарные провайдеры;
+- применение миграций `0022`/`0023` к production Supabase и наличие
+  production seed/live Auth — доступного `DATABASE_URL` или service-role
+  ключа в этой сессии не было;
+- live Supabase lifecycle с демо-аккаунтами и двуфазной доставкой;
+- production Supabase schema/data, custom domain и реальные Resend/Storage/
+  календарные провайдеры;
 - размещение ПД в дата-центре Казахстана;
 - сборка iOS/Android — намеренно исключена из задачи.
 
