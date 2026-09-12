@@ -37,16 +37,16 @@ iOS/Android native-проекты в объём не входят по реше�
 
 ## Подтверждение после GitHub/Vercel
 
-- GitHub Actions run `34678577930` — pass: real PostgreSQL/RLS isolation
-  (21 тест) и PD RLS; run `34678853200` — pass: lint/typecheck, unit tests,
-  build, public smoke и RAG freshness. Live Supabase E2E — skipped с warning,
+- GitHub Actions run `34679117669` — pass: lint/typecheck, unit tests, build,
+  public smoke, real PostgreSQL/RLS isolation (21 тест), PD RLS и RAG
+  freshness. Live Supabase E2E — skipped с warning,
   потому что в репозитории не заданы `NEXT_PUBLIC_SUPABASE_URL` и
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` secrets.
-- GitHub `main` синхронен с `origin/main` на `038a3e4`.
-- Vercel production deployment `dpl_2ePAAhY5kSU342bvN52yijaHEi71` —
-  `READY`, алиас [qajet-seven.vercel.app](https://qajet-seven.vercel.app/),
-  сборка коммита `038a3e4`; smoke: `/` — 200, `/startupbattle` — 200,
-  некорректный `/rfq/respond/not-a-token` — 404.
+- GitHub `main` синхронен с `origin/main`; Vercel автоматически получает
+  изменения из этой ветки.
+- Текущий Vercel production deployment — `READY`, алиас
+  [qajet-seven.vercel.app](https://qajet-seven.vercel.app/); smoke: `/` — 200,
+  `/startupbattle` — 200, некорректный `/rfq/respond/not-a-token` — 404.
 - В production Vercel заданы `NEXT_PUBLIC_SITE_URL` и чувствительный
   `LINK_SIGNING_SECRET`; значения секретов в репозиторий и отчёт не попали.
 
