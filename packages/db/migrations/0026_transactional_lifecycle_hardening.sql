@@ -822,7 +822,7 @@ BEGIN
 
   IF v_role IN ('concierge', 'admin') THEN
     IF OLD.state = 'shipped' AND NEW.state = 'delivered' THEN
-      RAISE EXCEPTION 'Доставку подтверждает поставщик';
+      RAISE EXCEPTION 'Поставщик подтверждает доставку';
     ELSIF NEW.state IN ('plan_approved', 'awaiting_internal_approval')
       OR (OLD.state IN ('delivered', 'disputed') AND NEW.state = 'accepted') THEN
       RAISE EXCEPTION 'Этот переход выполняет другой участник процесса';
