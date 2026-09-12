@@ -9,7 +9,6 @@ import {
   type MatchWeights,
   passesHardFilters,
   pickExplorationCandidate,
-  type ScoringFeatures,
   scoreSupplier,
 } from '@qajet/engine/match';
 import { percentOfKzt, roundKzt } from '@qajet/engine/money';
@@ -27,6 +26,7 @@ import {
   recalibrateLeadTimeForSupplier,
   recalibrateMatcherForOrder,
 } from '../recalibration';
+import { matcherFeatures } from '../supplier-matcher';
 
 /** Ставка за единицу для позиций вне справочника каталога (не должно случаться
  *  для заявок, созданных через createRequest, — только защита от старых данных). */
@@ -54,6 +54,15 @@ export interface ActionResult {
   error?: string;
 }
 
+export interface SupplierRatingInput {
+  buyerScore1To5: number;
+  wasOnTime: boolean;
+  hadDispute: boolean;
+  comment?: string | undefined;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type OrderRow = {
   id: string;
   state: OrderState;
@@ -71,6 +80,60 @@ export async function loadOrder(
       ? await query.eq('id', by.orderId).maybeSingle()
       : await query.eq('request_id', by.requestId).maybeSingle();
   return data as OrderRow | null;
+}
+
+/**
+ * Оценка исполнения после закрытия заказа — единственная точка записи
+ * рейтинга. Проверка заказа, поставщика, повторной оценки и пересчёт
+ * `supplier_stats` выполняются внутри submit_supplier_rating() одной
+ * транзакцией; клиент не получает права писать рейтинги напрямую.
+ */
+export async function rateSupplier(
+  orderId: string,
+  supplierCompanyId: string,
+  input: SupplierRatingInput,
+): Promise<ActionResult> {
+  const user = await requireCurrentUser();
+  if (orderActorFor(user) !== 'buyer') {
+    return { ok: false, error: 'Оценку может оставить только покупатель' };
+  }
+  if (!UUID_RE.test(orderId) || !UUID_RE.test(supplierCompanyId)) {
+    return { ok: false, error: 'Заказ или поставщик указаны некорректно' };
+  }
+  if (!input || typeof input !== 'object') {
+    return { ok: false, error: 'Оценка указана некорректно' };
+  }
+  if (
+    !Number.isSafeInteger(input?.buyerScore1To5) ||
+    input.buyerScore1To5 < 1 ||
+    input.buyerScore1To5 > 5
+  ) {
+    return { ok: false, error: 'Оценка должна быть целым числом от 1 до 5' };
+  }
+  if (typeof input.wasOnTime !== 'boolean' || typeof input.hadDispute !== 'boolean') {
+    return { ok: false, error: 'Укажите корректные исходы исполнения' };
+  }
+  if (input.comment !== undefined && typeof input.comment !== 'string') {
+    return { ok: false, error: 'Комментарий указан некорректно' };
+  }
+  const comment = input.comment?.trim() || null;
+  if (comment && comment.length > 2000) {
+    return { ok: false, error: 'Комментарий не должен быть длиннее 2000 символов' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('submit_supplier_rating', {
+    p_order_id: orderId,
+    p_supplier_company_id: supplierCompanyId,
+    p_buyer_score: input.buyerScore1To5,
+    p_was_on_time: input.wasOnTime,
+    p_had_dispute: input.hadDispute,
+    p_comment: comment,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidateOrder(orderId);
+  return { ok: true };
 }
 
 function addDaysIso(days: number): string {
@@ -452,12 +515,9 @@ export async function advanceOrderStage(
       requestId: order.request_id,
       approvedPlanId: order.approved_plan_id,
     }).catch(() => undefined);
-    // Калькулятор — вторая половина того же контура и до сих пор
-    // единственная незамкнутая: recalibrateEstimators() существовал в
-    // packages/engine/src/learn с самого начала, но из apps/web не
-    // вызывался ни разу. Точность оценки в проде поэтому не улучшалась
-    // никогда, а тренд на /admin/learning показывал историю, целиком
-    // сгенерированную сидом.
+    // Калькулятор — вторая половина того же контура: после закрытия
+    // сохраняется новый estimator snapshot, а следующая оценка читает из
+    // него накопленный запас P80 по itemKey.
     await recalibrateEstimatorForOrder(supabase, order.id).catch(() => undefined);
   }
 
@@ -489,6 +549,24 @@ async function computeAndInsertEstimate(
   let maxMargin = 0;
   let nSamplesTotal = 0;
 
+  const { data: latestEstimator } = await supabase
+    .from('model_snapshots')
+    .select('metrics')
+    .eq('model', 'estimator')
+    .order('trained_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const previousErrorsByItemKey = new Map(
+    (
+      (
+        latestEstimator?.metrics as
+          | { byCategory?: { category: string; relativeErrors?: number[] }[] }
+          | null
+          | undefined
+      )?.byCategory ?? []
+    ).map((entry) => [entry.category, entry.relativeErrors ?? []]),
+  );
+
   for (const item of items) {
     const itemKey = (item.specs as { itemKey?: string } | null)?.itemKey;
     const catalogItem = itemKey ? CATALOG_BY_KEY.get(itemKey) : undefined;
@@ -497,13 +575,25 @@ async function computeAndInsertEstimate(
     const { data: observations } = itemKey
       ? await supabase
           .from('price_observations')
-          .select('qty, unit_price_kzt')
+          .select('qty, unit_price_kzt, observed_at')
           .eq('item_key', itemKey)
       : { data: null };
     const obs = (observations ?? []).map((o) => ({ qty: o.qty, unitPriceKzt: o.unit_price_kzt }));
     nSamplesTotal += obs.length;
+    const pastRelativeErrors = itemKey ? previousErrorsByItemKey.get(itemKey) : undefined;
 
-    const est = engineEstimate({ qty: item.qty, observations: obs, baseRateKzt });
+    const lastObservedAt = (observations ?? [])
+      .map((observation) => observation.observed_at)
+      .filter((observedAt): observedAt is string => typeof observedAt === 'string')
+      .sort()
+      .at(-1);
+    const est = engineEstimate({
+      qty: item.qty,
+      observations: obs,
+      baseRateKzt,
+      ...(pastRelativeErrors ? { pastRelativeErrors } : {}),
+      ...(lastObservedAt ? { lastObservedAt } : {}),
+    });
     totalP50 += est.p50Kzt;
     totalP80 += est.p80Kzt;
     maxMargin = Math.max(maxMargin, est.marginPct);
@@ -559,6 +649,10 @@ interface SupplierCandidateRow {
   capabilities: string[];
   minOrderKzt: number | null;
   isVerified: boolean;
+  activity: {
+    openOrderCount: number;
+    lastClosedAt: string | null;
+  };
   stats: {
     ordersTotal: number;
     ordersOnTime: number;
@@ -571,39 +665,6 @@ interface SupplierCandidateRow {
 
 /** Поставщик без единого закрытого заказа или отправленного RFQ — кандидат в слот исследования (agents.md §8C). */
 const LOW_HISTORY_THRESHOLD = 3;
-/** «Медленный» ориентир для нормировки скорости ответа в 0..1 — нет отдельного бенчмарка, 48ч выбрано как явный аутсайдер относительно RFQ_RESPOND_WINDOW_DAYS=5 суток. */
-const SLOW_RESPONSE_HOURS_REFERENCE = 48;
-
-function clamp01(x: number): number {
-  return Math.min(1, Math.max(0, x));
-}
-
-/**
- * Признаки матчера из накопленной статистики поставщика (agents.md §8C).
- * У нового поставщика (нет строки в supplier_stats или ordersTotal=0)
- * признаки на истории — нейтральные 0.5, не 0: ноль наказывал бы за
- * отсутствие данных так же, как за подтверждённо плохую историю, а это
- * ровно то искажение, которое и должен закрывать слот исследования.
- * currentLoad и freshnessScore здесь всегда нейтральны — учёт текущей
- * загрузки поставщика и давности последней сделки в это подключение не
- * вошёл (нужен отдельный live-запрос числа открытых заказов), честно
- * оставлено на потом, а не подделано правдоподобным числом.
- */
-function featuresFor(s: SupplierCandidateRow): ScoringFeatures {
-  const { stats } = s;
-  return {
-    categoryMatch: 1, // уже гарантировано passesHardFilters ниже по вызову
-    onTimeRate: stats.ordersTotal > 0 ? stats.ordersOnTime / stats.ordersTotal : 0.5,
-    noDisputeRate: stats.ordersTotal > 0 ? 1 - stats.ordersDisputed / stats.ordersTotal : 0.5,
-    responseSpeedScore:
-      stats.medianResponseHours !== null
-        ? clamp01(1 - stats.medianResponseHours / SLOW_RESPONSE_HOURS_REFERENCE)
-        : 0.5,
-    winRate: stats.rfqSent > 0 ? stats.ordersTotal / stats.rfqSent : 0.5,
-    freshnessScore: 0.5,
-    currentLoad: 0,
-  };
-}
 
 /**
  * Подбор и ранжирование поставщиков под RFQ — agents.md §8C: жёсткие
@@ -612,15 +673,10 @@ function featuresFor(s: SupplierCandidateRow): ScoringFeatures {
  * позицию, и слот исследования (Thompson sampling) для поставщиков без
  * истории — обязательный пункт чек-листа §15.
  *
- * Честно про то, что подключено не целиком:
- * - веса матчера — DEFAULT_WEIGHTS, не дообученные онлайн: model_snapshots
- *   уже хранит модель 'matcher' (packages/engine/learn/recalibrate.ts
- *   производит нужную форму — MatchWeightsSnapshot), но ничто в apps/web
- *   пока не пишет туда снапшоты при закрытии заказа и не читает последний
- *   перед скорингом здесь — обучающий контур остаётся отдельной задачей;
- * - servesCities всегда null (= обслуживает любой город): в
- *   supplier_profiles нет колонки под географию поставщика, добавлять её
- *   ради этого подключения — расширение схемы за рамками задачи;
+ * Честно про оставшееся ограничение: `supplier_profiles` не хранит список
+ * городов обслуживания, поэтому `servesCities` остаётся null (= поставщик
+ * сам заявляет, что доставляет в любой город). `companies.city` хранится как
+ * город поставщика, но не является доказательством зоны доставки.
  * - orderValueKzt берётся из requests.budget_kzt, но если бюджет не
  *   указан — не 0 (0 отсекал бы буквально всех поставщиков с ненулевым
  *   minOrderKzt, см. комментарий у orderValueKzt ниже), а +∞, чтобы
@@ -689,13 +745,47 @@ async function createRfqsForOrder(
   // максимально жёстко — отсюда Infinity, а не 0.
   const orderValueKzt = requestRow?.budget_kzt ?? Number.POSITIVE_INFINITY;
 
-  const { data: supplierRows } = await supabase
-    .from('companies')
-    .select(
-      'id, verified_at, supplier_profiles(categories, capabilities, min_order_kzt), supplier_stats(orders_total, orders_on_time, orders_disputed, rfq_sent, rfq_answered, median_response_hours)',
-    )
-    .eq('type', 'supplier')
-    .eq('is_active', true);
+  const [{ data: supplierRows }, { data: activityOrders }, { data: activityPlanLines }] =
+    await Promise.all([
+      supabase
+        .from('companies')
+        .select(
+          'id, verified_at, supplier_profiles(categories, capabilities, min_order_kzt), supplier_stats(orders_total, orders_on_time, orders_disputed, rfq_sent, rfq_answered, median_response_hours)',
+        )
+        .eq('type', 'supplier')
+        .eq('is_active', true),
+      supabase.from('orders').select('id, approved_plan_id, state, closed_at'),
+      supabase.from('plan_lines').select('plan_id, supplier_company_id'),
+    ]);
+
+  const orderByPlanId = new Map<string, { id: string; state: string; closed_at: string | null }>(
+    (activityOrders ?? [])
+      .filter((row) => row.approved_plan_id)
+      .map((row) => [row.approved_plan_id as string, row]),
+  );
+  const activityBySupplier = new Map<
+    string,
+    { openOrderIds: Set<string>; lastClosedAt: string | null }
+  >();
+  for (const line of activityPlanLines ?? []) {
+    const order = orderByPlanId.get(line.plan_id);
+    if (!order) continue;
+    const activity = activityBySupplier.get(line.supplier_company_id) ?? {
+      openOrderIds: new Set<string>(),
+      lastClosedAt: null,
+    };
+    if (order.state === 'closed' && order.closed_at) {
+      if (
+        activity.lastClosedAt === null ||
+        new Date(order.closed_at).getTime() > new Date(activity.lastClosedAt).getTime()
+      ) {
+        activity.lastClosedAt = order.closed_at;
+      }
+    } else if (order.state !== 'cancelled') {
+      activity.openOrderIds.add(order.id);
+    }
+    activityBySupplier.set(line.supplier_company_id, activity);
+  }
 
   const { data: settingsRows } = await supabase
     .from('settings')
@@ -718,6 +808,10 @@ async function createRfqsForOrder(
         capabilities: (profile?.capabilities ?? []) as string[],
         minOrderKzt: profile?.min_order_kzt ?? null,
         isVerified: row.verified_at !== null,
+        activity: {
+          openOrderCount: activityBySupplier.get(row.id)?.openOrderIds.size ?? 0,
+          lastClosedAt: activityBySupplier.get(row.id)?.lastClosedAt ?? null,
+        },
         stats: {
           ordersTotal: stats?.orders_total ?? 0,
           ordersOnTime: stats?.orders_on_time ?? 0,
@@ -752,6 +846,7 @@ async function createRfqsForOrder(
   const chosenIds = new Set<string>();
   const explorationIds = new Set<string>();
   const selectionReasonById = new Map<string, Record<string, unknown>>();
+  const scoringAt = new Date().toISOString();
 
   items.forEach((item, itemIndex) => {
     const passing = candidates.filter(
@@ -778,7 +873,14 @@ async function createRfqsForOrder(
     if (passing.length === 0) return;
 
     const scored = passing
-      .map((c) => ({ candidate: c, score: scoreSupplier(featuresFor(c), matchWeights) }))
+      .map((candidate) => ({
+        candidate,
+        features: matcherFeatures(candidate.stats, candidate.activity, scoringAt),
+      }))
+      .map((entry) => ({
+        ...entry,
+        score: scoreSupplier(entry.features, matchWeights),
+      }))
       .sort((a, b) => b.score - a.score);
 
     const picked = scored.slice(0, batchSizePerItem).map((s) => s.candidate);
@@ -814,7 +916,7 @@ async function createRfqsForOrder(
       }
     }
 
-    for (const { candidate, score } of scored) {
+    for (const { candidate, features, score } of scored) {
       if (!picked.some((p) => p.id === candidate.id)) continue;
       chosenIds.add(candidate.id);
       if (!selectionReasonById.has(candidate.id)) {
@@ -822,7 +924,7 @@ async function createRfqsForOrder(
           reason: 'scored',
           category: item.category,
           score,
-          features: featuresFor(candidate),
+          features,
         });
       }
     }

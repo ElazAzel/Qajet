@@ -9,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { authenticatedRole, serviceRole } from 'drizzle-orm/supabase';
@@ -251,6 +252,7 @@ export const ratings = pgTable(
     ...timestamps,
   },
   (t) => [
+    uniqueIndex('ratings_order_supplier_unique').on(t.orderId, t.supplierCompanyId),
     index('ratings_order_id_idx').on(t.orderId),
     index('ratings_supplier_company_id_idx').on(t.supplierCompanyId),
     pgPolicy('ratings_select_staff', {
@@ -270,12 +272,6 @@ export const ratings = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: sql`${t.orderId} in (select id from ${orders})`,
-    }),
-    pgPolicy('ratings_insert_via_order', {
-      as: 'permissive',
-      for: 'insert',
-      to: authenticatedRole,
-      withCheck: sql`${t.orderId} in (select id from ${orders})`,
     }),
     pgPolicy('ratings_service_all', {
       as: 'permissive',

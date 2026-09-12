@@ -299,6 +299,60 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       ).rejects.toThrow();
       expect(await tx`select id from quotes where rfq_id = ${f[9]}`).toHaveLength(1);
     }));
+  it('buyer rating is bound to a closed order and refreshes supplier stats', async () =>
+    scenario(async (tx, f) => {
+      const quote = crypto.randomUUID();
+      const quoteLine = crypto.randomUUID();
+      const planLine = crypto.randomUUID();
+      await tx`insert into quotes (id, rfq_id) values (${quote}, ${f[9]})`;
+      await tx`insert into quote_lines (id, quote_id, request_item_id, unit_price_kzt, lead_time_days)
+        values (${quoteLine}, ${quote}, ${f[7]}, 100000, 2)`;
+      await tx`insert into plan_lines (id, plan_id, request_item_id, supplier_company_id, quote_line_id, qty, line_total_kzt, commission_pct, commission_kzt)
+        values (${planLine}, ${f[10]}, ${f[7]}, ${f[1]}, ${quoteLine}, 10, 100000, 23, 23000)`;
+      await tx`update plans set status = 'approved' where id = ${f[10]}`;
+      await tx`update orders
+        set state = 'closed', settlement = 'exact', settlement_amount_kzt = 0,
+            final_cost_kzt = 123000, accepted_at = now(), closed_at = now()
+        where id = ${f[11]}`;
+
+      await asUser(tx, f[2]);
+      await expect(
+        tx.savepoint(
+          (
+            sp,
+          ) => sp`insert into ratings(order_id, supplier_company_id, buyer_score_1_5, was_on_time, had_dispute)
+            values (${f[11]}, ${f[1]}, 5, true, false)`,
+        ),
+      ).rejects.toThrow();
+
+      expect(
+        (await tx`select submit_supplier_rating(${f[11]}, ${f[1]}, 5, true, false, 'Хорошо')`)[0]
+          ?.submit_supplier_rating,
+      ).toBe(true);
+      expect((await tx`select * from get_buyer_rating_targets(${f[11]})`)[0]).toMatchObject({
+        supplier_company_id: f[1],
+        rated: true,
+      });
+      await expect(
+        tx.savepoint(
+          (sp) => sp`select submit_supplier_rating(${f[11]}, ${f[1]}, 4, true, false, null)`,
+        ),
+      ).rejects.toThrow('уже отправлена');
+
+      await tx`reset role`;
+      const stats = (
+        await tx`select orders_total, orders_on_time, orders_disputed, avg_buyer_score, rfq_sent, rfq_answered
+          from supplier_stats where company_id = ${f[1]}`
+      )[0];
+      expect(stats).toMatchObject({
+        orders_total: 1,
+        orders_on_time: 1,
+        orders_disputed: 0,
+        avg_buyer_score: 5,
+        rfq_sent: 2,
+        rfq_answered: 1,
+      });
+    }));
   it('commission edit updates the plan total atomically and freezes after approval', async () =>
     scenario(async (tx, f) => {
       const quote = crypto.randomUUID();

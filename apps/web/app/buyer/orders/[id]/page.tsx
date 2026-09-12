@@ -7,7 +7,12 @@ import { loadBuyerOrder } from '../../../lib/buyer-order';
 import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE } from '../../../lib/order-state';
 import { supplierCountLabel } from '../../../lib/pluralize';
-import { AcceptDeliveryCta, ApprovePlanCta, CloseOrderForm } from './_order-actions';
+import {
+  AcceptDeliveryCta,
+  ApprovePlanCta,
+  CloseOrderForm,
+  SupplierRatingForm,
+} from './_order-actions';
 import { ShareOrderButton } from './_share-order-button';
 
 const PLAN_LABEL: Record<string, string> = {
@@ -133,6 +138,30 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
                 </span>
               </div>
             )}
+          </Card>
+        </Reveal>
+      )}
+
+      {order.ratingTargets.some((target) => !target.rated) && (
+        <Reveal className="mt-6" from="up">
+          <Card padding="sm">
+            <p className="text-sm font-bold text-ink">Оцените исполнение</p>
+            <p className="mt-1 text-fine text-muted">
+              Оценка доступна после закрытия заказа. QAJET показывает исполнителей без раскрытия их
+              персональных данных.
+            </p>
+            <div className="mt-4 flex flex-col gap-4">
+              {order.ratingTargets
+                .filter((target) => !target.rated)
+                .map((target, index) => (
+                  <SupplierRatingForm
+                    key={target.supplierCompanyId}
+                    orderId={order.id}
+                    supplierCompanyId={target.supplierCompanyId}
+                    index={index}
+                  />
+                ))}
+            </div>
           </Card>
         </Reveal>
       )}

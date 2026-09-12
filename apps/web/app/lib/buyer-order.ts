@@ -62,6 +62,11 @@ export interface RejectionSummary {
   count: number;
 }
 
+export interface BuyerRatingTarget {
+  supplierCompanyId: string;
+  rated: boolean;
+}
+
 export interface BuyerOrderDetail {
   id: string;
   requestId: string;
@@ -75,6 +80,7 @@ export interface BuyerOrderDetail {
   plan: BuyerOrderPlan | null;
   events: StageEvent[];
   rejections: RejectionSummary[];
+  ratingTargets: BuyerRatingTarget[];
 }
 
 export async function loadBuyerOrder(
@@ -91,6 +97,17 @@ export async function loadBuyerOrder(
   if (!order) return null;
 
   const request = Array.isArray(order.requests) ? order.requests[0] : order.requests;
+
+  const { data: ratingTargetRows } =
+    order.state === 'closed'
+      ? await supabase.rpc('get_buyer_rating_targets', { p_order_id: orderId })
+      : { data: [] };
+  const ratingTargets: BuyerRatingTarget[] = (
+    (ratingTargetRows ?? []) as Array<{ supplier_company_id: string; rated: boolean }>
+  ).map((row) => ({
+    supplierCompanyId: row.supplier_company_id,
+    rated: row.rated,
+  }));
 
   let plan: BuyerOrderPlan | null = null;
   if (order.approved_plan_id) {
@@ -171,5 +188,6 @@ export async function loadBuyerOrder(
     plan,
     events,
     rejections,
+    ratingTargets,
   };
 }
