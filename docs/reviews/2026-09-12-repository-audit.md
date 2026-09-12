@@ -77,9 +77,19 @@ iOS/Android native-проекты в объём не входят по реше�
 
 ## Подтверждение после GitHub/Vercel
 
-- Будет добавлено после публикации текущего commit: свежий GitHub Actions run
-  с PostgreSQL/RLS и свежий Vercel production smoke. Предыдущий run
-  `34686363385` относится к предыдущему commit и не заменяет текущую проверку.
+- GitHub Actions run `34691424287` — success на SHA `1f009dd`: lint/typecheck,
+  unit tests, build, public smoke, RAG и PostgreSQL/RLS isolation (23 теста).
+  Live Supabase E2E — skipped с warning, потому что в репозитории не заданы
+  `NEXT_PUBLIC_SUPABASE_URL` и `NEXT_PUBLIC_SUPABASE_ANON_KEY` secrets.
+- Проверенный application code опубликован в `main` на SHA
+  `1f009dd537c251ce2e58a0fad7c9c81a91e7363b`; последующий commit этого отчёта
+  меняет только документацию.
+- Vercel production deployment `dpl_A1N1nWZh5RRbueTXqKHHTPSi4ZJn` — `READY`,
+  алиасы [qajet-seven.vercel.app](https://qajet-seven.vercel.app/) и
+  [qajet-elazazels-projects.vercel.app](https://qajet-elazazels-projects.vercel.app/).
+  Smoke: `/` — 200, `/startupbattle` — 200, некорректный
+  `/rfq/respond/not-a-token` — 404.
+- Значения секретов в репозиторий и отчёт не попали.
 
 ## Внешние gates
 
