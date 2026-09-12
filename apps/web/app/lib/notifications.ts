@@ -5,8 +5,9 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient
 
 /**
  * Dev-first notification adapter: сохраняет сообщение в outbox. Реальный
- * worker/Resend может забрать pending-строки позже, а бизнес-action уже не
- * зависит от наличия внешнего ключа и не теряет факт уведомления.
+ * worker/Resend может забрать pending-строки позже. Бизнес-action не зависит
+ * от наличия внешнего ключа; ошибка записи возвращается вызывающему коду для
+ * логирования, а не превращается в ложный успех отправки.
  */
 export async function enqueueOutbox(
   supabase: SupabaseServerClient,

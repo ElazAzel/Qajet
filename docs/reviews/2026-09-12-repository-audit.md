@@ -13,6 +13,7 @@
   сохранение обязательного `n_samples`;
 - оценка закрытого заказа покупателем и транзакционный пересчёт
   `supplier_stats` по RFQ/КП/оценкам;
+- dev-first очередь уведомлений RFQ с админским просмотром `/admin/outbox`;
 - CI-предварительная проверка live E2E и документация.
 
 iOS/Android native-проекты в объём не входят по решению пользователя.
@@ -33,23 +34,27 @@ iOS/Android native-проекты в объём не входят по реше�
    валидный estimator snapshot с `n_samples`, а следующая оценка использует
    накопленный P80-запас. Покупатель может оценить каждого исполнителя без
    раскрытия его имени; DB-функция проверяет заказ, план и повторную оценку.
+10. RFQ-рассылка сохраняет уведомления в `outbox` как pending-записи с
+    защищённой ссылкой, адресатом и trace-payload; `/admin/outbox` показывает
+    статус, попытки и ошибку доставки. Реальный Resend-worker остаётся
+    внешним подключаемым контуром и не является обязательным для демо.
 
 ## Проверка в этой среде
 
 - `corepack pnpm install --frozen-lockfile` — pass.
 - `corepack pnpm lint` — pass, без warnings.
 - `corepack pnpm typecheck` — pass.
-- `corepack pnpm test` — pass: 212 тестов, 23 skipped; из них DB/RLS — 22 skipped, PD RLS — 1 skipped.
-- `corepack pnpm --filter @qajet/web build` — pass: Next.js собрал 24 static pages; metadata base задан явно.
+- `corepack pnpm test` — pass: 218 тестов, 24 skipped; из них DB/RLS — 23 skipped, PD RLS — 1 skipped.
+- `corepack pnpm --filter @qajet/web build` — pass: Next.js собрал 25 static pages; в сборку вошёл `/admin/outbox`, metadata base задан явно.
 - `corepack pnpm --filter @qajet/web e2e` — pass: 8 passed, 3 skipped; public landing, startupbattle и fail-closed RFQ smoke проходят без Supabase.
-- `corepack pnpm --filter @qajet/db test:rls` — выполнен без ошибок, 22 теста skipped из-за отсутствия `DATABASE_URL`.
+- `corepack pnpm --filter @qajet/db test:rls` — выполнен без ошибок, 23 теста skipped из-за отсутствия `DATABASE_URL`.
 - `corepack pnpm --filter @qajet/db exec drizzle-kit check` — pass.
 - `corepack pnpm rag:check` — pass: индекс актуален.
 
 ## Подтверждение после GitHub/Vercel
 
-- GitHub Actions run `34683450434` — pass: lint/typecheck, unit tests, build,
-  public smoke, real PostgreSQL/RLS isolation (22 теста), PD RLS и RAG
+- GitHub Actions run `34686363385` — pass: lint/typecheck, unit tests, build,
+  public smoke, real PostgreSQL/RLS isolation (23 теста), PD RLS и RAG
   freshness. Live Supabase E2E — skipped с warning,
   потому что в репозитории не заданы `NEXT_PUBLIC_SUPABASE_URL` и
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` secrets.
@@ -65,12 +70,14 @@ iOS/Android native-проекты в объём не входят по реше�
 
 Следующие проверки нельзя честно заменить локальным кодом:
 
-- применение миграций `0022`/`0023`/`0024` к production Supabase и наличие
+- применение миграций `0022`–`0025` к production Supabase и наличие
   production seed/live Auth — доступного `DATABASE_URL` или service-role
   ключа в этой сессии не было;
 - live Supabase lifecycle с демо-аккаунтами и двуфазной доставкой;
 - production Supabase schema/data, custom domain и реальные Resend/Storage/
   календарные провайдеры;
+- production Resend-worker и реальная доставка писем: очередь уведомлений и
+  её RLS проверены, внешний провайдер остаётся конфигурационным gate;
 - размещение ПД в дата-центре Казахстана;
 - сборка iOS/Android — намеренно исключена из задачи.
 
