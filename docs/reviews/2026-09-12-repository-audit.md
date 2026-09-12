@@ -48,8 +48,8 @@ iOS/Android native-проекты в объём не входят по реше�
 
 ## Подтверждение после GitHub/Vercel
 
-- GitHub Actions run `34679344043` — pass: lint/typecheck, unit tests, build,
-  public smoke, real PostgreSQL/RLS isolation (21 тест), PD RLS и RAG
+- GitHub Actions run `34683450434` — pass: lint/typecheck, unit tests, build,
+  public smoke, real PostgreSQL/RLS isolation (22 теста), PD RLS и RAG
   freshness. Live Supabase E2E — skipped с warning,
   потому что в репозитории не заданы `NEXT_PUBLIC_SUPABASE_URL` и
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` secrets.
