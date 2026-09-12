@@ -2,13 +2,14 @@
 
 # Инвентарь маршрутов apps/web
 
-Найдено файлов маршрутизации: 34. Сегментов: 25.
+Найдено файлов маршрутизации: 35. Сегментов: 26.
 
 | Маршрут | Файлы |
 | --- | --- |
 | `/` | `apple-icon`, `icon`, `layout`, `manifest`, `page`, `sw` |
 | `/admin` | `layout`, `page` |
 | `/admin/learning` | `page` |
+| `/admin/outbox` | `page` |
 | `/admin/settings` | `page` |
 | `/buyer` | `layout`, `page` |
 | `/buyer/messages` | `page` |
