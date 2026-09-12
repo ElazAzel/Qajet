@@ -47,12 +47,10 @@ describe('transition', () => {
     if (!result.ok) expect(result.reason).toContain('draft → closed');
   });
 
-  it('supplier не инициирует ни один переход состояния заказа', () => {
-    for (const edges of Object.values(ORDER_TRANSITION_GRAPH)) {
-      for (const edge of edges) {
-        expect(edge.actors.includes('supplier')).toBe(false);
-      }
-    }
+  it('supplier подтверждает доставку, но не принимает заказ и не закрывает его', () => {
+    expect(transition('shipped', 'delivered', 'supplier')).toEqual({ ok: true });
+    expect(transition('delivered', 'accepted', 'supplier').ok).toBe(false);
+    expect(transition('accepted', 'closed', 'supplier').ok).toBe(false);
   });
 
   it('closed и cancelled — терминальные состояния без исходящих рёбер', () => {
@@ -73,6 +71,7 @@ describe('transition', () => {
     );
     expect(nextStatesFor('plan_proposed', 'concierge')).toEqual(['cancelled']);
     expect(nextStatesFor('quotes_received', 'concierge')).toEqual(['plan_proposed']);
+    expect(nextStatesFor('shipped', 'supplier')).toEqual(['delivered']);
   });
 
   it('rfq_sent → cancelled допускает и покупателя, и staff (сценарий с возвратом до КП)', () => {

@@ -24,8 +24,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * (`model_snapshots_insert_staff` — staffOnly), а не `service_role` —
  * тот же принцип «без service_role», что и весь остальной жизненный цикл
  * заказа (ADR-0006). Переход shipped→delivered в packages/engine/order/
- * transition.ts — ВСЕГДА staff, поэтому надёжность по сроку обновляется
- * при каждой поставке без исключений. Переход к closed (веса матчера)
+ * transition.ts выполняет поставщик, поэтому доступ к общей таблице
+ * model_snapshots не расширяется до supplier-сессии. При staff-закрытии
+ * история уже содержит supplier-confirmed delivered event и надёжность по
+ * сроку пересчитывается безопасно staff-сессией. Переход к closed (веса матчера)
  * может совершить и покупатель (BUYER_OR_STAFF) — вызывающий код в
  * order-actions.ts поэтому пробует запись весов только когда актёр staff;
  * для остальных закрытий обучение просто смещается по времени до

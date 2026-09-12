@@ -1,5 +1,6 @@
 import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
 import { Money, StatTile } from '@qajet/ui/primitives';
+import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../lib/current-user';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE, type OrderState } from '../lib/order-state';
@@ -96,7 +97,7 @@ export default async function SupplierHome() {
         )}
       </Reveal>
 
-      <Reveal delay={0.18} className="rounded-card border border-rule bg-surface p-5">
+      <Reveal id="orders" delay={0.18} className="rounded-card border border-rule bg-surface p-5">
         <h3 className="mb-4 text-base font-bold">Заказы в производстве</h3>
         {home.activeOrders.length === 0 ? (
           <p className="text-fine text-muted">Пока нет активных заказов.</p>
@@ -113,6 +114,12 @@ export default async function SupplierHome() {
                 <Stamp tone={ORDER_STATE_TONE[o.state as OrderState]} className="shrink-0">
                   {ORDER_STATE_LABEL[o.state as OrderState]}
                 </Stamp>
+                <Link
+                  href={`/supplier/orders/${o.id}`}
+                  className="text-fine font-semibold text-ink underline-offset-4 hover:underline"
+                >
+                  Открыть
+                </Link>
               </li>
             ))}
           </ul>

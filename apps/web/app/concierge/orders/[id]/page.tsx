@@ -20,6 +20,7 @@ import {
 } from '../../../lib/order-state';
 import { loadOrderTime, type StageTime } from '../../../lib/order-time';
 import { supplierCountLabel } from '../../../lib/pluralize';
+import { createRfqResponseToken } from '../../../lib/rfq-response';
 import { PlanLinesReview } from './_plan-lines';
 import { ProposePlanButton } from './_propose-plan-button';
 import { StageAdvanceButton } from './_stage-advance-button';
@@ -79,12 +80,15 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
 
   if (state !== 'quotes_received') {
     const nextStates = nextStatesFor(state, actor);
+    const rfqLinks =
+      state === 'rfq_sent' ? await loadRfqResponseLinks(supabase, order.request_id) : [];
     return (
       <NotComparableYet
         state={state}
         orderId={order.id}
         nextStates={nextStates}
         timeStages={timeStages}
+        rfqLinks={rfqLinks}
       />
     );
   }
@@ -333,12 +337,14 @@ function NotComparableYet({
   orderId,
   nextStates = [],
   timeStages = [],
+  rfqLinks = [],
 }: {
   state: OrderState;
   note?: string;
   orderId?: string;
   nextStates?: OrderState[];
   timeStages?: StageTime[];
+  rfqLinks?: { id: string; supplierName: string; token: string }[];
 }) {
   return (
     <Reveal className="flex max-w-md flex-col gap-3 py-16">
@@ -369,6 +375,28 @@ function NotComparableYet({
           ))}
         </div>
       )}
+      {rfqLinks.length > 0 && (
+        <div className="mt-4 rounded-card border border-rule bg-surface p-4">
+          <p className="text-fine font-semibold text-ink">Ссылки поставщикам</p>
+          <p className="mt-1 text-micro text-muted">
+            Временные ссылки на быстрый ответ RFQ. Передавайте только адресату.
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {rfqLinks.map((link) => (
+              <li key={link.id}>
+                <a
+                  href={`/rfq/respond/${link.token}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-fine font-semibold text-purple hover:underline"
+                >
+                  {link.supplierName} → открыть RFQ
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {orderId && ITEMS_EDITABLE_STATES.includes(state) && (
         <Link
           href={`/concierge/orders/${orderId}/items`}
@@ -379,4 +407,30 @@ function NotComparableYet({
       )}
     </Reveal>
   );
+}
+
+async function loadRfqResponseLinks(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  requestId: string,
+): Promise<{ id: string; supplierName: string; token: string }[]> {
+  const { data } = await supabase
+    .from('rfqs')
+    .select('id, token, companies(name)')
+    .eq('request_id', requestId)
+    .eq('status', 'sent');
+  if (!data) return [];
+
+  try {
+    return data.map((row) => {
+      const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+      return {
+        id: row.id,
+        supplierName: company?.name ?? 'Поставщик',
+        token: createRfqResponseToken(row.id, row.token),
+      };
+    });
+  } catch {
+    // Production deliberately fails closed when LINK_SIGNING_SECRET is absent.
+    return [];
+  }
 }

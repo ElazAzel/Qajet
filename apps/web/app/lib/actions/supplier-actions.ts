@@ -3,13 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { orderActorFor, requireCurrentUser } from '../current-user';
+import { verifyRfqResponseToken } from '../rfq-response';
 
 /**
- * Ответ поставщика на RFQ — agents.md §10 «Поставщик». Через
- * авторизованный dashboard поставщика (демо-логин), а не через защищённую
- * ссылку без входа (agents.md §10 предполагает и такой путь) — тот
- * добавляет отдельный публичный маршрут вне текущей аутентификации,
- * оставлено как честный, ещё не закрытый пробел.
+ * Ответ поставщика на RFQ и подтверждение доставки — agents.md §10
+ * «Поставщик». Все изменения проходят через серверные actions/RPC, а не
+ * через доверенный UI-параметр.
  */
 
 export interface ActionResult {
@@ -25,41 +24,53 @@ export interface QuoteLineInput {
   minQty?: number | undefined;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Общая серверная валидация для авторизованного и подписанного пути. */
+function validateQuoteLines(lines: QuoteLineInput[]): string | null {
+  if (!Array.isArray(lines) || lines.length === 0) {
+    return 'Укажите цену хотя бы по одной позиции';
+  }
+  if (lines.some((line) => !line || typeof line !== 'object')) {
+    return 'Строка КП указана некорректно';
+  }
+  if (new Set(lines.map((line) => line.requestItemId)).size !== lines.length) {
+    return 'Каждая позиция должна встречаться в КП только один раз';
+  }
+  for (const line of lines) {
+    if (typeof line.requestItemId !== 'string' || !UUID_RE.test(line.requestItemId)) {
+      return 'Позиция КП указана некорректно';
+    }
+    if (!Number.isSafeInteger(line.unitPriceKzt) || line.unitPriceKzt <= 0) {
+      return 'Цена должна быть целым числом тенге больше нуля';
+    }
+    if (
+      !Number.isSafeInteger(line.leadTimeDays) ||
+      line.leadTimeDays <= 0 ||
+      line.leadTimeDays > 2147483647
+    ) {
+      return 'Укажите корректный срок поставки';
+    }
+    if (!Number.isSafeInteger(line.setupFeeKzt ?? 0) || (line.setupFeeKzt ?? 0) < 0) {
+      return 'Стоимость подготовки должна быть целым неотрицательным числом тенге';
+    }
+    if (
+      line.minQty !== undefined &&
+      (!Number.isSafeInteger(line.minQty) || line.minQty <= 0 || line.minQty > 2147483647)
+    ) {
+      return 'Минимальное количество должно быть целым числом больше нуля';
+    }
+  }
+  return null;
+}
+
 export async function submitQuote(rfqId: string, lines: QuoteLineInput[]): Promise<ActionResult> {
   const user = await requireCurrentUser();
   if (orderActorFor(user) !== 'supplier') {
     return { ok: false, error: 'Только поставщик может ответить на RFQ' };
   }
-  if (lines.length === 0) {
-    return { ok: false, error: 'Укажите цену хотя бы по одной позиции' };
-  }
-  if (new Set(lines.map((line) => line.requestItemId)).size !== lines.length) {
-    return { ok: false, error: 'Каждая позиция должна встречаться в КП только один раз' };
-  }
-  for (const line of lines) {
-    if (!Number.isSafeInteger(line.unitPriceKzt) || line.unitPriceKzt <= 0) {
-      return { ok: false, error: 'Цена должна быть целым числом тенге больше нуля' };
-    }
-    if (
-      !Number.isInteger(line.leadTimeDays) ||
-      line.leadTimeDays <= 0 ||
-      line.leadTimeDays > 2147483647
-    ) {
-      return { ok: false, error: 'Укажите корректный срок поставки' };
-    }
-    if (!Number.isSafeInteger(line.setupFeeKzt ?? 0) || (line.setupFeeKzt ?? 0) < 0) {
-      return {
-        ok: false,
-        error: 'Стоимость подготовки должна быть целым неотрицательным числом тенге',
-      };
-    }
-    if (
-      line.minQty !== undefined &&
-      (!Number.isInteger(line.minQty) || line.minQty <= 0 || line.minQty > 2147483647)
-    ) {
-      return { ok: false, error: 'Минимальное количество должно быть целым числом больше нуля' };
-    }
-  }
+  const validationError = validateQuoteLines(lines);
+  if (validationError) return { ok: false, error: validationError };
 
   const supabase = await createSupabaseServerClient();
 
@@ -93,5 +104,83 @@ export async function declineRfq(rfqId: string): Promise<ActionResult> {
 
   revalidatePath('/supplier');
   revalidatePath(`/supplier/rfq/${rfqId}`);
+  return { ok: true };
+}
+
+/** Доставка подтверждается поставщиком, а не консьержем или платформой. */
+export async function confirmSupplierDelivery(
+  orderId: string,
+): Promise<ActionResult & { delivered?: boolean }> {
+  const user = await requireCurrentUser();
+  if (orderActorFor(user) !== 'supplier') {
+    return { ok: false, error: 'Только поставщик может подтвердить доставку' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('confirm_supplier_delivery', {
+    p_order_id: orderId,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/supplier');
+  revalidatePath(`/supplier/orders/${orderId}`);
+  revalidatePath(`/concierge/orders/${orderId}`);
+  revalidatePath(`/buyer/orders/${orderId}`);
+  return { ok: true, delivered: data === true };
+}
+
+/** Быстрый шаг публичной RFQ-ссылки — намерение взять заявку в работу. */
+export async function quickRespondRfqByLink(token: string): Promise<ActionResult> {
+  const payload = verifyRfqResponseToken(token);
+  if (!payload) return { ok: false, error: 'Ссылка RFQ недействительна или истекла' };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('quick_respond_rfq_public', {
+    p_rfq_id: payload.rfqId,
+    p_token: payload.nonce,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/rfq/respond/${token}`);
+  return { ok: true };
+}
+
+/** Отказ по публичной ссылке также проверяется в БД по исходному nonce. */
+export async function declineRfqByLink(token: string): Promise<ActionResult> {
+  const payload = verifyRfqResponseToken(token);
+  if (!payload) return { ok: false, error: 'Ссылка RFQ недействительна или истекла' };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('decline_rfq_public', {
+    p_rfq_id: payload.rfqId,
+    p_token: payload.nonce,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/supplier');
+  revalidatePath(`/rfq/respond/${token}`);
+  return { ok: true };
+}
+
+/** Полный ответ из публичной ссылки: HMAC и nonce проверяются до RPC. */
+export async function submitQuoteByLink(
+  token: string,
+  lines: QuoteLineInput[],
+): Promise<ActionResult> {
+  const payload = verifyRfqResponseToken(token);
+  if (!payload) return { ok: false, error: 'Ссылка RFQ недействительна или истекла' };
+  const validationError = validateQuoteLines(lines);
+  if (validationError) return { ok: false, error: validationError };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('submit_rfq_public', {
+    p_rfq_id: payload.rfqId,
+    p_token: payload.nonce,
+    p_lines: lines,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/supplier');
+  revalidatePath(`/rfq/respond/${token}`);
   return { ok: true };
 }

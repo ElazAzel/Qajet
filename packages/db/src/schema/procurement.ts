@@ -11,6 +11,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { authenticatedRole, authUid, serviceRole } from 'drizzle-orm/supabase';
@@ -753,7 +754,83 @@ export const orders = pgTable(
         select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
       )`,
     }),
+    pgPolicy('orders_update_supplier_delivery', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: sql`${t.state} = 'shipped' and exists (
+        select 1 from ${planLines} pl
+        where pl.plan_id = ${t.approvedPlanId}
+          and pl.supplier_company_id = ${currentCompanyIdSubquery}
+      )`,
+      withCheck: sql`${t.state} in ('shipped', 'delivered') and exists (
+        select 1 from ${planLines} pl
+        where pl.plan_id = ${t.approvedPlanId}
+          and pl.supplier_company_id = ${currentCompanyIdSubquery}
+      )`,
+    }),
     pgPolicy('orders_service_all', {
+      as: 'permissive',
+      for: 'all',
+      to: serviceRole,
+      using: sql`true`,
+      withCheck: sql`true`,
+    }),
+  ],
+).enableRLS();
+
+/** Подтверждения доставки по каждому поставщику — agents.md §6. */
+export const orderSupplierDeliveries = pgTable(
+  'order_supplier_deliveries',
+  {
+    id: id(),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    supplierCompanyId: uuid('supplier_company_id')
+      .notNull()
+      .references(() => companies.id, { onDelete: 'restrict' }),
+    confirmedBy: uuid('confirmed_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }).notNull().defaultNow(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('order_supplier_deliveries_order_supplier_idx').on(t.orderId, t.supplierCompanyId),
+    index('order_supplier_deliveries_order_id_idx').on(t.orderId),
+    index('order_supplier_deliveries_supplier_company_id_idx').on(t.supplierCompanyId),
+    pgPolicy('order_supplier_deliveries_select_own_supplier', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
+    }),
+    pgPolicy('order_supplier_deliveries_select_staff', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: staffOnly,
+    }),
+    pgPolicy('order_supplier_deliveries_insert_own_supplier', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}
+        and ${t.confirmedBy} = ${authUid}
+        and ${currentRoleSubquery} in ('owner', 'manager')
+        and exists (
+          select 1 from ${companies} c where c.id = ${t.supplierCompanyId} and c.type = 'supplier'
+        )
+        and exists (
+          select 1 from ${orders} o
+          join ${planLines} pl on pl.plan_id = o.approved_plan_id
+          where o.id = ${t.orderId}
+            and o.state = 'shipped'
+            and pl.supplier_company_id = ${t.supplierCompanyId}
+        )`,
+    }),
+    pgPolicy('order_supplier_deliveries_service_all', {
       as: 'permissive',
       for: 'all',
       to: serviceRole,
@@ -788,26 +865,9 @@ export const orderStageEvents = pgTable(
       to: authenticatedRole,
       using: sql`${t.orderId} in (select id from ${orders})`,
     }),
-    // Audit log только на вставку — никаких policy на update/delete вообще,
-    // даже для service_role, история необратима (agents.md §6). Вставка
-    // разрешена authenticatedRole (не только сервису), потому что сами
-    // переходы теперь и правда происходят из браузера staff/покупателя, но
-    // строго от своего имени (actor_user_id = свой auth.uid()) и только
-    // по заказу, который этой роли и так виден (staff — любой, покупатель —
-    // только заказ своей же компании).
-    pgPolicy('order_stage_events_insert_actor', {
-      as: 'permissive',
-      for: 'insert',
-      to: authenticatedRole,
-      withCheck: sql`${t.actorUserId} = ${authUid} and (
-        ${currentRoleSubquery} in ('concierge', 'admin')
-        or ${t.orderId} in (
-          select o.id from ${orders} o
-          join ${requests} r on r.id = o.request_id
-          where r.buyer_company_id = ${currentCompanyIdSubquery}
-        )
-      )`,
-    }),
+    // Audit log только на чтение для authenticated: запись делает
+    // SECURITY DEFINER-триггер на orders в миграции 0022, поэтому состояние
+    // и его событие не могут разойтись, а клиент не может подделать историю.
     pgPolicy('order_stage_events_service_insert', {
       as: 'permissive',
       for: 'insert',
@@ -840,6 +900,7 @@ export const supplierPayouts = pgTable(
     ...timestamps,
   },
   (t) => [
+    uniqueIndex('supplier_payouts_order_supplier_idx').on(t.orderId, t.supplierCompanyId),
     index('supplier_payouts_order_id_idx').on(t.orderId),
     index('supplier_payouts_supplier_company_id_idx').on(t.supplierCompanyId),
     pgPolicy('supplier_payouts_select_own_supplier', {
@@ -900,8 +961,8 @@ export const documents = pgTable(
     // act), той же RLS-сессией текущего актёра, что и остальные записи
     // жизненного цикла (agents.md §6, без service_role). Актёр перехода
     // closed — покупатель ИЛИ staff (packages/engine/order/transition.ts),
-    // поэтому withCheck пускает оба случая, тем же приёмом, что
-    // order_stage_events_insert_actor выше по файлу.
+    // поэтому withCheck пускает оба случая; audit event заказа при этом
+    // создаётся отдельным PostgreSQL-триггером.
     pgPolicy('documents_insert_via_order', {
       as: 'permissive',
       for: 'insert',

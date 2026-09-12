@@ -44,9 +44,9 @@ const FALLBACK_RFQ_EXPLORATION_EVERY_N = 4;
  * packages/engine/order/transition() ДО записи, (3) пишет через
  * RLS-сессию текущего пользователя (не service role — политики в
  * packages/db/src/schema/procurement.ts уже ограничивают, кто и что может
- * тронуть), (4) добавляет строку в order_stage_events. Postgres-триггер
- * enforce_order_transition — второй, независимый барьер на случай прямого
- * обращения мимо этого файла.
+ * тронуть), (4) оставляет запись аудита Postgres-триггеру в той же
+ * транзакции. enforce_order_transition и guard_order_actor — независимые
+ * барьеры на случай прямого обращения мимо этого файла.
  */
 
 export interface ActionResult {
@@ -79,28 +79,43 @@ function addDaysIso(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function logStageEvent(
+async function captureStageStart(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  orderId: string,
+  actor: OrderActor,
+): Promise<string | undefined> {
+  if (actor !== 'concierge' && actor !== 'admin') return undefined;
+
+  const { data: previousEvent } = await supabase
+    .from('order_stage_events')
+    .select('at')
+    .eq('order_id', orderId)
+    .order('at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (previousEvent?.at) return previousEvent.at as string;
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select('created_at')
+    .eq('id', orderId)
+    .maybeSingle();
+  return order?.created_at as string | undefined;
+}
+
+async function logStageWork(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   orderId: string,
   fromState: OrderState,
-  toState: OrderState,
   actorUserId: string,
   actor: OrderActor,
-  note?: string,
-): Promise<string | null> {
-  // Автотаймер (agents.md §9, autotimer.ts) — читает предыдущий
-  // order_stage_events ДО вставки нового, иначе нашёл бы сам себя.
-  // Best-effort: ошибка не должна валить сам переход стадии.
-  await logAutoTimeEntry(supabase, orderId, fromState, actor, actorUserId).catch(() => undefined);
-
-  const { error } = await supabase.from('order_stage_events').insert({
-    order_id: orderId,
-    from_state: fromState,
-    to_state: toState,
-    actor_user_id: actorUserId,
-    ...(note ? { note } : {}),
-  });
-  return error?.message ?? null;
+  stageStartedAt?: string,
+): Promise<void> {
+  // Автотаймер получает timestamp, захваченный ДО UPDATE: после UPDATE новый
+  // audit event создаётся триггером в той же транзакции.
+  await logAutoTimeEntry(supabase, orderId, fromState, actor, actorUserId, stageStartedAt).catch(
+    () => undefined,
+  );
 }
 
 function revalidateOrder(orderId: string): void {
@@ -263,21 +278,15 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
     if (rejectionsError) return { ok: false, error: rejectionsError.message };
   }
 
+  const stageStartedAt = await captureStageStart(supabase, order.id, actor);
   const { error: orderError } = await supabase
     .from('orders')
     .update({ approved_plan_id: newPlan.id, state: 'plan_proposed' })
     .eq('id', order.id);
   if (orderError) return { ok: false, error: orderError.message };
-
-  const eventError = await logStageEvent(
-    supabase,
-    order.id,
-    order.state,
-    'plan_proposed',
-    user.id,
-    actor,
-  );
-  if (eventError) return { ok: false, error: eventError };
+  // Аудит перехода создаётся триггером orders в той же транзакции, что и
+  // смена стадии; таймер пишется только после успешного UPDATE.
+  await logStageWork(supabase, order.id, order.state, user.id, actor, stageStartedAt);
 
   revalidateOrder(order.id);
   return { ok: true };
@@ -313,7 +322,7 @@ export interface AdvanceOptions {
 }
 
 /**
- * Все остальные рёбра графа: suppliers_paid…delivered (концьерж/админ),
+ * Все остальные рёбра графа: suppliers_paid…shipped (концьерж/админ),
  * accepted/disputed/on_hold/cancelled (покупатель или staff — см. граф).
  */
 export async function advanceOrderStage(
@@ -388,15 +397,16 @@ export async function advanceOrderStage(
     };
   }
 
+  const stageStartedAt = await captureStageStart(supabase, order.id, actor);
   const { error: orderError, count } = await supabase
     .from('orders')
     .update(payload, { count: 'exact' })
     .eq('id', order.id);
   if (orderError) return { ok: false, error: orderError.message };
   if (count === 0) return { ok: false, error: 'Нет доступа к этому заказу' };
-
-  const eventError = await logStageEvent(supabase, order.id, order.state, toState, user.id, actor);
-  if (eventError) return { ok: false, error: eventError };
+  // Используем timestamp, захваченный до UPDATE, потому что audit event уже
+  // создан триггером к моменту записи времени.
+  await logStageWork(supabase, order.id, order.state, user.id, actor, stageStartedAt);
 
   if (toState === 'closed') {
     // `requests.status` доводится до 'closed' вместе с заказом. Значение
@@ -425,17 +435,19 @@ export async function advanceOrderStage(
   // никогда не проваливает сам переход стадии: это фоновое обучение, а не
   // условие успеха действия пользователя. recalibration.ts объясняет, почему
   // только staff-актёр (RLS model_snapshots_insert_staff — staffOnly).
-  if (toState === 'delivered' && order.approved_plan_id) {
-    const { data: lines } = await supabase
-      .from('plan_lines')
-      .select('supplier_company_id')
-      .eq('plan_id', order.approved_plan_id);
-    const supplierIds = [...new Set((lines ?? []).map((l) => l.supplier_company_id))];
-    await Promise.all(
-      supplierIds.map((id) => recalibrateLeadTimeForSupplier(supabase, id).catch(() => undefined)),
-    );
-  }
   if (toState === 'closed' && (actor === 'concierge' || actor === 'admin')) {
+    if (order.approved_plan_id) {
+      const { data: lines } = await supabase
+        .from('plan_lines')
+        .select('supplier_company_id')
+        .eq('plan_id', order.approved_plan_id);
+      const supplierIds = [...new Set((lines ?? []).map((l) => l.supplier_company_id))];
+      await Promise.all(
+        supplierIds.map((id) =>
+          recalibrateLeadTimeForSupplier(supabase, id).catch(() => undefined),
+        ),
+      );
+    }
     await recalibrateMatcherForOrder(supabase, {
       requestId: order.request_id,
       approvedPlanId: order.approved_plan_id,
@@ -859,7 +871,7 @@ async function recordSupplierPayouts(
   }
 
   const paidAt = new Date().toISOString();
-  const { error } = await supabase.from('supplier_payouts').insert(
+  const { error } = await supabase.from('supplier_payouts').upsert(
     [...totalsBySupplier.entries()].map(([supplierCompanyId, amountKzt]) => ({
       order_id: order.id,
       supplier_company_id: supplierCompanyId,
@@ -867,6 +879,7 @@ async function recordSupplierPayouts(
       status: 'paid',
       paid_at: paidAt,
     })),
+    { onConflict: 'order_id,supplier_company_id' },
   );
   return error?.message ?? null;
 }

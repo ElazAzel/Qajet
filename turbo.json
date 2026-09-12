@@ -3,6 +3,7 @@
   "ui": "stream",
   "globalDependencies": ["tsconfig.base.json", ".env"],
   "globalEnv": ["NODE_ENV"],
+  "globalPassThroughEnv": ["JWT_SECRET"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

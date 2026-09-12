@@ -33,7 +33,7 @@
 
 - [ ] **Step 1: Write the failing smoke test**
 
-Add a public Playwright test that opens `/` and asserts an accessible heading and the `/demo` link. It must run without Supabase credentials.
+Add a public Playwright test that opens `/` and asserts an accessible heading and the `/login` link. It must run without Supabase credentials.
 
 ```ts
 import { expect, test } from '@playwright/test';
@@ -41,7 +41,7 @@ import { expect, test } from '@playwright/test';
 test('public landing opens from the production standalone server', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.getByRole('link', { name: /демо/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /войти в систему/i })).toBeVisible();
 });
 ```
 
@@ -155,7 +155,7 @@ git commit -m "fix: harden pii restoration and delivery routing"
 - Modify: `packages/engine/src/order/transition.ts`
 - Modify: `packages/engine/src/order/transition.test.ts`
 - Modify: `apps/web/app/lib/actions/order-actions.ts`
-- Create: `apps/web/app/lib/actions/supplier-delivery-actions.ts`
+- Modify: `apps/web/app/lib/actions/supplier-actions.ts`
 - Create: `apps/web/app/supplier/orders/[id]/page.tsx`
 - Create: `apps/web/app/supplier/orders/[id]/_delivery-confirmation.tsx`
 - Modify: `apps/web/app/lib/supplier-home.ts`
@@ -214,14 +214,13 @@ git commit -m "feat: enforce audited supplier delivery transitions"
 **Files:**
 - Modify: `apps/web/app/lib/signed-link.ts`
 - Modify: `apps/web/app/lib/actions/order-actions.ts`
-- Create: `apps/web/app/lib/rfq-quick-response.ts`
-- Create: `apps/web/app/lib/actions/rfq-quick-actions.ts`
-- Create: `apps/web/app/supplier/respond/[token]/page.tsx`
-- Create: `apps/web/app/supplier/respond/[token]/_quick-response-form.tsx`
-- Create: `apps/web/app/supplier/respond/[token]/_quote-form.tsx`
-- Create: `packages/db/migrations/0023_rfq_quick_response.sql`
+- Create: `apps/web/app/lib/rfq-response.ts`
+- Modify: `apps/web/app/lib/actions/supplier-actions.ts`
+- Create: `apps/web/app/rfq/respond/[token]/page.tsx`
+- Create: `apps/web/app/rfq/respond/[token]/_public-response.tsx`
+- Extend: `packages/db/migrations/0022_supplier_delivery_and_audit.sql`
 - Modify: `packages/db/migrations/meta/_journal.json`
-- Test: `apps/web/app/lib/rfq-quick-response.test.ts`
+- Test: `apps/web/app/lib/rfq-response.test.ts`
 - Test: `apps/web/e2e/rfq-quick-response.spec.ts`
 
 **Interfaces:**
@@ -233,7 +232,7 @@ Test that a signed `rfq_respond` payload carries `{ rfqId, nonce }`, a wrong sco
 
 - [ ] **Step 2: Run focused tests and verify failure**
 
-Run `corepack pnpm --filter @qajet/web exec vitest run app/lib/rfq-quick-response.test.ts`.
+Run `corepack pnpm --filter @qajet/web exec vitest run app/lib/rfq-response.test.ts`.
 
 - [ ] **Step 3: Implement signed RFQ payload and database RPCs**
 
@@ -250,7 +249,7 @@ Run focused unit tests, web unit tests, and the E2E spec when Supabase is config
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/web/app/lib/signed-link.ts apps/web/app/lib/rfq-quick-response.ts apps/web/app/lib/actions/rfq-quick-actions.ts apps/web/app/supplier/respond packages/db/migrations
+git add apps/web/app/lib/rfq-response.ts apps/web/app/lib/actions/supplier-actions.ts apps/web/app/rfq/respond packages/db/migrations
 git commit -m "feat: add protected supplier rfq response links"
 ```
 
@@ -260,11 +259,11 @@ git commit -m "feat: add protected supplier rfq response links"
 
 **Files:**
 - Create: `apps/web/lib/supabase/admin.ts`
-- Create: `apps/web/app/lib/actions/team-invite-actions.ts`
+- Modify: `apps/web/app/lib/actions/team-actions.ts`
 - Create: `apps/web/app/buyer/team/_invite-form.tsx`
 - Modify: `apps/web/app/buyer/team/page.tsx`
 - Modify: `apps/web/app/lib/buyer-team.ts`
-- Test: `apps/web/app/lib/actions/team-invite-actions.test.ts`
+- Test: `apps/web/app/lib/actions/team-actions.test.ts`
 
 **Interfaces:**
 - Produces: `inviteTeamMember(input: InviteTeamMemberInput): Promise<ActionResult>` where `input` is `{ email: string; fullName: string; approvalLimitKzt: number | null }` and the new profile is always a `manager` in the current owner's company.
@@ -275,7 +274,7 @@ Cover non-owner rejection, invalid email/name/limit rejection, missing service-r
 
 - [ ] **Step 2: Run the focused tests and verify failure**
 
-Run `corepack pnpm --filter @qajet/web exec vitest run app/lib/actions/team-invite-actions.test.ts`.
+Run `corepack pnpm --filter @qajet/web exec vitest run app/lib/actions/team-actions.test.ts`.
 
 - [ ] **Step 3: Implement the server-only admin boundary**
 
@@ -290,7 +289,7 @@ Use existing `useAsyncAction`/`Button` patterns, validate before submission, ref
 Run focused tests, `corepack pnpm --filter @qajet/web typecheck`, and `corepack pnpm --filter @qajet/web test`.
 
 ```bash
-git add apps/web/lib/supabase/admin.ts apps/web/app/lib/actions/team-invite-actions.ts apps/web/app/buyer/team apps/web/app/lib/buyer-team.ts
+git add apps/web/lib/supabase/admin.ts apps/web/app/lib/actions/team-actions.ts apps/web/app/lib/actions/team-invitation.ts apps/web/app/buyer/team
 git commit -m "feat: invite buyer team members"
 ```
 

@@ -79,8 +79,7 @@ export default defineConfig({
           // нужно руками), без копии сервер поднимется, но отдаст 404 на
           // все ассеты и chunk'и.
           command:
-            'node scripts/prepare-standalone.mjs && ' +
-            'node .next/standalone/apps/web/server.js',
+            'node scripts/prepare-standalone.mjs && ' + 'node .next/standalone/apps/web/server.js',
           url: 'http://localhost:3000',
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,

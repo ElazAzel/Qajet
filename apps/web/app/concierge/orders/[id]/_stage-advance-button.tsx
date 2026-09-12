@@ -6,7 +6,7 @@ import { advanceOrderStage } from '../../../lib/actions/order-actions';
 import type { OrderState } from '../../../lib/order-state';
 import { ORDER_STATE_LABEL } from '../../../lib/order-state';
 
-/** Операционные переходы staff (suppliers_paid…delivered, on_hold, cancelled) — agents.md §6. */
+/** Операционные переходы staff (suppliers_paid…shipped, on_hold, cancelled) — agents.md §6. */
 export function StageAdvanceButton({
   orderId,
   toState,

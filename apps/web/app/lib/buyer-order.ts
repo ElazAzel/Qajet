@@ -132,17 +132,29 @@ export async function loadBuyerOrder(
 
   const { data: eventRows } = await supabase
     .from('order_stage_events')
-    .select('to_state, at, users(full_name)')
+    .select('to_state, at, users(full_name, role, companies(type))')
     .eq('order_id', orderId)
     .order('at', { ascending: true });
 
   const events: StageEvent[] = (eventRows ?? []).map((row) => {
     const actor = Array.isArray(row.users) ? row.users[0] : row.users;
+    const actorCompany = actor
+      ? Array.isArray(actor.companies)
+        ? actor.companies[0]
+        : actor.companies
+      : null;
     return {
       toState: row.to_state as OrderState,
       toStateLabel: ORDER_STATE_LABEL[row.to_state as OrderState],
       at: row.at,
-      actorName: actor?.full_name ?? null,
+      // Покупателю нельзя раскрывать персональную личность поставщика —
+      // снаружи он видит исполнителя как компанию.
+      actorName:
+        actor?.role &&
+        ['owner', 'manager'].includes(actor.role) &&
+        actorCompany?.type === 'supplier'
+          ? 'Поставщик'
+          : (actor?.full_name ?? null),
     };
   });
 

@@ -52,9 +52,6 @@
 .headerScrolled {
   box-shadow: 0 8px 24px -18px rgb(0 0 0 / 0.3);
 }
-.headerScrolled .nav {
-  min-height: 62px;
-}
 .scrollProgress {
   position: absolute;
   top: -1px;
@@ -74,6 +71,9 @@
   justify-content: space-between;
   transition: min-height var(--duration-base) var(--ease-standard);
   gap: 24px;
+}
+.headerScrolled .nav {
+  min-height: 62px;
 }
 .logo {
   font-size: 26px;

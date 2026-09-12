@@ -130,6 +130,98 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
         await tx`select id from order_stage_events where order_id = ${f[11]} and to_state = 'plan_approved'`,
       ).toHaveLength(1);
     }));
+  it('supplier confirmation is the only way to move a paid order to delivered', async () =>
+    scenario(async (tx, f) => {
+      const quote = crypto.randomUUID();
+      const quoteLine = crypto.randomUUID();
+      const planLine = crypto.randomUUID();
+      await tx`insert into quotes (id, rfq_id) values (${quote}, ${f[9]})`;
+      await tx`insert into quote_lines (id, quote_id, request_item_id, unit_price_kzt, lead_time_days)
+        values (${quoteLine}, ${quote}, ${f[7]}, 100000, 2)`;
+      await tx`insert into plan_lines (id, plan_id, request_item_id, supplier_company_id, quote_line_id, qty, line_total_kzt, commission_pct, commission_kzt)
+        values (${planLine}, ${f[10]}, ${f[7]}, ${f[1]}, ${quoteLine}, 10, 100000, 23, 23000)`;
+
+      await asUser(tx, f[2]);
+      await tx`select approve_plan(${f[11]})`;
+      await asUser(tx, f[3]);
+      await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at)
+        values (${f[11]}, ${f[1]}, 100000, 'paid', now())`;
+      await tx`update orders set state = 'suppliers_paid' where id = ${f[11]}`;
+      await tx`update orders set state = 'in_production' where id = ${f[11]}`;
+      await tx`update orders set state = 'shipped' where id = ${f[11]}`;
+
+      await expect(
+        tx.savepoint((sp) => sp`update orders set state = 'delivered' where id = ${f[11]}`),
+      ).rejects.toThrow('Поставщик');
+
+      await asUser(tx, f[4]);
+      await tx`select confirm_supplier_delivery(${f[11]})`;
+      expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe('delivered');
+      const event = await tx`select actor_user_id, from_state, to_state from order_stage_events
+        where order_id = ${f[11]} and to_state = 'delivered'`;
+      expect(event).toHaveLength(1);
+      expect(event[0]?.actor_user_id).toBe(f[4]);
+      expect(event[0]?.from_state).toBe('shipped');
+    }));
+  it('a multi-supplier order waits for every supplier confirmation', async () =>
+    scenario(async (tx, f) => {
+      const supplierB = crypto.randomUUID();
+      const supplierBUser = crypto.randomUUID();
+      const rfqB = crypto.randomUUID();
+      const quoteA = crypto.randomUUID();
+      const quoteB = crypto.randomUUID();
+      const lineA = crypto.randomUUID();
+      const lineB = crypto.randomUUID();
+      const planLineA = crypto.randomUUID();
+      const planLineB = crypto.randomUUID();
+
+      await tx`insert into companies (id, type, name) values (${supplierB}, 'supplier', 'Integrity supplier B')`;
+      await tx`insert into auth.users (id) values (${supplierBUser})`;
+      await tx`insert into public.users (id, company_id, role, full_name, email) values
+        (${supplierBUser}, ${supplierB}, 'owner', 'Supplier B', 'integrity-supplier-b@example.com')`;
+      await tx`insert into rfqs (id, request_id, supplier_company_id, token) values
+        (${rfqB}, ${f[5]}, ${supplierB}, ${crypto.randomUUID()})`;
+      await tx`insert into quotes (id, rfq_id) values (${quoteA}, ${f[9]}), (${quoteB}, ${rfqB})`;
+      await tx`insert into quote_lines (id, quote_id, request_item_id, unit_price_kzt, lead_time_days) values
+        (${lineA}, ${quoteA}, ${f[7]}, 50000, 2), (${lineB}, ${quoteB}, ${f[7]}, 50000, 2)`;
+      await tx`insert into plan_lines (id, plan_id, request_item_id, supplier_company_id, quote_line_id, qty, line_total_kzt, commission_pct, commission_kzt) values
+        (${planLineA}, ${f[10]}, ${f[7]}, ${f[1]}, ${lineA}, 5, 50000, 23, 11500),
+        (${planLineB}, ${f[10]}, ${f[7]}, ${supplierB}, ${lineB}, 5, 50000, 23, 11500)`;
+
+      await asUser(tx, f[2]);
+      await tx`select approve_plan(${f[11]})`;
+      await asUser(tx, f[3]);
+      await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at) values
+        (${f[11]}, ${f[1]}, 50000, 'paid', now()), (${f[11]}, ${supplierB}, 50000, 'paid', now())`;
+      await tx`update orders set state = 'suppliers_paid' where id = ${f[11]}`;
+      await tx`update orders set state = 'in_production' where id = ${f[11]}`;
+      await tx`update orders set state = 'shipped' where id = ${f[11]}`;
+
+      await asUser(tx, f[4]);
+      expect(
+        (await tx`select confirm_supplier_delivery(${f[11]})`)[0]?.confirm_supplier_delivery,
+      ).toBe(false);
+      expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe('shipped');
+
+      await asUser(tx, supplierBUser);
+      expect(
+        (await tx`select confirm_supplier_delivery(${f[11]})`)[0]?.confirm_supplier_delivery,
+      ).toBe(true);
+      expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe('delivered');
+      expect(
+        await tx`select id from order_stage_events where order_id = ${f[11]} and to_state = 'delivered'`,
+      ).toHaveLength(1);
+    }));
+  it('authenticated staff cannot fabricate an order audit row', async () =>
+    scenario(async (tx, f) => {
+      await asUser(tx, f[3]);
+      await expect(
+        tx.savepoint(
+          (sp) => sp`insert into order_stage_events(order_id, to_state, actor_user_id)
+            values (${f[11]}, 'draft', ${f[3]})`,
+        ),
+      ).rejects.toThrow();
+    }));
   it('manager above personal limit sends the order to the owner', async () =>
     scenario(async (tx, f) => {
       await tx`update public.users set role = 'manager', approval_limit_kzt = 100000 where id = ${f[2]}`;

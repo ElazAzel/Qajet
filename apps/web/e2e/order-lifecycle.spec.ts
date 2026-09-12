@@ -46,6 +46,8 @@ for (const settlement of ['refund', 'surcharge'] as const) {
     const buyer = await buyerCtx.newPage();
     const conciergeCtx = await browser.newContext();
     const concierge = await conciergeCtx.newPage();
+    const supplierCtx = await browser.newContext();
+    const supplier = await supplierCtx.newPage();
 
     try {
       const { orderUrl, orderId } = await createQuotesReceivedOrder(browser);
@@ -71,11 +73,17 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       await approvePlanButton.click();
       await expect(buyer.getByRole('button', { name: 'Утвердить план' })).toHaveCount(0);
 
-      // 8. Концьерж проводит заказ до доставки
+      // 8. Концьерж проводит заказ до отгрузки
       await advanceStage(concierge, orderUrl, '→ Поставщики оплачены');
       await advanceStage(concierge, orderUrl, '→ В производстве');
       await advanceStage(concierge, orderUrl, '→ Отгружен');
-      await advanceStage(concierge, orderUrl, '→ Доставлен');
+
+      // Доставку фиксирует только поставщик. Это отдельная сессия и тот же
+      // экран, который поставщик использует после исполнения заказа.
+      await loginAs(supplier, 'supplier@demo.qajet.kz');
+      await supplier.goto(`/supplier/orders/${orderId}`);
+      await supplier.getByRole('button', { name: 'Подтвердить доставку' }).click();
+      await expect(supplier.getByRole('button', { name: 'Подтвердить доставку' })).toHaveCount(0);
 
       // 9. Покупатель принимает поставку
       const acceptDeliveryButton = await gotoUntilButtonVisible(
@@ -100,6 +108,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
     } finally {
       await buyerCtx.close();
       await conciergeCtx.close();
+      await supplierCtx.close();
     }
   });
 }

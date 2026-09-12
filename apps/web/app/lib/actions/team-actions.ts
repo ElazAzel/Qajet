@@ -1,9 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../current-user';
 import type { ActionResult } from './request-actions';
+import { type InviteTeamMemberInput, normalizeInviteTeamMemberInput } from './team-invitation';
 
 /**
  * Команда и доступы (agents.md §10). Роль владельца проверяется и здесь, и
@@ -12,19 +14,59 @@ import type { ActionResult } from './request-actions';
  * приложении нужна, чтобы отказ был понятным сообщением, а не сырой
  * ошибкой Postgres; границей остаётся база.
  *
- * Приглашения сотрудника здесь НЕТ, и это осознанно: завести нового
- * пользователя — это создать запись в `auth.users`, что требует
- * service-role-ключа, а `apps/web` работает только под сессией
- * пользователя (единственное исключение — ссылка для жюри на /metrics,
- * обосновано там же). Кнопка «Пригласить», которая ничего не создаёт,
- * была бы ровно тем, что этот заход и убирает с экранов покупателя.
+ * Приглашение использует service-role только внутри owner-only server
+ * action. Ключ не попадает в клиентский bundle и не используется для
+ * чтения бизнес-данных.
  */
 
-async function requireOwner(): Promise<ActionResult> {
+async function requireOwner(): Promise<ActionResult & { companyId?: string }> {
   const user = await requireCurrentUser();
-  if (user.role !== 'owner') {
+  if (user.role !== 'owner' || user.companyType !== 'buyer' || !user.companyId) {
     return { ok: false, error: 'Менять доступы может только владелец компании' };
   }
+  return { ok: true, companyId: user.companyId };
+}
+
+export async function inviteTeamMember(input: InviteTeamMemberInput): Promise<ActionResult> {
+  const gate = await requireOwner();
+  if (!gate.ok || !gate.companyId) return gate;
+  const normalized = normalizeInviteTeamMemberInput(input);
+  if (typeof normalized === 'string') return { ok: false, error: normalized };
+
+  let admin: ReturnType<typeof createSupabaseAdminClient>;
+  try {
+    admin = createSupabaseAdminClient();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Приглашения отключены' };
+  }
+
+  const { data, error: inviteError } = await admin.auth.admin.inviteUserByEmail(normalized.email, {
+    data: {
+      full_name: normalized.fullName,
+      company_id: gate.companyId,
+      role: 'manager',
+    },
+  });
+  if (inviteError || !data.user) {
+    return { ok: false, error: inviteError?.message ?? 'Не удалось создать приглашение' };
+  }
+
+  const { error: profileError } = await admin.from('users').insert({
+    id: data.user.id,
+    company_id: gate.companyId,
+    email: normalized.email,
+    full_name: normalized.fullName,
+    role: 'manager',
+    approval_limit_kzt: normalized.approvalLimitKzt,
+    is_active: true,
+  });
+  if (profileError) {
+    // Не оставлять auth-пользователя без профиля при сбое записи профиля.
+    await admin.auth.admin.deleteUser(data.user.id);
+    return { ok: false, error: profileError.message };
+  }
+
+  revalidatePath('/buyer/team');
   return { ok: true };
 }
 

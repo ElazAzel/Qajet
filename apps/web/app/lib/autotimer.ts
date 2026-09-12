@@ -31,18 +31,20 @@ export async function logAutoTimeEntry(
   fromState: OrderState,
   actor: OrderActor,
   actorUserId: string,
+  sinceIso?: string,
 ): Promise<void> {
   if (actor !== 'concierge' && actor !== 'admin') return;
 
-  const { data: previousEvent } = await supabase
-    .from('order_stage_events')
-    .select('at')
-    .eq('order_id', orderId)
-    .order('at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  let sinceIso = previousEvent?.at as string | undefined;
+  if (!sinceIso) {
+    const { data: previousEvent } = await supabase
+      .from('order_stage_events')
+      .select('at')
+      .eq('order_id', orderId)
+      .order('at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    sinceIso = previousEvent?.at as string | undefined;
+  }
   if (!sinceIso) {
     const { data: order } = await supabase
       .from('orders')

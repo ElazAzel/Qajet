@@ -74,7 +74,7 @@ jobs:
       - run: pnpm --filter @qajet/web build
 
   e2e:
-    name: Сквозной сценарий (Playwright)
+    name: Сквозной сценарий (Playwright, live Supabase)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -90,11 +90,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # NEXT_PUBLIC_SUPABASE_URL/ANON_KEY как secrets репозитория — открытый
-      # пункт (README «Известные ограничения»), тот же класс, что и
-      # DATABASE_URL для теста изоляции поставщиков. Без них
-      # playwright.config.ts не находит .env.local, e2e/*.spec.ts пропускают
-      # себя сами (test.skip) — джоба не падает, просто ничего не проверяет.
+      - name: Проверить конфигурацию live E2E
+        run: node tools/ci/check-live-e2e-env.mjs
+        env:
+          CI: true
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
       - name: Playwright Chromium
         working-directory: apps/web
         run: pnpm exec playwright install --with-deps chromium
@@ -107,6 +109,33 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+  public-e2e:
+    name: Public smoke (Playwright, без секретов)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Playwright Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm --filter @qajet/web build
+
+      - name: Public smoke
+        working-directory: apps/web
+        run: pnpm exec playwright test e2e/public-smoke.spec.ts
 
   rls-isolation:
     name: Тест изоляции поставщиков (RLS, реальный Postgres)
