@@ -3,7 +3,7 @@
   "service": "QAJET",
   "scope": "web-and-mobile-web",
   "status": "technically-ready-for-pilot",
-  "verifiedAt": "2026-09-13",
+  "verifiedAt": "2026-09-14",
   "sourceSha": "b6597865e6d06798e089e729d32bca3e3b562a7a",
   "gates": {
     "source": "passed-ci: CI 34775434633; release gate 34775434598",
@@ -12,7 +12,7 @@
     "unitTests": "passed-ci: unit suite passed; real PostgreSQL RLS suite passed",
     "webBuild": "passed-ci",
     "liveSupabase": "skipped-ci: repository Supabase secrets are not configured",
-    "productionDeployment": "passed-production: dpl_5JTqNpYH6a9GoL7ERSskZq16Y17J; /api/health=200; /api/ready=503 database unavailable",
+    "productionDeployment": "passed-production: dpl_5Z1U5FMwAqUxNRcT3PaGAt7ZwbJh; /api/health=200 commit=96d00d5; /api/ready=503 database unavailable",
     "backupRestore": "external-environment-required",
     "pdResidency": "external-infrastructure-decision-required",
     "pilot": "external-real-order-required"
