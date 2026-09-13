@@ -162,7 +162,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     scenario(async (tx, f) => {
       await addApprovalLine(tx, f);
       await asUser(tx, f[2]);
-      await tx`update orders set state = 'plan_approved' where id = ${f[11]}`;
+      await approvePlan(tx, f[11]);
       await asUser(tx, f[2]);
       await expect(
         tx.savepoint((sp) => sp`update orders set state = 'suppliers_paid' where id = ${f[11]}`),
@@ -389,6 +389,13 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       expect(
         (await tx`select confirm_supplier_delivery(${f[11]})`)[0]?.confirm_supplier_delivery,
       ).toBe(true);
+      await asUser(tx, f[3]);
+      await tx`insert into payment_facts (
+        order_id, direction, kind, status, amount_kzt, reference, confirmed_by, idempotency_key
+      ) values (
+        ${f[11]}, 'inbound', 'prepayment', 'confirmed', 123000,
+        ${`test-prepayment-${crypto.randomUUID()}`}, ${f[3]}, ${`test-prepayment-key-${crypto.randomUUID()}`}
+      )`;
       await asUser(tx, f[2]);
       await tx`update orders set state = 'accepted', accepted_at = now() where id = ${f[11]}`;
       await tx`update orders
