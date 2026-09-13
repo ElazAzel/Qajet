@@ -1,12 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/jobs/outbox",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/jobs/learning",
-      "schedule": "17 2 * * *"
-    }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }

@@ -23,6 +23,7 @@
     "Mail domain and Resend credentials, or an operator for the outbox",
     "A tested backup and restore procedure for database, Auth and private files",
     "A Kazakhstan data-residency decision before real personal data is used",
-    "A real pilot company, supplier and bank-transfer operator"
+    "A real pilot company, supplier and bank-transfer operator",
+    "An external scheduler or pg_cron for protected outbox and learning jobs"
   ]
 }

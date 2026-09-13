@@ -20,6 +20,11 @@
   в код и не меняя payload вручную.
 - Убедитесь, что cron защищён `CRON_SECRET`; в production запрос без него
   должен получить 401.
+- В Vercel Hobby частые cron-запуски недоступны, поэтому `vercel.json` не
+  регистрирует worker автоматически. Для production подключите внешний
+  scheduler или `pg_cron`, вызывающий `/api/jobs/outbox` и `/api/jobs/learning`
+  с `Authorization: Bearer $CRON_SECRET`; до этого очередь обслуживается
+  оператором из `/admin/outbox`.
 
 ## Оплата, возврат и доплата
 
