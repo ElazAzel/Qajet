@@ -82,6 +82,24 @@ async function asUser(tx: postgres.TransactionSql, id: string) {
   await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: id, role: 'authenticated' })}, true)`;
 }
 
+/** Approval fixtures must contain a real, internally consistent plan line. */
+async function addApprovalLine(tx: postgres.TransactionSql, f: Fixture) {
+  const existing = await tx`select id from plan_lines where plan_id = ${f[10]} limit 1`;
+  if (existing.length > 0) return;
+  const quote = crypto.randomUUID();
+  const quoteLine = crypto.randomUUID();
+  const planLine = crypto.randomUUID();
+  await tx`insert into quotes (id, rfq_id) values (${quote}, ${f[9]})`;
+  await tx`insert into quote_lines (id, quote_id, request_item_id, unit_price_kzt, lead_time_days)
+    values (${quoteLine}, ${quote}, ${f[7]}, 10000, 2)`;
+  await tx`insert into plan_lines (
+    id, plan_id, request_item_id, supplier_company_id, quote_line_id,
+    qty, line_total_kzt, commission_pct, commission_kzt
+  ) values (
+    ${planLine}, ${f[10]}, ${f[7]}, ${f[1]}, ${quoteLine}, 10, 100000, 23, 23000
+  )`;
+}
+
 async function approvePlan(tx: postgres.TransactionSql, orderId: string) {
   const plan = (
     await tx<{ id: string; version: number }[]>`
@@ -126,6 +144,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     }));
   it('buyer cannot mark suppliers paid through a direct update', async () =>
     scenario(async (tx, f) => {
+      await asUser(tx, f[3]);
       await tx`update orders set state = 'plan_approved' where id = ${f[11]}`;
       await asUser(tx, f[2]);
       await expect(
@@ -134,6 +153,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     }));
   it('approval changes plan, order and history together', async () =>
     scenario(async (tx, f) => {
+      await addApprovalLine(tx, f);
       await asUser(tx, f[2]);
       await approvePlan(tx, f[11]);
       expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe(
@@ -247,6 +267,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
   it('manager above personal limit sends the order to the owner', async () =>
     scenario(async (tx, f) => {
       await tx`update public.users set role = 'manager', approval_limit_kzt = 100000 where id = ${f[2]}`;
+      await addApprovalLine(tx, f);
       await asUser(tx, f[2]);
       await approvePlan(tx, f[11]);
       expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe(
@@ -256,6 +277,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     }));
   it('revoked approval permission still blocks the atomic RPC', async () =>
     scenario(async (tx, f) => {
+      await addApprovalLine(tx, f);
       await tx`insert into permissions(user_id, key, value) values (${f[2]}, 'can_approve_plan', 'false')`;
       await asUser(tx, f[2]);
       await expect(tx.savepoint((sp) => approvePlan(sp, f[11]))).rejects.toThrow('отозвано');
@@ -266,6 +288,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     }));
   it('approved plans can be superseded without unlocking their terms', async () =>
     scenario(async (tx, f) => {
+      await addApprovalLine(tx, f);
       await asUser(tx, f[2]);
       await approvePlan(tx, f[11]);
       const events = await tx`select note from order_stage_events where order_id = ${f[11]}`;

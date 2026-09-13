@@ -84,12 +84,21 @@ DECLARE
   v_commission bigint;
   v_line_count integer;
 BEGIN
-  v_plan_id := CASE WHEN TG_TABLE_NAME = 'plans' THEN NEW.id
-                    WHEN TG_OP = 'DELETE' THEN OLD.plan_id
-                    ELSE NEW.plan_id END;
+  -- Trusted seed/service-role imports may stage an aggregate before its
+  -- lines arrive. The authenticated database path is the one this guard
+  -- protects; approval itself has a stricter aggregate contract below.
+  IF current_setting('role', true) NOT IN ('authenticated', 'anon') THEN
+    RETURN NULL;
+  END IF;
   IF TG_TABLE_NAME = 'plans' THEN
+    v_plan_id := NEW.id;
     v_plan := NEW;
   ELSE
+    IF TG_OP = 'DELETE' THEN
+      v_plan_id := OLD.plan_id;
+    ELSE
+      v_plan_id := NEW.plan_id;
+    END IF;
     SELECT * INTO v_plan FROM public.plans WHERE id = v_plan_id;
   END IF;
   IF v_plan.id IS NULL OR v_plan.status = 'draft' THEN RETURN NULL; END IF;
@@ -173,30 +182,36 @@ GRANT EXECUTE ON FUNCTION public.update_plan_line_commission(uuid, real) TO auth
 -- working, while authenticated paths cannot manufacture paid rows.
 CREATE OR REPLACE FUNCTION public.guard_paid_obligation() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
-DECLARE v_kind text;
 BEGIN
-  IF current_setting('role', true) NOT IN ('authenticated', 'anon') OR NEW.status <> 'paid' THEN RETURN NEW; END IF;
-  v_kind := CASE WHEN TG_TABLE_NAME = 'prepayments' THEN 'prepayment' ELSE 'supplier_payout' END;
-  IF TG_TABLE_NAME = 'prepayments' AND NOT EXISTS (
-    SELECT 1 FROM public.payment_facts pf
-    JOIN public.orders o ON o.id = pf.order_id
-    WHERE o.request_id = NEW.request_id
-      AND pf.kind = 'prepayment' AND pf.status = 'confirmed'
-      AND pf.amount_kzt > 0
-      AND (SELECT coalesce(sum(pf2.amount_kzt), 0) FROM public.payment_facts pf2
-           WHERE pf2.order_id = o.id AND pf2.kind = 'prepayment' AND pf2.status = 'confirmed') >= NEW.amount_kzt
-  ) THEN
-    RAISE EXCEPTION 'Статус paid требует подтверждённого банковского факта';
-  ELSIF TG_TABLE_NAME = 'supplier_payouts' AND NOT EXISTS (
-    SELECT 1 FROM public.payment_facts pf
-    WHERE pf.order_id = NEW.order_id
-      AND pf.kind = 'supplier_payout' AND pf.status = 'confirmed'
-      AND pf.supplier_company_id = NEW.supplier_company_id
-      AND (SELECT coalesce(sum(pf2.amount_kzt), 0) FROM public.payment_facts pf2
-           WHERE pf2.order_id = NEW.order_id AND pf2.kind = 'supplier_payout'
-             AND pf2.status = 'confirmed' AND pf2.supplier_company_id = NEW.supplier_company_id) >= NEW.amount_kzt
-  ) THEN
-    RAISE EXCEPTION 'Статус paid требует подтверждённого банковского факта';
+  IF current_setting('role', true) NOT IN ('authenticated', 'anon') THEN RETURN NEW; END IF;
+  IF TG_TABLE_NAME = 'prepayments' THEN
+    IF NEW.status <> 'paid' THEN RETURN NEW; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM public.payment_facts pf
+      JOIN public.orders o ON o.id = pf.order_id
+      WHERE o.request_id = NEW.request_id
+        AND pf.kind = 'prepayment' AND pf.status = 'confirmed'
+        AND pf.amount_kzt > 0
+        AND (SELECT coalesce(sum(pf2.amount_kzt), 0) FROM public.payment_facts pf2
+             WHERE pf2.order_id = o.id AND pf2.kind = 'prepayment' AND pf2.status = 'confirmed') >= NEW.amount_kzt
+    ) THEN
+      RAISE EXCEPTION 'Статус paid требует подтверждённого банковского факта';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'supplier_payouts' THEN
+    IF NEW.status <> 'paid' THEN RETURN NEW; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM public.payment_facts pf
+      WHERE pf.order_id = NEW.order_id
+        AND pf.kind = 'supplier_payout' AND pf.status = 'confirmed'
+        AND pf.supplier_company_id = NEW.supplier_company_id
+        AND (SELECT coalesce(sum(pf2.amount_kzt), 0) FROM public.payment_facts pf2
+             WHERE pf2.order_id = NEW.order_id
+               AND pf2.kind = 'supplier_payout'
+               AND pf2.status = 'confirmed'
+               AND pf2.supplier_company_id = NEW.supplier_company_id) >= NEW.amount_kzt
+    ) THEN
+      RAISE EXCEPTION 'Статус paid требует подтверждённого банковского факта';
+    END IF;
   END IF;
   RETURN NEW;
 END;

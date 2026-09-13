@@ -549,6 +549,16 @@ BEGIN
     RETURN OLD;
   END IF;
 
+  -- Keep the legacy direct staff update ergonomic: when a caller changes only
+  -- the percentage, derive the corresponding line amount before validating
+  -- the invariant. An explicitly supplied conflicting amount is still
+  -- rejected below.
+  IF TG_OP = 'UPDATE'
+    AND NEW.commission_pct IS DISTINCT FROM OLD.commission_pct
+    AND NEW.commission_kzt IS NOT DISTINCT FROM OLD.commission_kzt THEN
+    NEW.commission_kzt := round(NEW.line_total_kzt::numeric * NEW.commission_pct::numeric / 100)::bigint;
+  END IF;
+
   SELECT * INTO v_plan FROM public.plans WHERE id = NEW.plan_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'План строки не найден'; END IF;
   IF NEW.line_total_kzt < 0 OR NEW.commission_pct = 'NaN'::real
