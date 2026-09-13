@@ -4,7 +4,7 @@
   "scope": "web-and-mobile-web",
   "status": "technically-ready-for-pilot",
   "verifiedAt": "2026-09-13",
-  "sourceSha": "75e796b77c4f1b71a96613863cd27652b111160c",
+  "sourceSha": "b6597865e6d06798e089e729d32bca3e3b562a7a",
   "gates": {
     "source": "passed-ci: CI 34775434633; release gate 34775434598",
     "typecheck": "passed-ci",
@@ -12,7 +12,7 @@
     "unitTests": "passed-ci: unit suite passed; real PostgreSQL RLS suite passed",
     "webBuild": "passed-ci",
     "liveSupabase": "skipped-ci: repository Supabase secrets are not configured",
-    "productionDeployment": "pending-current-release",
+    "productionDeployment": "passed-production: dpl_5JTqNpYH6a9GoL7ERSskZq16Y17J; /api/health=200; /api/ready=503 database unavailable",
     "backupRestore": "external-environment-required",
     "pdResidency": "external-infrastructure-decision-required",
     "pilot": "external-real-order-required"
