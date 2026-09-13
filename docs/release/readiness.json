@@ -12,7 +12,7 @@
     "unitTests": "passed-ci: unit suite passed; real PostgreSQL RLS suite passed",
     "webBuild": "passed-ci",
     "liveSupabase": "skipped-ci: repository Supabase secrets are not configured",
-    "productionDeployment": "passed-production: dpl_7tDZDECxzgDyKhoB2xpEkFnKaEsS; /api/health=200 commit=f870f16; /api/ready=503 database unavailable",
+    "productionDeployment": "passed-production: dpl_FuMRRAquPyJp8r4tmfUmkVqmuwZU; /api/health=200 commit=d7f1f78; /api/ready=503 database unavailable",
     "backupRestore": "external-environment-required",
     "pdResidency": "external-infrastructure-decision-required",
     "pilot": "external-real-order-required"
