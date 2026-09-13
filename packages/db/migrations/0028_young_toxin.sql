@@ -136,7 +136,7 @@ BEGIN
     RAISE EXCEPTION 'Только сотрудник QAJET может менять комиссию';
   END IF;
   IF p_commission_pct < 21 OR p_commission_pct > 24 THEN
-    RAISE EXCEPTION 'Комиссия по позиции должна быть от 21% до 24%';
+    RAISE EXCEPTION USING MESSAGE = 'Комиссия по позиции должна быть от 21% до 24%';
   END IF;
   SELECT * INTO v_line FROM public.plan_lines WHERE id = p_plan_line_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Позиция плана не найдена'; END IF;
