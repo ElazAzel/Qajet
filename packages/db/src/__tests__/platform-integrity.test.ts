@@ -100,6 +100,22 @@ async function addApprovalLine(tx: postgres.TransactionSql, f: Fixture) {
   )`;
 }
 
+async function addSupplierPayoutFact(
+  tx: postgres.TransactionSql,
+  orderId: string,
+  supplierCompanyId: string,
+  amountKzt: number,
+  confirmedBy: string,
+) {
+  await tx`insert into payment_facts (
+    order_id, supplier_company_id, direction, kind, status, amount_kzt,
+    reference, confirmed_by, idempotency_key
+  ) values (
+    ${orderId}, ${supplierCompanyId}, 'outbound', 'supplier_payout', 'confirmed',
+    ${amountKzt}, ${`test-bank-${crypto.randomUUID()}`}, ${confirmedBy}, ${`test-payment-${crypto.randomUUID()}`}
+  )`;
+}
+
 async function approvePlan(tx: postgres.TransactionSql, orderId: string) {
   const plan = (
     await tx<{ id: string; version: number }[]>`
@@ -144,7 +160,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     }));
   it('buyer cannot mark suppliers paid through a direct update', async () =>
     scenario(async (tx, f) => {
-      await asUser(tx, f[3]);
+      await asUser(tx, f[2]);
       await tx`update orders set state = 'plan_approved' where id = ${f[11]}`;
       await asUser(tx, f[2]);
       await expect(
@@ -177,6 +193,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       await asUser(tx, f[2]);
       await approvePlan(tx, f[11]);
       await asUser(tx, f[3]);
+      await addSupplierPayoutFact(tx, f[11], f[1], 100000, f[3]);
       await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at)
         values (${f[11]}, ${f[1]}, 100000, 'paid', now())`;
       await tx`update orders set state = 'suppliers_paid' where id = ${f[11]}`;
@@ -229,10 +246,13 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       await tx`insert into plan_lines (id, plan_id, request_item_id, supplier_company_id, quote_line_id, qty, line_total_kzt, commission_pct, commission_kzt) values
         (${planLineA}, ${f[10]}, ${f[7]}, ${f[1]}, ${lineA}, 5, 50000, 23, 11500),
         (${planLineB}, ${f[10]}, ${f[7]}, ${supplierB}, ${lineB}, 5, 50000, 23, 11500)`;
+      await tx`update plans set supplier_count = 2 where id = ${f[10]}`;
 
       await asUser(tx, f[2]);
       await approvePlan(tx, f[11]);
       await asUser(tx, f[3]);
+      await addSupplierPayoutFact(tx, f[11], f[1], 50000, f[3]);
+      await addSupplierPayoutFact(tx, f[11], supplierB, 50000, f[3]);
       await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at) values
         (${f[11]}, ${f[1]}, 50000, 'paid', now()), (${f[11]}, ${supplierB}, 50000, 'paid', now())`;
       await tx`update orders set state = 'suppliers_paid' where id = ${f[11]}`;
@@ -337,9 +357,11 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       await expect(
         tx.savepoint((sp) => sp`select submit_supplier_quote(${f[9]}, ${sp.json([good])})`),
       ).rejects.toThrow();
-      await expect(
-        tx.savepoint((sp) => sp`update rfqs set status = 'declined' where id = ${f[9]}`),
-      ).rejects.toThrow();
+      const declined = await tx.savepoint(
+        (sp) => sp`update rfqs set status = 'declined' where id = ${f[9]} returning id`,
+      );
+      expect(declined).toHaveLength(0);
+      expect((await tx`select status from rfqs where id = ${f[9]}`)[0]?.status).toBe('quoted');
       expect(await tx`select id from quotes where rfq_id = ${f[9]}`).toHaveLength(1);
     }));
   it('buyer rating is bound to a closed order and refreshes supplier stats', async () =>
@@ -356,6 +378,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       await asUser(tx, f[2]);
       await approvePlan(tx, f[11]);
       await asUser(tx, f[3]);
+      await addSupplierPayoutFact(tx, f[11], f[1], 100000, f[3]);
       await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at)
         values (${f[11]}, ${f[1]}, 100000, 'paid', now())`;
       await tx`update orders set state = 'suppliers_paid' where id = ${f[11]}`;
