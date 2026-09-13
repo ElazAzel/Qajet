@@ -87,6 +87,24 @@ export const EDITABLE_SETTINGS: readonly EditableSetting[] = [
     max: 30,
     step: 1,
   },
+  {
+    key: 'logistics_delivery_kzt_local',
+    label: 'Доставка внутри города',
+    hint: 'Фиксированный тариф локальной доставки, отдельно от базы комиссии.',
+    unit: '₸',
+    min: 0,
+    max: 2_000_000,
+    step: 1_000,
+  },
+  {
+    key: 'logistics_delivery_kzt_intercity',
+    label: 'Доставка между городами',
+    hint: 'Фиксированный тариф межгородской доставки, отдельно от базы комиссии.',
+    unit: '₸',
+    min: 0,
+    max: 5_000_000,
+    step: 1_000,
+  },
 ];
 
 export interface SettingValue extends EditableSetting {

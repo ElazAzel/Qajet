@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "turbo run dev",
+    "dev:bootstrap": "node tools/dev/bootstrap.mjs",
     "build": "turbo run build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
@@ -20,6 +21,7 @@
     "db:migrate": "pnpm --filter @qajet/db db:migrate",
     "db:reset": "pnpm --filter @qajet/db db:reset",
     "db:seed": "pnpm --filter @qajet/db db:seed",
+    "release:check": "node tools/ci/check-release-readiness.mjs",
     "rag:sync": "tsx tools/rag/src/cli.ts sync",
     "rag:search": "tsx tools/rag/src/cli.ts search",
     "rag:check": "tsx tools/rag/src/cli.ts check",

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type CombineResult, combine, type QuoteOffer as EngineOffer } from '@qajet/engine/combine';
+import { allocateCommission } from '@qajet/engine/costing';
 import {
   estimate as engineEstimate,
   type PriceObservation as LearnObservation,
@@ -12,7 +13,7 @@ import {
 } from '@qajet/engine/leadtime';
 import type { OrderOutcome } from '@qajet/engine/learn';
 import { recalibrate } from '@qajet/engine/learn';
-import { percentOfKzt, roundKzt } from '@qajet/engine/money';
+import { roundKzt } from '@qajet/engine/money';
 import { TIME_ENTRY_STAGE_BY_STATE, type TimeEntryStage } from '@qajet/engine/order';
 import type * as schema from '../schema/index.js';
 import {
@@ -84,6 +85,8 @@ const PROCUREMENT_HOUR_COST_KZT = 4500;
 export const DEMO_ORDER_REQUEST_TITLE = 'Демо: мерч к корпоративному мероприятию';
 const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
 const LOGISTICS_BUFFER_INTERCITY_DAYS = 3;
+const LOGISTICS_DELIVERY_LOCAL_KZT = 5_000;
+const LOGISTICS_DELIVERY_INTERCITY_KZT = 15_000;
 
 /** Те же демо-значения, что settings.qajet_requisites (agents.md §11.3) —
  *  Document Engine подставляет их и в живой счёт/акт, и здесь, в историю сида. */
@@ -185,6 +188,7 @@ type PlanRejectionRow = typeof schema.planRejections.$inferInsert;
 type OrderRow = typeof schema.orders.$inferInsert;
 type OrderStageEventRow = typeof schema.orderStageEvents.$inferInsert;
 type SupplierPayoutRow = typeof schema.supplierPayouts.$inferInsert;
+type PaymentFactRow = typeof schema.paymentFacts.$inferInsert;
 type DocumentRow = typeof schema.documents.$inferInsert;
 type RatingRow = typeof schema.ratings.$inferInsert;
 type LearningEventRow = typeof schema.learningEvents.$inferInsert;
@@ -227,6 +231,7 @@ export interface SeedDataset {
   orders: OrderRow[];
   orderStageEvents: OrderStageEventRow[];
   supplierPayouts: SupplierPayoutRow[];
+  paymentFacts: PaymentFactRow[];
   documents: DocumentRow[];
   ratings: RatingRow[];
   learningEvents: LearningEventRow[];
@@ -289,6 +294,7 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
     orders: [],
     orderStageEvents: [],
     supplierPayouts: [],
+    paymentFacts: [],
     documents: [],
     ratings: [],
     learningEvents: [],
@@ -313,6 +319,8 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
     { key: 'procurement_hour_cost_kzt', value: PROCUREMENT_HOUR_COST_KZT },
     { key: 'logistics_buffer_days_almaty', value: LOGISTICS_BUFFER_ALMATY_DAYS },
     { key: 'logistics_buffer_days_intercity', value: LOGISTICS_BUFFER_INTERCITY_DAYS },
+    { key: 'logistics_delivery_kzt_local', value: LOGISTICS_DELIVERY_LOCAL_KZT },
+    { key: 'logistics_delivery_kzt_intercity', value: LOGISTICS_DELIVERY_INTERCITY_KZT },
     // Подбор поставщиков под RFQ (agents.md §8C) — apps/web/app/lib/actions/order-actions.ts
     { key: 'rfq_batch_size_per_item', value: 5 },
     { key: 'rfq_exploration_every_n', value: 4 },
@@ -355,25 +363,30 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
 
   const supplierCompanyIdBySeedKey = new Map<string, string>();
   for (const { seedKey, supplier } of SEED_SUPPLIER_COMPANIES) {
-    const companyId = randomUUID();
+    const reusedCompanyId =
+      seedKey === DEMO_SUPPLIER_COMPANY_SEED_KEY ? existing?.supplierCompanyId : undefined;
+    const companyId = reusedCompanyId ?? randomUUID();
     supplierCompanyIdBySeedKey.set(seedKey, companyId);
-    dataset.companies.push({
-      id: companyId,
-      type: 'supplier',
-      name: supplier.name,
-      bin: supplier.bin,
-      taxMode: supplier.taxMode,
-      vatStatus: supplier.vatStatus,
-      verifiedAt: supplier.verified ? referenceDate : null,
-      verificationNote: supplier.verified ? 'Проверено службой качества QAJET.' : null,
-      city: supplier.city,
-      isActive: true,
-    });
+    if (!reusedCompanyId) {
+      dataset.companies.push({
+        id: companyId,
+        type: 'supplier',
+        name: supplier.name,
+        bin: supplier.bin,
+        taxMode: supplier.taxMode,
+        vatStatus: supplier.vatStatus,
+        verifiedAt: supplier.verified ? referenceDate : null,
+        verificationNote: supplier.verified ? 'Проверено службой качества QAJET.' : null,
+        city: supplier.city,
+        isActive: true,
+      });
+    }
     dataset.supplierProfiles.push({
       id: randomUUID(),
       companyId,
       categories: [...supplier.categories],
       capabilities: [...supplier.capabilities],
+      serviceCities: [...new Set([supplier.city, 'Алматы'])],
       minOrderKzt: supplier.minOrderKzt,
       leadTimeDaysDefault: supplier.leadTimeDaysDefault,
       portfolioUrls: [],
@@ -956,15 +969,30 @@ function buildOrder(p: BuildOrderParams): void {
 
   // --- Предоплата ---
   const prepayAt = clock.advance(1);
+  const prepaymentAmountKzt = roundKzt(totalP80);
   dataset.prepayments.push({
     id: randomUUID(),
     requestId,
-    amountKzt: roundKzt(totalP50 * 0.5),
+    amountKzt: prepaymentAmountKzt,
     invoiceNo: `PRE-${requestId.slice(0, 8)}`,
     status: 'paid',
     paidAt: prepayAt,
     proofUrl: null,
     createdAt: prepayAt,
+  });
+  dataset.paymentFacts.push({
+    id: randomUUID(),
+    orderId,
+    supplierCompanyId: null,
+    direction: 'inbound',
+    kind: 'prepayment',
+    status: 'confirmed',
+    amountKzt: prepaymentAmountKzt,
+    reference: `SEED-PRE-${requestId.slice(0, 8)}`,
+    proofUrl: null,
+    occurredAt: prepayAt,
+    confirmedBy: conciergeUserId,
+    idempotencyKey: `seed:prepayment:${orderId}`,
   });
   advance('prepaid', prepayAt, conciergeUserId);
   if (targetState === 'prepaid') return;
@@ -1074,6 +1102,7 @@ function buildOrder(p: BuildOrderParams): void {
             ? LOGISTICS_BUFFER_ALMATY_DAYS
             : LOGISTICS_BUFFER_INTERCITY_DAYS,
       });
+      const setupFeeKzt = rng() < 0.5 ? randInt(rng, 0, 15_000) : 0;
       const quoteLineId = randomUUID();
       dataset.quoteLines.push({
         id: quoteLineId,
@@ -1081,7 +1110,7 @@ function buildOrder(p: BuildOrderParams): void {
         requestItemId: ri.id,
         unitPriceKzt,
         minQty: null,
-        setupFeeKzt: rng() < 0.5 ? randInt(rng, 0, 15_000) : 0,
+        setupFeeKzt,
         leadTimeDays: declaredLeadDays,
         bundleRule,
         capabilityConfirmed: true,
@@ -1092,7 +1121,7 @@ function buildOrder(p: BuildOrderParams): void {
         requestItemId: ri.id,
         supplierId,
         unitPriceKzt,
-        setupFeeKzt: 0,
+        setupFeeKzt,
         predictedLeadDays: predicted.predictedDays,
         minQty: null,
         orderMultiple: null,
@@ -1101,7 +1130,10 @@ function buildOrder(p: BuildOrderParams): void {
         hasOpenFieldFlags: false,
         validUntil: isoDateOnly(validUntil),
         supplierTaxMode: sc.supplier.taxMode,
-        supplierDeliveryKzt: sc.supplier.city === 'Алматы' ? 5_000 : 15_000,
+        supplierDeliveryKzt:
+          sc.supplier.city === 'Алматы'
+            ? LOGISTICS_DELIVERY_LOCAL_KZT
+            : LOGISTICS_DELIVERY_INTERCITY_KZT,
       };
       const list = offersByItem.get(ri.id);
       if (list) list.push(offer);
@@ -1182,7 +1214,12 @@ function buildOrder(p: BuildOrderParams): void {
   const placeholder = dataset.plans.find((pl) => pl.id === placeholderPlanId);
   if (placeholder) placeholder.status = 'superseded';
 
-  for (const line of chosenPlan.lines) {
+  const lineCommissions = allocateCommission(
+    chosenPlan.totalSupplierKzt,
+    COMMISSION_RATE_PCT,
+    chosenPlan.lines.map((line) => line.lineTotalKzt),
+  );
+  for (const [index, line] of chosenPlan.lines.entries()) {
     dataset.planLines.push({
       id: randomUUID(),
       planId: realPlanId,
@@ -1192,7 +1229,7 @@ function buildOrder(p: BuildOrderParams): void {
       qty: requestItems.find((ri) => ri.id === line.requestItemId)?.qty ?? 0,
       lineTotalKzt: line.lineTotalKzt,
       commissionPct: COMMISSION_RATE_PCT,
-      commissionKzt: percentOfKzt(line.lineTotalKzt, COMMISSION_RATE_PCT),
+      commissionKzt: lineCommissions[index] ?? 0,
     });
   }
 
@@ -1215,11 +1252,26 @@ function buildOrder(p: BuildOrderParams): void {
   const suppliersPaidAt = clock.advance(1);
   for (const supplierId of involvedSuppliers) {
     const lines = chosenPlan.lines.filter((l) => l.supplierId === supplierId);
+    const supplierAmountKzt = roundKzt(lines.reduce((s, l) => s + l.lineTotalKzt, 0));
+    dataset.paymentFacts.push({
+      id: randomUUID(),
+      orderId,
+      supplierCompanyId: supplierId,
+      direction: 'outbound',
+      kind: 'supplier_payout',
+      status: 'confirmed',
+      amountKzt: supplierAmountKzt,
+      reference: `SEED-PAYOUT-${orderId.slice(0, 8)}-${supplierId.slice(0, 8)}`,
+      proofUrl: null,
+      occurredAt: suppliersPaidAt,
+      confirmedBy: conciergeUserId,
+      idempotencyKey: `seed:supplier-payout:${orderId}:${supplierId}`,
+    });
     dataset.supplierPayouts.push({
       id: randomUUID(),
       orderId,
       supplierCompanyId: supplierId,
-      amountKzt: roundKzt(lines.reduce((s, l) => s + l.lineTotalKzt, 0)),
+      amountKzt: supplierAmountKzt,
       status: 'paid',
       paidAt: suppliersPaidAt,
       docUrl: null,
@@ -1270,14 +1322,33 @@ function buildOrder(p: BuildOrderParams): void {
   }
 
   const closedAt = clock.advance(1);
-  const settlementRoll = rng();
   const settlement =
-    settlementRoll < 0.15 ? 'refund' : settlementRoll < 0.3 ? 'surcharge' : 'exact';
+    prepaymentAmountKzt > chosenPlan.totalKzt
+      ? 'refund'
+      : prepaymentAmountKzt < chosenPlan.totalKzt
+        ? 'surcharge'
+        : 'exact';
+  const settlementMagnitudeKzt =
+    settlement === 'exact' ? 0 : Math.abs(chosenPlan.totalKzt - prepaymentAmountKzt);
   const settlementAmountKzt =
-    settlement === 'exact'
-      ? 0
-      : roundKzt(chosenPlan.totalKzt * (0.02 + rng() * 0.05)) * (settlement === 'refund' ? -1 : 1);
-  const finalCostKzt = chosenPlan.totalKzt + settlementAmountKzt;
+    settlement === 'refund' ? -settlementMagnitudeKzt : settlementMagnitudeKzt;
+  const finalCostKzt = chosenPlan.totalKzt;
+  if (settlement !== 'exact') {
+    dataset.paymentFacts.push({
+      id: randomUUID(),
+      orderId,
+      supplierCompanyId: null,
+      direction: settlement === 'refund' ? 'outbound' : 'inbound',
+      kind: settlement,
+      status: 'confirmed',
+      amountKzt: settlementMagnitudeKzt,
+      reference: `SEED-${settlement.toUpperCase()}-${orderId.slice(0, 8)}`,
+      proofUrl: null,
+      occurredAt: closedAt,
+      confirmedBy: conciergeUserId,
+      idempotencyKey: `seed:settlement:${orderId}:${settlement}`,
+    });
+  }
   orderRow.closedAt = closedAt;
   orderRow.finalCostKzt = finalCostKzt;
   orderRow.settlement = settlement;
@@ -1322,7 +1393,7 @@ function buildOrder(p: BuildOrderParams): void {
       url: `/documents/${orderId}?type=prepay_invoice`,
       meta: {
         invoiceNo: `PRE-${orderId.slice(0, 8)}`,
-        amountKzt: roundKzt(chosenPlan.totalKzt * 0.5),
+        amountKzt: prepaymentAmountKzt,
         buyerCompany: { name: SEED_BUYER_COMPANY.name, bin: SEED_BUYER_COMPANY.bin },
         qajetRequisites: QAJET_SEED_REQUISITES,
         issuedAt: closedAt.toISOString(),

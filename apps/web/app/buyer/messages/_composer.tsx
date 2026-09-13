@@ -10,7 +10,13 @@ import { sendMessageFormAction } from '../../lib/actions/message-actions';
  * давал — проверено вживую, сообщение доходило до базы, но экран
  * обновлялся только после полной перезагрузки.
  */
-export function MessageComposer({ threadId }: { threadId: string }) {
+export function MessageComposer({
+  threadId,
+  returnPath = `/buyer/messages?thread=${threadId}`,
+}: {
+  threadId: string;
+  returnPath?: string;
+}) {
   const [state, formAction, pending] = useActionState(sendMessageFormAction, { ok: true });
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -21,6 +27,7 @@ export function MessageComposer({ threadId }: { threadId: string }) {
   return (
     <form ref={formRef} action={formAction} className="border-rule border-t px-6 py-4">
       <input type="hidden" name="threadId" value={threadId} />
+      <input type="hidden" name="returnPath" value={returnPath} />
       <div className="flex items-center gap-3">
         <input
           type="text"

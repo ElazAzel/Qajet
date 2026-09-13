@@ -20,6 +20,8 @@ export interface QuoteLineInput {
   requestItemId: string;
   unitPriceKzt: number;
   leadTimeDays: number;
+  /** Supplier must explicitly confirm that the quoted work is executable. */
+  capabilityConfirmed: boolean;
   setupFeeKzt?: number | undefined;
   minQty?: number | undefined;
 }
@@ -50,6 +52,9 @@ function validateQuoteLines(lines: QuoteLineInput[]): string | null {
       line.leadTimeDays > 2147483647
     ) {
       return 'Укажите корректный срок поставки';
+    }
+    if (typeof line.capabilityConfirmed !== 'boolean') {
+      return 'Подтвердите возможность исполнить позицию';
     }
     if (!Number.isSafeInteger(line.setupFeeKzt ?? 0) || (line.setupFeeKzt ?? 0) < 0) {
       return 'Стоимость подготовки должна быть целым неотрицательным числом тенге';

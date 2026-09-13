@@ -1,5 +1,13 @@
 import { AdminShell } from '@qajet/ui/shell';
-import { Gauge, LineChart, Mail, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import {
+  Building2,
+  Gauge,
+  Landmark,
+  LineChart,
+  Mail,
+  ShieldCheck,
+  SlidersHorizontal,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { requireActor, shellUserFrom } from '../lib/current-user';
 
@@ -8,11 +16,13 @@ import { requireActor, shellUserFrom } from '../lib/current-user';
  * с тёмным сайдбаром и лаймовым активным пунктом (§12) — единственная
  * инверсия тона во всём продукте.
  *
- * Финансовая сверка и споры остаются отдельными будущими контурами, а
- * outbox подключён здесь как dev-журнал исходящих уведомлений.
+ * Финансовые факты, проверка поставщиков и outbox подключены отдельными
+ * экранами: админ видит операционный журнал, но не может подменить им
+ * подтверждение денег или переход заказа.
  */
 const NAV_ITEMS = [
   { key: 'verification', href: '/admin', label: 'Верификация', icon: <ShieldCheck size={18} /> },
+  { key: 'companies', href: '/admin/companies', label: 'Компании', icon: <Building2 size={18} /> },
   {
     key: 'learning',
     href: '/admin/learning',
@@ -20,6 +30,7 @@ const NAV_ITEMS = [
     icon: <LineChart size={18} />,
   },
   { key: 'metrics', href: '/metrics', label: 'Метрики', icon: <Gauge size={18} /> },
+  { key: 'finance', href: '/admin/finance', label: 'Финансы', icon: <Landmark size={18} /> },
   {
     key: 'settings',
     href: '/admin/settings',

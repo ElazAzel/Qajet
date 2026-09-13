@@ -20,7 +20,7 @@ import { loadQajetRequisites, type QajetRequisites } from './documents';
  */
 
 export const PAYMENT_TERMS =
-  'Безналичный перевод на расчётный счёт QAJET. Предоплата 50% по счёту, остаток — после приёмки. Эквайринг, QR-платежи и наличные не принимаются.';
+  'Безналичный перевод на расчётный счёт QAJET. Предоплата выставляется по счёту на P80 оценки, остаток — после приёмки и сверки. Эквайринг, QR-платежи и наличные не принимаются.';
 
 export const RETURN_TERMS =
   'При закрытии заказа предоплата сверяется с фактической стоимостью: разница возвращается на ваш счёт либо выставляется к доплате. Несоответствие приёмке фиксируется как спор до закрытия.';
@@ -39,10 +39,12 @@ export interface ConfirmationItem {
 
 export interface OrderConfirmation {
   orderId: string;
+  planId: string;
   requestTitle: string;
   planVersion: number;
   totalKzt: number;
   deliveryKzt: number;
+  supplierRebateKzt: number;
   etaDate: string | null;
   deadlineDate: string | null;
   deliveryAddress: string | null;
@@ -72,7 +74,7 @@ export async function loadOrderConfirmation(
 
   const { data: plan } = await supabase
     .from('plans')
-    .select('version, total_kzt, delivery_kzt, eta_date')
+    .select('version, total_kzt, delivery_kzt, supplier_rebate_kzt, eta_date')
     .eq('id', order.approved_plan_id)
     .maybeSingle();
   if (!plan) return null;
@@ -90,10 +92,12 @@ export async function loadOrderConfirmation(
 
   return {
     orderId: order.id,
+    planId: order.approved_plan_id,
     requestTitle: request.title,
     planVersion: plan.version,
     totalKzt: plan.total_kzt,
     deliveryKzt: plan.delivery_kzt,
+    supplierRebateKzt: plan.supplier_rebate_kzt,
     etaDate: plan.eta_date,
     deadlineDate: request.deadline_date,
     deliveryAddress: request.delivery_address,

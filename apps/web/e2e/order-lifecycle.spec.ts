@@ -50,7 +50,10 @@ for (const settlement of ['refund', 'surcharge'] as const) {
     const supplier = await supplierCtx.newPage();
 
     try {
-      const { orderUrl, orderId } = await createQuotesReceivedOrder(browser);
+      const { orderUrl, orderId } = await createQuotesReceivedOrder(browser, {
+        prepaymentAmountKzt: settlement === 'refund' ? 2_000_000_000 : 1_000_000,
+        quotePriceKzt: settlement === 'refund' ? 4_500 : 1_000_000,
+      });
 
       // 6. Экран сравнения — предлагает рекомендованный план
       await loginAs(concierge, 'concierge@demo.qajet.kz');
@@ -62,19 +65,30 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       await proposePlanButton.click();
       await expect(concierge.getByRole('button', { name: 'Предложить этот план' })).toHaveCount(0);
 
-      // 7. Покупатель утверждает план
+      // 7. Покупатель открывает экран условий и утверждает конкретную версию
       await loginAs(buyer, 'buyer@demo.qajet.kz');
       const buyerOrderUrl = `/buyer/orders/${orderId}`;
+      await buyer.goto(buyerOrderUrl);
+      await buyer.getByRole('link', { name: 'Перейти к подтверждению' }).click();
+      await buyer.waitForURL(new RegExp(`/buyer/orders/${orderId}/confirm`));
       const approvePlanButton = await gotoUntilButtonVisible(
         buyer,
-        buyerOrderUrl,
-        'Утвердить план',
+        `/buyer/orders/${orderId}/confirm`,
+        'Подтверждаю заказ на этих условиях',
       );
       await approvePlanButton.click();
-      await expect(buyer.getByRole('button', { name: 'Утвердить план' })).toHaveCount(0);
+      await expect(
+        buyer.getByRole('button', { name: 'Подтверждаю заказ на этих условиях' }),
+      ).toHaveCount(0);
 
       // 8. Консьерж проводит заказ до отгрузки
-      await advanceStage(concierge, orderUrl, '→ Поставщики оплачены');
+      await loginAs(concierge, 'concierge@demo.qajet.kz');
+      await concierge.goto(orderUrl);
+      const payoutButton = concierge.getByRole('button', { name: 'Подтвердить выплату' }).first();
+      await expect(payoutButton).toBeVisible();
+      await concierge.getByLabel('Reference').first().fill(`E2E-PAYOUT-${Date.now()}`);
+      await payoutButton.click();
+      await expect(concierge.getByRole('button', { name: 'Подтвердить выплату' })).toHaveCount(0);
       await advanceStage(concierge, orderUrl, '→ В производстве');
       await advanceStage(concierge, orderUrl, '→ Отгружен');
 
@@ -94,16 +108,24 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       await acceptDeliveryButton.click();
       await expect(buyer.getByRole('button', { name: 'Принять поставку' })).toHaveCount(0);
 
-      // 10. Закрытие со сверкой — вариант возврата/доплаты
-      await gotoUntilButtonVisible(buyer, buyerOrderUrl, 'Закрыть заказ');
-      if (settlement === 'refund') {
-        await buyer.getByLabel('Возврат покупателю').check();
-        await buyer.getByLabel('Сумма, ₸').fill('5000');
-      } else {
-        await buyer.getByLabel('Доплата от покупателя').check();
-        await buyer.getByLabel('Сумма, ₸').fill('7500');
-      }
-      await buyer.getByRole('button', { name: 'Закрыть заказ' }).click();
+      // 10. Staff фиксирует требуемый возврат/доплату, покупатель закрывает
+      // заказ после того, как факт операции попал в payment_facts.
+      await loginAs(concierge, 'concierge@demo.qajet.kz');
+      await concierge.goto(orderUrl);
+      const settlementButton = concierge.getByRole('button', {
+        name: settlement === 'refund' ? 'Подтвердить возврат' : 'Подтвердить доплату',
+      });
+      await expect(settlementButton).toBeVisible();
+      await concierge.getByLabel('Банковский reference').fill(`E2E-SETTLEMENT-${Date.now()}`);
+      await settlementButton.click();
+      await expect(
+        concierge.getByRole('button', {
+          name: settlement === 'refund' ? 'Подтвердить возврат' : 'Подтвердить доплату',
+        }),
+      ).toHaveCount(0);
+
+      await gotoUntilButtonVisible(buyer, buyerOrderUrl, 'Подтвердить сверку и закрыть');
+      await buyer.getByRole('button', { name: 'Подтвердить сверку и закрыть' }).click();
       await expect(buyer.getByText('Заказ закрыт')).toBeVisible();
     } finally {
       await buyerCtx.close();

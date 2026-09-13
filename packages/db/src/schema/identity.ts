@@ -74,6 +74,13 @@ export const companies = pgTable(
       to: authenticatedRole,
       using: sql`id in (select ${buyerCompanyIdsForCurrentSupplierSubquery})`,
     }),
+    pgPolicy('companies_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: sql`${currentRoleSubquery} in ('concierge', 'admin')`,
+      withCheck: sql`${currentRoleSubquery} in ('concierge', 'admin')`,
+    }),
     pgPolicy('companies_service_all', {
       as: 'permissive',
       for: 'all',
@@ -200,6 +207,8 @@ export const supplierProfiles = pgTable(
       .unique(),
     categories: text('categories').array().notNull().default(sql`'{}'::text[]`),
     capabilities: text('capabilities').array().notNull().default(sql`'{}'::text[]`),
+    /** Пустой список означает «доставляем в любой город»; непустой — явная зона. */
+    serviceCities: text('service_cities').array().notNull().default(sql`'{}'::text[]`),
     minOrderKzt: bigint('min_order_kzt', { mode: 'number' }),
     leadTimeDaysDefault: integer('lead_time_days_default'),
     portfolioUrls: text('portfolio_urls').array().notNull().default(sql`'{}'::text[]`),

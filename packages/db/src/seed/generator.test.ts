@@ -1,3 +1,4 @@
+import { calculateSettlement } from '@qajet/engine/settlement';
 import { describe, expect, it } from 'vitest';
 import { generateSeedDataset } from './generator.js';
 import { SEED_SUPPLIERS } from './suppliers.js';
@@ -238,6 +239,87 @@ describe('generateSeedDataset', () => {
     // §15: изменение утверждённого плана существует как отдельная сущность.
     expect(dataset.changeRequests.length).toBeGreaterThan(0);
   });
+
+  it('финансовые строки сида сходятся с планами и не маскируют деньги статусами', () => {
+    const dataset = generateSeedDataset(PARAMS);
+    const linesByPlan = new Map<string, typeof dataset.planLines>();
+    for (const line of dataset.planLines) {
+      const lines = linesByPlan.get(line.planId as string) ?? [];
+      lines.push(line);
+      linesByPlan.set(line.planId as string, lines);
+    }
+
+    for (const plan of dataset.plans) {
+      const lines = linesByPlan.get(plan.id as string) ?? [];
+      if (lines.length === 0) continue;
+      expect(
+        lines.reduce((sum, line) => sum + (line.lineTotalKzt as number), 0),
+        `план ${plan.id}: строки поставщиков`,
+      ).toBe(plan.totalSupplierKzt);
+      expect(
+        lines.reduce((sum, line) => sum + (line.commissionKzt as number), 0),
+        `план ${plan.id}: комиссии строк`,
+      ).toBe(plan.commissionKzt);
+      expect(plan.totalKzt).toBe(
+        plan.totalSupplierKzt +
+          plan.deliveryKzt +
+          plan.commissionKzt +
+          (plan.supplierRebateKzt ?? 0),
+      );
+    }
+
+    const confirmedFacts = dataset.paymentFacts.filter((fact) => fact.status === 'confirmed');
+    expect(new Set(confirmedFacts.map((fact) => fact.idempotencyKey)).size).toBe(
+      confirmedFacts.length,
+    );
+
+    for (const prepayment of dataset.prepayments.filter((row) => row.status === 'paid')) {
+      const request = dataset.requests.find((row) => row.id === prepayment.requestId);
+      const order = dataset.orders.find((row) => row.requestId === request?.id);
+      const fact = confirmedFacts.find(
+        (row) =>
+          row.orderId === order?.id &&
+          row.direction === 'inbound' &&
+          row.kind === 'prepayment' &&
+          row.amountKzt === prepayment.amountKzt,
+      );
+      expect(fact, `предоплата ${prepayment.id} подтверждена банковским фактом`).toBeDefined();
+    }
+
+    for (const payout of dataset.supplierPayouts.filter((row) => row.status === 'paid')) {
+      const fact = confirmedFacts.find(
+        (row) =>
+          row.orderId === payout.orderId &&
+          row.supplierCompanyId === payout.supplierCompanyId &&
+          row.direction === 'outbound' &&
+          row.kind === 'supplier_payout' &&
+          row.amountKzt === payout.amountKzt,
+      );
+      expect(fact, `выплата ${payout.id} подтверждена банковским фактом`).toBeDefined();
+    }
+
+    for (const order of dataset.orders.filter((row) => row.state === 'closed')) {
+      const plan = dataset.plans.find((row) => row.id === order.approvedPlanId);
+      expect(plan, `закрытый заказ ${order.id} имеет утверждённый план`).toBeDefined();
+      if (!plan) continue;
+
+      const netReceived = confirmedFacts
+        // Расчёт закрытия делается до самого settlement-платежа. Исключаем
+        // его факт из базы, иначе возврат/доплата посчитались бы второй раз.
+        .filter((fact) => fact.orderId === order.id && fact.kind === 'prepayment')
+        .reduce(
+          (sum, fact) => sum + (fact.direction === 'inbound' ? fact.amountKzt : -fact.amountKzt),
+          0,
+        );
+      const settlement = calculateSettlement(plan.totalKzt, netReceived);
+      expect(order.finalCostKzt).toBe(plan.totalKzt);
+      expect(order.settlement).toBe(settlement.kind);
+      expect(order.settlementAmountKzt).toBe(
+        settlement.kind === 'refund' ? -settlement.amountKzt : settlement.amountKzt,
+      );
+    }
+  });
+
   it('у демо-заказа дедлайн шире реальных сроков в КП — иначе сравнивать нечего', () => {
     const dataset = generateSeedDataset(PARAMS);
     const order = dataset.orders.find((o) => o.state === 'quotes_received');

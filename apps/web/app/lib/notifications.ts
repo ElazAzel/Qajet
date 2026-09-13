@@ -25,6 +25,9 @@ export async function enqueueOutbox(
       payload: message.payload ?? {},
       status: 'pending',
       attempts: 0,
+      idempotency_key:
+        message.idempotencyKey ??
+        `${message.kind}:${String(message.payload?.rfqId ?? message.payload?.orderId ?? message.recipient)}`,
     })),
   );
   return error?.message ?? null;

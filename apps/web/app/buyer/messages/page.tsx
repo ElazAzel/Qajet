@@ -2,8 +2,14 @@ import { cn } from '@qajet/ui/lib/cn';
 import { Reveal } from '@qajet/ui/motion';
 import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { loadBuyerThreads, loadThreadMessages } from '../../lib/buyer-messages';
+import {
+  loadBuyerThreads,
+  loadThreadAttachments,
+  loadThreadMessages,
+} from '../../lib/buyer-messages';
 import { requireCurrentUser } from '../../lib/current-user';
+import { MarkThreadRead, MessageBubble } from '../../lib/message-ui';
+import { AttachmentForm } from './_attachment-form';
 import { MessageComposer } from './_composer';
 
 /**
@@ -28,10 +34,11 @@ export default async function BuyerMessagesPage({
   const user = await requireCurrentUser();
   const { thread: threadParam } = await searchParams;
   const supabase = await createSupabaseServerClient();
-  const threads = await loadBuyerThreads(supabase);
+  const threads = await loadBuyerThreads(supabase, user.id);
 
   const active = threads.find((t) => t.id === threadParam) ?? threads[0];
   const messages = active ? await loadThreadMessages(supabase, active.id, user.id) : [];
+  const attachments = active ? await loadThreadAttachments(supabase, active.id) : [];
 
   if (threads.length === 0) {
     return (
@@ -78,6 +85,11 @@ export default async function BuyerMessagesPage({
                     <span className="mt-0.5 block truncate text-fine text-muted">
                       {thread.lastMessage}
                     </span>
+                    {thread.unreadCount > 0 && (
+                      <span className="mt-1 inline-flex rounded-full bg-purple px-1.5 py-0.5 text-micro font-semibold text-white">
+                        {thread.unreadCount} новых
+                      </span>
+                    )}
                   </span>
                 </Link>
               </li>
@@ -103,32 +115,52 @@ export default async function BuyerMessagesPage({
           </div>
 
           <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-6">
+            {active && <MarkThreadRead threadId={active.id} />}
             {messages.length === 0 ? (
               <p className="m-auto text-fine text-muted">Сообщений пока нет — напишите первым.</p>
             ) : (
               messages.map((message) => (
-                <div
+                <MessageBubble
                   key={message.id}
-                  className={cn('flex', message.mine ? 'justify-end' : 'justify-start')}
-                >
-                  <p
-                    className={cn(
-                      'max-w-[60%] rounded-control px-4 py-2.5 text-fine leading-relaxed',
-                      message.mine ? 'bg-purple text-white' : 'bg-page text-ink',
-                    )}
-                  >
-                    {message.body}
-                  </p>
-                </div>
+                  message={message}
+                  returnPath={`/buyer/messages?thread=${active?.id ?? ''}`}
+                />
               ))
             )}
           </div>
 
           {active && <MessageComposer threadId={active.id} />}
+          {active && attachments.length > 0 && (
+            <div className="border-rule border-t px-6 py-3">
+              <p className="text-micro font-semibold text-muted uppercase">Вложения</p>
+              <ul className="mt-2 flex flex-col gap-1">
+                {attachments.map((attachment) => (
+                  <li key={attachment.id}>
+                    <a
+                      href={`/api/attachments/${attachment.id}/download`}
+                      className="text-fine font-semibold text-purple hover:underline"
+                    >
+                      {attachment.fileName}
+                    </a>
+                    <span className="ml-2 text-micro text-muted">
+                      {formatBytes(attachment.sizeBytes)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {active && <AttachmentForm threadId={active.id} />}
         </div>
       </div>
     </Reveal>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
 }
 
 function formatTime(iso: string | null): string {

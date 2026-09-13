@@ -16,6 +16,14 @@ export interface SupplierRfqRow {
   itemsSummary: string;
   respondBy: string | null;
   isExploration: boolean;
+  assignedSupplierUserId: string | null;
+  assignedSupplierUserName: string | null;
+}
+
+export interface SupplierTeamMemberOption {
+  id: string;
+  fullName: string;
+  role: string;
 }
 
 export interface SupplierOrderRow {
@@ -31,34 +39,53 @@ export interface SupplierHomeData {
   activeOrders: SupplierOrderRow[];
   totalPayoutsKzt: number;
   avgBuyerScore: number | null;
+  supplierMembers: SupplierTeamMemberOption[];
 }
 
 export async function loadSupplierHome(
   supabase: SupabaseClient,
   companyId: string | null,
 ): Promise<SupplierHomeData> {
-  const [{ data: rfqRows }, { data: orderRows }, { data: payoutRows }, statsResult] =
-    await Promise.all([
-      supabase
-        .from('rfqs')
-        .select(
-          'id, respond_by, is_exploration, requests(title, companies(name), request_items(name, qty, unit))',
-        )
-        .eq('status', 'sent')
-        .order('respond_by', { ascending: true }),
-      supabase
-        .from('orders')
-        .select('id, state, requests(title, companies(name)), plans(eta_date)')
-        .not('state', 'in', '(closed,cancelled)'),
-      supabase.from('supplier_payouts').select('amount_kzt').eq('status', 'paid'),
-      companyId
-        ? supabase
-            .from('supplier_stats')
-            .select('avg_buyer_score')
-            .eq('company_id', companyId)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
+  const [
+    { data: rfqRows },
+    { data: orderRows },
+    { data: payoutRows },
+    statsResult,
+    { data: supplierMembers },
+  ] = await Promise.all([
+    supabase
+      .from('rfqs')
+      .select(
+        'id, assigned_supplier_user_id, respond_by, is_exploration, requests(title, companies(name), request_items(name, qty, unit))',
+      )
+      .eq('status', 'sent')
+      .order('respond_by', { ascending: true }),
+    supabase
+      .from('orders')
+      .select('id, state, requests(title, companies(name)), plans(eta_date)')
+      .not('state', 'in', '(closed,cancelled)'),
+    supabase.from('supplier_payouts').select('amount_kzt').eq('status', 'paid'),
+    companyId
+      ? supabase
+          .from('supplier_stats')
+          .select('avg_buyer_score')
+          .eq('company_id', companyId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    companyId
+      ? supabase
+          .from('users')
+          .select('id, full_name, role')
+          .eq('company_id', companyId)
+          .eq('is_active', true)
+          .in('role', ['owner', 'manager'])
+          .order('created_at', { ascending: true })
+      : Promise.resolve({ data: [] as { id: string; full_name: string; role: string }[] }),
+  ]);
+
+  const memberNameById = new Map(
+    (supplierMembers ?? []).map((member) => [member.id, member.full_name]),
+  );
 
   const pendingRfqs: SupplierRfqRow[] = (rfqRows ?? []).map((row) => {
     const request = Array.isArray(row.requests) ? row.requests[0] : row.requests;
@@ -82,6 +109,10 @@ export async function loadSupplierHome(
       itemsSummary,
       respondBy: row.respond_by,
       isExploration: row.is_exploration,
+      assignedSupplierUserId: row.assigned_supplier_user_id,
+      assignedSupplierUserName: row.assigned_supplier_user_id
+        ? (memberNameById.get(row.assigned_supplier_user_id) ?? null)
+        : null,
     };
   });
 
@@ -109,5 +140,10 @@ export async function loadSupplierHome(
     activeOrders,
     totalPayoutsKzt,
     avgBuyerScore: statsResult.data?.avg_buyer_score ?? null,
+    supplierMembers: (supplierMembers ?? []).map((member) => ({
+      id: member.id,
+      fullName: member.full_name,
+      role: member.role,
+    })),
   };
 }

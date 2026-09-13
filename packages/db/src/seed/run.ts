@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { createDbClient } from '../client.js';
 import * as schema from '../schema/index.js';
 import { SEED_ACCOUNTS } from './accounts.js';
-import { generateSeedDataset } from './generator.js';
+import { DEMO_ORDER_REQUEST_TITLE, generateSeedDataset } from './generator.js';
 
 /**
  * `pnpm db:seed` — agents.md §13. Один и тот же прогон работает и против
@@ -15,12 +15,13 @@ import { generateSeedDataset } from './generator.js';
  * компании → пользователи (после создания в auth.users) → профили/статистика
  * поставщиков → заявки → позиции → оценки → предоплаты → RFQ → КП → строки
  * КП → планы → строки плана → отбраковка → заказы → события стадий →
- * выплаты → документы → рейтинги → learning_events → price_observations →
+ * payment_facts → выплаты → документы → рейтинги → learning_events → price_observations →
  * model_snapshots → учёт времени → треды/сообщения → доступы → запросы на
  * изменение плана.
  *
- * Только ВСТАВКА. Против непустой базы повторный прогон удвоит демо-историю
- * — для повторного заполнения есть `pnpm db:reset`
+ * Только ВСТАВКА. Повторный прогон без сброса запрещён явной проверкой
+ * демо-заявки: это не позволяет случайно удвоить историю или смешать её с
+ * рабочими данными. Для повторного заполнения есть `pnpm db:reset`
  * (`packages/db/src/scripts/reset.ts`), который сносит демо-данные и зовёт
  * этот же `runSeed()`.
  */
@@ -52,6 +53,17 @@ export async function runSeed(): Promise<void> {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   const db = createDbClient(databaseUrl as string);
+
+  const [existingDemoRequest] = await db
+    .select({ id: schema.requests.id })
+    .from(schema.requests)
+    .where(eq(schema.requests.title, DEMO_ORDER_REQUEST_TITLE))
+    .limit(1);
+  if (existingDemoRequest) {
+    throw new Error(
+      'Демо-история уже существует. Для повторного заполнения используйте `pnpm db:reset`, а не `pnpm db:seed`.',
+    );
+  }
 
   // Повторный прогон против непустой базы (например, демо-аккаунты уже были
   // заведены вручную до появления этого генератора) — переиспользуем то, что
@@ -121,6 +133,7 @@ export async function runSeed(): Promise<void> {
   await insertBatched(db, schema.planRejections, dataset.planRejections);
   await insertBatched(db, schema.orders, dataset.orders);
   await insertBatched(db, schema.orderStageEvents, dataset.orderStageEvents);
+  await insertBatched(db, schema.paymentFacts, dataset.paymentFacts);
   await insertBatched(db, schema.supplierPayouts, dataset.supplierPayouts);
   await insertBatched(db, schema.documents, dataset.documents);
   await insertBatched(db, schema.ratings, dataset.ratings);

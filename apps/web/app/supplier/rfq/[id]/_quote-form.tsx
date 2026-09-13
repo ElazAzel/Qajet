@@ -19,12 +19,21 @@ interface LineDraft {
   leadTimeDays: string;
   setupFeeKzt: string;
   minQty: string;
+  capabilityConfirmed: boolean;
 }
 
 const inputClass =
   'w-full rounded-control border border-transparent bg-page px-3 py-2 text-sm text-ink placeholder:text-muted focus-visible:border-purple';
 
-export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemRow[] }) {
+export function QuoteForm({
+  rfqId,
+  items,
+  revision = false,
+}: {
+  rfqId: string;
+  items: RequestItemRow[];
+  revision?: boolean;
+}) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<Record<string, LineDraft>>({});
 
@@ -32,7 +41,7 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
     router.push('/supplier');
   });
 
-  function patch(itemId: string, field: keyof LineDraft, value: string) {
+  function patch(itemId: string, field: keyof LineDraft, value: string | boolean) {
     setDrafts((prev) => ({
       ...prev,
       [itemId]: {
@@ -40,6 +49,7 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
         leadTimeDays: '',
         setupFeeKzt: '',
         minQty: '',
+        capabilityConfirmed: false,
         ...prev[itemId],
         [field]: value,
       },
@@ -57,6 +67,7 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
           requestItemId: item.id,
           unitPriceKzt,
           leadTimeDays,
+          capabilityConfirmed: draft.capabilityConfirmed,
           setupFeeKzt: draft.setupFeeKzt ? Number(draft.setupFeeKzt) : undefined,
           minQty: draft.minQty ? Number(draft.minQty) : undefined,
         };
@@ -73,6 +84,7 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
           leadTimeDays: '',
           setupFeeKzt: '',
           minQty: '',
+          capabilityConfirmed: false,
         };
         return (
           <div key={item.id} className="rounded-card border border-rule bg-surface p-4">
@@ -126,6 +138,15 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
                 />
               </label>
             </div>
+            <label className="mt-3 flex items-start gap-2 text-fine text-muted">
+              <input
+                type="checkbox"
+                checked={draft.capabilityConfirmed}
+                onChange={(event) => patch(item.id, 'capabilityConfirmed', event.target.checked)}
+                className="mt-0.5 accent-purple"
+              />
+              <span>Подтверждаю, что могу исполнить эту позицию и указанные условия.</span>
+            </label>
           </div>
         );
       })}
@@ -136,7 +157,7 @@ export function QuoteForm({ rfqId, items }: { rfqId: string; items: RequestItemR
           требующие уточнения.
         </p>
         <Button variant="primary" loading={pending} onClick={handleSubmit}>
-          {pending ? 'Отправляю…' : 'Отправить КП'}
+          {pending ? 'Отправляю…' : revision ? 'Отправить исправленное КП' : 'Отправить КП'}
         </Button>
       </div>
       {error && <p className="text-fine text-signal">{error}</p>}

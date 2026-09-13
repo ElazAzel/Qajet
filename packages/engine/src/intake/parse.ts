@@ -103,6 +103,9 @@ const QUANTITY_RE =
 
 /** Количества: `200 шт`, `200шт`, `2 000 штук`, голое число как тираж. */
 export function extractQuantity(text: string): ParsedField<QuantityMatch> {
+  if (NEGATIVE_QUANTITY_RE.test(text)) {
+    return clarify('Количество должно быть положительным числом');
+  }
   const match = QUANTITY_RE.exec(text);
   if (!match) return clarify('Не удалось найти количество в тексте заявки');
   const rawNumber = match[1];
@@ -128,9 +131,15 @@ export function extractQuantity(text: string): ParsedField<QuantityMatch> {
 
 const BUDGET_MILLIONS_RE = /(\d+(?:[.,]\d+)?)\s*млн/i;
 const BUDGET_PLAIN_RE = /(\d[\d\s]*)\s*(?:тг|тенге|₸)/i;
+const NEGATIVE_BUDGET_RE = /(?:бюджет|до|на)?\s*[-−]\s*\d[\d\s]*(?:тг|тенге|₸)/i;
+const NEGATIVE_QUANTITY_RE =
+  /[-−]\s*\d[\d\s]*(?:шт\.?|штук|коробок|уп\.?|упаковок|компл\.?|комплектов|пар|наборов)?/i;
 
 /** Бюджет: `до 1,2 млн`, `1 200 000 тг`. */
 export function extractBudget(text: string): ParsedField<number> {
+  if (NEGATIVE_BUDGET_RE.test(text)) {
+    return clarify('Бюджет должен быть положительным числом или не задан');
+  }
   const millions = BUDGET_MILLIONS_RE.exec(text);
   if (millions?.[1]) {
     const value = Number.parseFloat(millions[1].replace(',', '.')) * 1_000_000;
@@ -360,4 +369,167 @@ export function resolveAlias(
       a.kind === kind && a.hits >= ALIAS_AUTO_APPLY_HITS_THRESHOLD && a.alias === normalizedText,
   );
   return match?.canonical ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Полный черновик заявки — несколько позиций + общие поля
+// ---------------------------------------------------------------------------
+
+export interface RequestCatalogEntry extends CatalogEntry {
+  category: string;
+  unit: string;
+  qtyMin: number;
+  qtyMax: number;
+  requiredCapabilities?: readonly string[];
+}
+
+export interface ParsedRequestItem {
+  sourceText: string;
+  itemKey: string | null;
+  itemLabel: string | null;
+  category: string | null;
+  unit: string | null;
+  requiredCapabilities: readonly string[];
+  quantity: ParsedField<QuantityMatch>;
+  nomenclature: ParsedField<string>;
+  needsClarification: boolean;
+  clarificationReason: string | null;
+}
+
+export interface ParsedRequestDraft {
+  items: ParsedRequestItem[];
+  budget: ParsedField<number>;
+  deadline: ParsedField<string>;
+  deliveryAddress: ParsedField<string>;
+  confidence: number;
+  needsClarification: boolean;
+  clarificationReasons: string[];
+}
+
+const ITEM_SPLIT_RE =
+  /\s+(?:и|,)\s*(?=\d[\d\s]*(?:шт\.?|штук|короб|уп\.?|упаков|компл|пар|набор|наборов)?(?:\s|$))/giu;
+const ITEM_PREFIX_RE = /^(?:нужно|нужны|заказать|закажем|позиции?|товары?)\s*[:—-]?\s*/iu;
+const ITEM_SUFFIX_RE =
+  /(?:;|\n|\s+)(?:бюджет|доставка|адрес|до|к)\s+(?:до\s+)?(?:\d|г\.|ул\.|проспект|улица)[\s\S]*$/iu;
+const ADDRESS_RE = /(?:адрес(?:\s+доставки)?|доставить(?:\s+в)?)\s*[:—-]?\s*([^;\n.]+)/iu;
+
+function itemClauses(text: string): string[] {
+  const normalized = normalizeText(text).replace(/\r/g, '\n');
+  const clauses = normalized
+    .split(/\n|;/u)
+    .flatMap((line) => line.split(ITEM_SPLIT_RE))
+    .map((line) => line.replace(ITEM_PREFIX_RE, '').replace(ITEM_SUFFIX_RE, '').trim())
+    .filter(Boolean);
+  return clauses.length > 0 ? clauses : [normalized];
+}
+
+function nomenclatureText(clause: string): string {
+  return clause
+    .replace(
+      /(?<![\p{L}\p{N}])[-−]?\d[\d\s]*(?:шт\.?|штук|коробок|уп\.?|упаковок|компл\.?|комплектов|пар|наборов)?(?=$|\s)/giu,
+      ' ',
+    )
+    .replace(/(?:^|\s)(?:до|к|через)\s+[\dа-яё.\s]+$/iu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function parseAddress(text: string): ParsedField<string> {
+  const match = ADDRESS_RE.exec(text);
+  const value = match?.[1]?.trim();
+  if (!value) return clarify('Адрес доставки не указан');
+  return { value, confidence: 0.9, needsClarification: false };
+}
+
+/**
+ * Разбирает заявку как редактируемый черновик. Важный контракт: функция
+ * никогда не подставляет первую позицию каталога, не зажимает количество в
+ * min/max и не превращает неуверенное поле в валидное. UI обязан показать
+ * `needsClarification` и дождаться подтверждения человека.
+ */
+export function parseRequestText(
+  text: string,
+  catalog: readonly RequestCatalogEntry[],
+  referenceDate = new Date(),
+): ParsedRequestDraft {
+  const normalized = normalizeText(text);
+  const items = itemClauses(normalized).map((sourceText) => {
+    const quantityText = sourceText.replace(NEGATIVE_BUDGET_RE, ' ');
+    const rawQuantity = extractQuantity(quantityText);
+    const nomenclature = matchNomenclature(nomenclatureText(sourceText), catalog);
+    const entry = nomenclature.value
+      ? catalog.find((candidate) => candidate.key === nomenclature.value)
+      : undefined;
+    const quantity: ParsedField<QuantityMatch> =
+      rawQuantity.value &&
+      rawQuantity.value.unit === null &&
+      entry &&
+      !nomenclature.needsClarification
+        ? {
+            value: { ...rawQuantity.value, unit: entry.unit },
+            confidence: Math.max(rawQuantity.confidence, 0.8),
+            needsClarification: false,
+          }
+        : rawQuantity;
+    const reasons: string[] = [];
+    if (nomenclature.needsClarification || !entry) {
+      reasons.push(nomenclature.reason ?? 'Позиция не распознана');
+    }
+    if (quantity.needsClarification || !quantity.value) {
+      reasons.push(quantity.reason ?? 'Количество нужно уточнить');
+    }
+    if (entry && quantity.value) {
+      if (quantity.value.qty < entry.qtyMin || quantity.value.qty > entry.qtyMax) {
+        reasons.push(`Количество должно быть от ${entry.qtyMin} до ${entry.qtyMax} ${entry.unit}`);
+      }
+    }
+    const needsClarification = reasons.length > 0;
+    return {
+      sourceText,
+      itemKey: entry && !nomenclature.needsClarification ? entry.key : null,
+      itemLabel: entry && !nomenclature.needsClarification ? entry.label : null,
+      category: entry && !nomenclature.needsClarification ? entry.category : null,
+      unit: entry && !nomenclature.needsClarification ? entry.unit : (quantity.value?.unit ?? null),
+      requiredCapabilities:
+        entry && !nomenclature.needsClarification ? (entry.requiredCapabilities ?? []) : [],
+      quantity,
+      nomenclature,
+      needsClarification,
+      clarificationReason: needsClarification ? reasons.join('; ') : null,
+    };
+  });
+
+  const budget = extractBudget(normalized);
+  const deadline = extractDeadline(normalized, referenceDate);
+  const deliveryAddress = parseAddress(normalized);
+  const clarificationReasons = [
+    ...items.flatMap((item) => (item.clarificationReason ? [item.clarificationReason] : [])),
+    ...(budget.needsClarification && /бюджет|\d+\s*(?:тг|тенге|₸)/iu.test(normalized)
+      ? [budget.reason ?? 'Бюджет нужно уточнить']
+      : []),
+    ...(deadline.needsClarification && /(?:до|к|через)\s+/iu.test(normalized)
+      ? [deadline.reason ?? 'Срок нужно уточнить']
+      : []),
+  ];
+  const fields = items.flatMap((item) => [item.nomenclature, item.quantity]);
+  const confidenceValues = [
+    ...fields.map((field) => field.confidence),
+    ...(budget.value === null ? [] : [budget.confidence]),
+    ...(deadline.value === null ? [] : [deadline.confidence]),
+    ...(deliveryAddress.value === null ? [] : [deliveryAddress.confidence]),
+  ];
+  const confidence =
+    confidenceValues.length > 0
+      ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length
+      : 0;
+
+  return {
+    items,
+    budget,
+    deadline,
+    deliveryAddress,
+    confidence,
+    needsClarification: clarificationReasons.length > 0,
+    clarificationReasons,
+  };
 }

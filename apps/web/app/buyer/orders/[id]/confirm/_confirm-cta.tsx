@@ -12,20 +12,28 @@ import { hapticSuccess } from '../../../../lib/native-bridge';
  * показывается прямо в подписи под кнопкой: подтверждают конкретную
  * версию, и ровно она записывается в audit log.
  */
-export function ConfirmPlanCta({ orderId, planVersion }: { orderId: string; planVersion: number }) {
+export function ConfirmPlanCta({
+  orderId,
+  planId,
+  planVersion,
+}: {
+  orderId: string;
+  planId: string;
+  planVersion: number;
+}) {
   const router = useRouter();
-  const { run, pending, error } = useAsyncAction(async (id: string) => {
-    const result = await approvePlan(id);
+  const { run, pending, error } = useAsyncAction(async () => {
+    const result = await approvePlan(orderId, planId, planVersion);
     if (result.ok) {
       hapticSuccess();
-      router.push(`/buyer/orders/${id}`);
+      router.push(`/buyer/orders/${orderId}`);
     }
     return result;
   });
 
   return (
     <div className="flex flex-col items-start gap-1.5">
-      <Button variant="primary" loading={pending} onClick={() => run(orderId)}>
+      <Button variant="primary" loading={pending} onClick={() => run()}>
         {pending ? 'Подтверждаю…' : 'Подтверждаю заказ на этих условиях'}
       </Button>
       <p className="text-fine text-muted">

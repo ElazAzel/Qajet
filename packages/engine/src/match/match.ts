@@ -45,6 +45,10 @@ export interface FilterResult {
   reason?: FilterRejectionReason;
 }
 
+function normalizeCity(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru-RU');
+}
+
 export function passesHardFilters(
   candidate: SupplierCandidate,
   request: HardFilterRequest,
@@ -62,7 +66,10 @@ export function passesHardFilters(
   if (candidate.minOrderKzt !== null && request.orderValueKzt < candidate.minOrderKzt) {
     return { passes: false, reason: 'below_min_order' };
   }
-  if (candidate.servesCities !== null && !candidate.servesCities.includes(request.city)) {
+  if (
+    candidate.servesCities !== null &&
+    !candidate.servesCities.some((city) => normalizeCity(city) === normalizeCity(request.city))
+  ) {
     return { passes: false, reason: 'city_not_served' };
   }
   return { passes: true };

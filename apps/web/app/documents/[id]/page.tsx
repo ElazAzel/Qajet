@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../../lib/current-user';
 import type { ActItem, QajetRequisites } from '../../lib/documents';
+import { PrintDocumentButton } from '../_print-button';
 
 /**
  * Просмотрщик документов Document Engine (agents.md §11.3, §14 шаг 11) —
@@ -13,10 +14,10 @@ import type { ActItem, QajetRequisites } from '../../lib/documents';
  * или staff — supplier_invoice сюда не попадает, только prepay_invoice/
  * act/final_invoice).
  *
- * `final_invoice` — старый тип, которым packages/db/src/seed/generator.ts
- * помечает закрывающий документ демо-истории (24 закрытых заказа, `meta:
- * {}` — placeholder до этой правки); рендерится тем же блоком, что новый
- * 'act', с честным «—» вместо undefined там, где старая запись пустая.
+ * `final_invoice` — совместимый старый тип, которым
+ * packages/db/src/seed/generator.ts помечает закрывающий документ
+ * демо-истории; он рендерится тем же блоком, что и `act`, с честным «—»
+ * вместо undefined там, где историческая запись неполная.
  *
  * Отдельный от ролевых оболочек маршрут (тот же приём, что /metrics) —
  * документ открывают и покупатель, и консьерж по одной и той же ссылке.
@@ -101,9 +102,14 @@ export default async function DocumentPage({
     const meta = document.meta as PrepayInvoiceMeta;
     return (
       <div className="mx-auto max-w-xl px-6 py-10">
-        <p className="text-micro tracking-wide text-muted uppercase">Счёт на предоплату</p>
-        <h1 className="mt-1 text-2xl font-extrabold text-ink">{meta.invoiceNo ?? '—'}</h1>
-        <p className="mt-1 text-sm text-muted">от {formatDate(meta.issuedAt)}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-micro tracking-wide text-muted uppercase">Счёт на предоплату</p>
+            <h1 className="mt-1 text-2xl font-extrabold text-ink">{meta.invoiceNo ?? '—'}</h1>
+            <p className="mt-1 text-sm text-muted">от {formatDate(meta.issuedAt)}</p>
+          </div>
+          <PrintDocumentButton />
+        </div>
 
         <Card padding="sm" className="mt-6">
           <p className="text-fine font-semibold text-muted">Исполнитель</p>
@@ -127,7 +133,9 @@ export default async function DocumentPage({
               {formatKzt(meta.amountKzt ?? 0)}
             </span>
           </div>
-          <p className="mt-1 text-fine text-muted">50% от оценки — предоплата без эквайринга.</p>
+          <p className="mt-1 text-fine text-muted">
+            Сумма выставлена по P80 оценки; точный итог сверяется с подтверждёнными переводами.
+          </p>
         </Card>
       </div>
     );
@@ -138,9 +146,14 @@ export default async function DocumentPage({
     const items = meta.items ?? [];
     return (
       <div className="mx-auto max-w-xl px-6 py-10">
-        <p className="text-micro tracking-wide text-muted uppercase">Акт выполненных работ</p>
-        <h1 className="mt-1 text-2xl font-extrabold text-ink">{meta.actNo ?? '—'}</h1>
-        <p className="mt-1 text-sm text-muted">от {formatDate(meta.closedAt)}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-micro tracking-wide text-muted uppercase">Акт выполненных работ</p>
+            <h1 className="mt-1 text-2xl font-extrabold text-ink">{meta.actNo ?? '—'}</h1>
+            <p className="mt-1 text-sm text-muted">от {formatDate(meta.closedAt)}</p>
+          </div>
+          <PrintDocumentButton />
+        </div>
 
         <Card padding="sm" className="mt-6">
           <p className="text-fine font-semibold text-muted">Исполнитель</p>

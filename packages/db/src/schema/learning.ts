@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -16,7 +17,7 @@ import { authenticatedRole, serviceRole } from 'drizzle-orm/supabase';
 import { id, timestamps } from './_columns.js';
 import { aliasKindEnum, modelNameEnum, timeEntryStageEnum } from './enums.js';
 import { companies, currentCompanyIdSubquery, currentRoleSubquery, users } from './identity.js';
-import { orders } from './procurement.js';
+import { orderStageEvents, orders } from './procurement.js';
 
 /**
  * Учёт времени и контур обучения — agents.md §8G, §9. Всё здесь либо
@@ -49,11 +50,25 @@ export const timeEntries = pgTable(
     stage: timeEntryStageEnum('stage').notNull(),
     seconds: integer('seconds').notNull(),
     source: text('source').notNull().default('auto'),
+    /** Заполняются только для heartbeat-замеров активной работы. */
+    intervalId: text('interval_id'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    /** Обязательное объяснение ручной корректировки, если source = manual. */
+    correctionReason: text('correction_reason'),
     ...timestamps,
   },
   (t) => [
     index('time_entries_order_id_idx').on(t.orderId),
     index('time_entries_user_id_idx').on(t.userId),
+    uniqueIndex('time_entries_interval_id_idx')
+      .on(t.intervalId)
+      .where(sql`${t.intervalId} is not null`),
+    check('time_entries_source_valid', sql`${t.source} in ('auto', 'active', 'manual')`),
+    check(
+      'time_entries_manual_reason_valid',
+      sql`${t.source} <> 'manual' or length(trim(coalesce(${t.correctionReason}, ''))) between 5 and 1000`,
+    ),
     pgPolicy('time_entries_select_staff', {
       as: 'permissive',
       for: 'select',
@@ -64,7 +79,14 @@ export const timeEntries = pgTable(
       as: 'permissive',
       for: 'insert',
       to: authenticatedRole,
-      withCheck: staffOnly,
+      withCheck: sql`${staffOnly} and ${t.userId} = auth.uid()`,
+    }),
+    pgPolicy('time_entries_update_own_active', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: sql`${staffOnly} and ${t.userId} = auth.uid() and ${t.source} = 'active'`,
+      withCheck: sql`${staffOnly} and ${t.userId} = auth.uid() and ${t.source} = 'active' and ${t.seconds} >= 0`,
     }),
     pgPolicy('time_entries_service_all', {
       as: 'permissive',
@@ -84,9 +106,21 @@ export const learningEvents = pgTable(
     type: text('type').notNull(),
     payload: jsonb('payload').notNull(),
     processedAt: timestamp('processed_at', { withTimezone: true }),
+    sourceEventId: uuid('source_event_id').references(() => orderStageEvents.id, {
+      onDelete: 'cascade',
+    }),
+    attempts: integer('attempts').notNull().default(0),
+    leaseId: text('lease_id'),
+    leasedUntil: timestamp('leased_until', { withTimezone: true }),
+    availableAt: timestamp('available_at', { withTimezone: true }).notNull().defaultNow(),
+    lastError: text('last_error'),
     createdAt: timestamps.createdAt,
   },
-  () => [
+  (t) => [
+    uniqueIndex('learning_events_source_event_unique')
+      .on(t.sourceEventId)
+      .where(sql`${t.sourceEventId} is not null`),
+    index('learning_events_queue_idx').on(t.processedAt, t.availableAt),
     pgPolicy('learning_events_select_staff', {
       as: 'permissive',
       for: 'select',
@@ -124,10 +158,18 @@ export const priceObservations = pgTable(
     supplierCompanyId: uuid('supplier_company_id').references(() => companies.id, {
       onDelete: 'set null',
     }),
+    source: text('source').notNull().default('historical'),
+    sourceEventId: uuid('source_event_id').references(() => learningEvents.id, {
+      onDelete: 'set null',
+    }),
+    observationKey: text('observation_key'),
     observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('price_observations_supplier_company_id_idx').on(t.supplierCompanyId),
+    uniqueIndex('price_observations_observation_key_unique')
+      .on(t.observationKey)
+      .where(sql`${t.observationKey} is not null`),
     pgPolicy('price_observations_select_staff', {
       as: 'permissive',
       for: 'select',

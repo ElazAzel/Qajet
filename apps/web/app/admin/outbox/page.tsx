@@ -8,6 +8,7 @@ import {
   outboxStatusLabel,
   outboxStatusTone,
 } from '../../lib/outbox';
+import { RetryOutboxButton } from './_retry-button';
 
 type OutboxRow = {
   id: string;
@@ -19,6 +20,9 @@ type OutboxRow = {
   status: string;
   attempts: number;
   last_error: string | null;
+  delivery_error: string | null;
+  leased_until: string | null;
+  provider_message_id: string | null;
   created_at: string;
   sent_at: string | null;
 };
@@ -48,7 +52,7 @@ export default async function AdminOutboxPage() {
   const { data, error } = await supabase
     .from('outbox')
     .select(
-      'id, channel, kind, recipient, subject, body, status, attempts, last_error, created_at, sent_at',
+      'id, channel, kind, recipient, subject, body, status, attempts, last_error, delivery_error, leased_until, provider_message_id, created_at, sent_at',
     )
     .order('created_at', { ascending: false })
     .limit(100);
@@ -112,6 +116,17 @@ export default async function AdminOutboxPage() {
                           {row.last_error && (
                             <p className="mt-1 max-w-48 text-micro text-danger">{row.last_error}</p>
                           )}
+                          {row.delivery_error && row.delivery_error !== row.last_error && (
+                            <p className="mt-1 max-w-48 text-micro text-danger">
+                              Доставка: {row.delivery_error}
+                            </p>
+                          )}
+                          {row.leased_until && row.status === 'processing' && (
+                            <p className="mt-1 text-micro text-muted">
+                              lease до {formatDateTime(row.leased_until)}
+                            </p>
+                          )}
+                          {row.status === 'failed' && <RetryOutboxButton id={row.id} />}
                         </td>
                         <td className="min-w-64 px-2 py-3">
                           <p className="text-muted">{formatOutboxBody(row.body)}</p>

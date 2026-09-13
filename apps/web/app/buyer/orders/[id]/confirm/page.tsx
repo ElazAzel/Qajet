@@ -119,6 +119,12 @@ export default async function ConfirmOrderPage({ params }: { params: Promise<{ i
             <span className="text-muted">в том числе доставка</span>
             <span className="numeric text-ink">{formatKzt(confirmation.deliveryKzt)}</span>
           </div>
+          {confirmation.supplierRebateKzt > 0 && (
+            <div className="mt-1.5 flex items-center justify-between text-fine">
+              <span className="text-muted">Дополнительное вознаграждение поставщика</span>
+              <span className="numeric text-ink">{formatKzt(confirmation.supplierRebateKzt)}</span>
+            </div>
+          )}
           <p className="mt-2 text-fine text-muted">Версия плана {confirmation.planVersion}</p>
         </Card>
       </Reveal>
@@ -138,7 +144,11 @@ export default async function ConfirmOrderPage({ params }: { params: Promise<{ i
       </Reveal>
 
       <Reveal from="up">
-        <ConfirmPlanCta orderId={id} planVersion={confirmation.planVersion} />
+        <ConfirmPlanCta
+          orderId={id}
+          planId={confirmation.planId}
+          planVersion={confirmation.planVersion}
+        />
       </Reveal>
     </div>
   );

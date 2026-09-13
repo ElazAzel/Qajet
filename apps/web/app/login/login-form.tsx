@@ -1,6 +1,7 @@
 'use client';
 
 import { Reveal } from '@qajet/ui/motion';
+import Link from 'next/link';
 import { useActionState } from 'react';
 import { quickSignIn, signIn } from './actions';
 
@@ -52,6 +53,13 @@ export function LoginForm() {
             {isPending ? 'Входим…' : 'Войти'}
           </button>
         </form>
+
+        <Link
+          href="/auth/recover"
+          className="mt-3 block text-center text-fine font-semibold text-purple"
+        >
+          Забыли пароль?
+        </Link>
 
         {process.env.NODE_ENV !== 'production' && (
           <div className="mt-6 border-t border-rule pt-4">

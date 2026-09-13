@@ -1,0 +1,47 @@
+name: Release gate
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_OPTIONS: '--no-warnings'
+
+jobs:
+  release-gate:
+    name: Release source and runtime gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - name: Source readiness (non-strict)
+        run: pnpm release:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @qajet/web build
+      - name: RAG freshness
+        run: pnpm rag:sync
+      - name: Generated state is committed
+        shell: bash
+        run: |
+          if ! git diff --quiet -- docs/state; then
+            echo 'docs/state is stale; run pnpm rag:sync and commit the result.'
+            git diff --stat -- docs/state
+            exit 1
+          fi

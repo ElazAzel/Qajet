@@ -6,6 +6,7 @@ import { requireCurrentUser } from '../lib/current-user';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE, type OrderState } from '../lib/order-state';
 import { loadSupplierHome } from '../lib/supplier-home';
 import { RfqActions } from './_rfq-actions';
+import { RfqAssignment } from './_rfq-assignment';
 
 /**
  * Дашборд поставщика — §10 «Поставщик»: входящие RFQ с дедлайном ответа,
@@ -90,6 +91,13 @@ export default async function SupplierHome() {
                 <p className="text-fine font-semibold text-signal sm:whitespace-nowrap">
                   Ответить до {formatRespondBy(r.respondBy)}
                 </p>
+                <RfqAssignment
+                  rfqId={r.id}
+                  assignedUserId={r.assignedSupplierUserId}
+                  assignedUserName={r.assignedSupplierUserName}
+                  members={home.supplierMembers}
+                  canManage={user.role === 'owner'}
+                />
                 <RfqActions rfqId={r.id} />
               </li>
             ))}

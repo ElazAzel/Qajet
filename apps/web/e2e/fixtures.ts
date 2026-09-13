@@ -69,6 +69,12 @@ export async function advanceStage(page: Page, orderUrl: string, label: string):
  */
 export async function createQuotesReceivedOrder(
   browser: Browser,
+  options: {
+    prepaymentAmountKzt?: number;
+    quotePriceKzt?: number;
+    setupFeeKzt?: number;
+    minQty?: number;
+  } = {},
 ): Promise<{ orderUrl: string; orderId: string; title: string }> {
   const title = `E2E fixture ${Date.now()}`;
 
@@ -98,8 +104,19 @@ export async function createQuotesReceivedOrder(
 
     await concierge.getByRole('button', { name: '→ Оценён' }).click();
     await expect(concierge.getByRole('button', { name: '→ Оценён' })).toHaveCount(0);
-    await concierge.getByRole('button', { name: '→ Предоплачен' }).click();
-    await expect(concierge.getByRole('button', { name: '→ Предоплачен' })).toHaveCount(0);
+
+    // Оценка создаёт только счёт на P80. Факт банковского перевода
+    // подтверждается отдельным staff-действием; тест заполняет все поля
+    // формы, чтобы не обходить completeness/RLS-путь.
+    await concierge.getByRole('button', { name: 'Выставить счёт на P80' }).click();
+    await concierge
+      .getByLabel('Фактически поступило, ₸')
+      .fill(String(options.prepaymentAmountKzt ?? 2_000_000_000));
+    await concierge.getByLabel('Банковский reference').fill(`E2E-PRE-${Date.now()}`);
+    await concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }).click();
+    await expect(
+      concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }),
+    ).toHaveCount(0);
     await concierge.getByRole('button', { name: '→ RFQ отправлен' }).click();
     await expect(concierge.getByRole('button', { name: '→ RFQ отправлен' })).toHaveCount(0);
 
@@ -109,8 +126,19 @@ export async function createQuotesReceivedOrder(
       .getByRole('link', { name: 'Берусь, цена и срок' })
       .click();
     await supplier.waitForURL(/\/supplier\/rfq\//);
-    await supplier.getByLabel('Цена за ед., ₸').fill('4500');
-    await supplier.getByLabel('Срок, дней').fill('10');
+    await supplier
+      .getByLabel('Цена за ед., ₸')
+      .first()
+      .fill(String(options.quotePriceKzt ?? 4500));
+    await supplier.getByLabel('Срок, дней').first().fill('10');
+    await supplier
+      .getByLabel('Setup fee, ₸')
+      .first()
+      .fill(String(options.setupFeeKzt ?? 0));
+    await supplier
+      .getByLabel('Мин. партия, шт.')
+      .first()
+      .fill(String(options.minQty ?? 1));
     await supplier.getByRole('button', { name: 'Отправить КП' }).click();
     await supplier.waitForURL('**/supplier');
 

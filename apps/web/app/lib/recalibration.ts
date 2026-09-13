@@ -66,7 +66,7 @@ export async function recalibrateLeadTimeForSupplier(
 
   const { data: lines } = await supabase
     .from('plan_lines')
-    .select('plan_id, quote_line_id')
+    .select('plan_id, quote_line_id, supplier_company_id')
     .eq('supplier_company_id', supplierId)
     .in('plan_id', planIds);
   if (!lines || lines.length === 0) return;
@@ -97,24 +97,49 @@ export async function recalibrateLeadTimeForSupplier(
         .from('order_stage_events')
         .select('order_id, to_state, at')
         .in('order_id', relevantOrderIds)
-        .in('to_state', ['rfq_sent', 'delivered'])
+        .in('to_state', ['suppliers_paid', 'in_production', 'delivered'])
     : { data: [] };
-  const sentAtByOrder = new Map<string, number>();
+  const executionStartedAtByOrder = new Map<string, number>();
   const deliveredAtByOrder = new Map<string, number>();
   for (const e of events ?? []) {
     const t = new Date(e.at as string).getTime();
-    if (e.to_state === 'rfq_sent') sentAtByOrder.set(e.order_id, t);
+    if (
+      (e.to_state === 'suppliers_paid' || e.to_state === 'in_production') &&
+      !executionStartedAtByOrder.has(e.order_id)
+    ) {
+      executionStartedAtByOrder.set(e.order_id, t);
+    }
     if (e.to_state === 'delivered') deliveredAtByOrder.set(e.order_id, t);
+  }
+
+  // New orders have one confirmation per supplier. The order-level delivered
+  // event remains a compatibility fallback for historical/demo rows created
+  // before that table existed.
+  const { data: deliveryRows } = relevantOrderIds.length
+    ? await supabase
+        .from('order_supplier_deliveries')
+        .select('order_id, supplier_company_id, confirmed_at')
+        .in('order_id', relevantOrderIds)
+    : { data: [] };
+  const deliveredAtBySupplierOrder = new Map<string, number>();
+  for (const row of deliveryRows ?? []) {
+    deliveredAtBySupplierOrder.set(
+      `${row.order_id}:${row.supplier_company_id}`,
+      new Date(row.confirmed_at as string).getTime(),
+    );
   }
 
   const history: SupplierLeadHistoryEntry[] = [];
   for (const line of lines) {
     const orderId = orderIdByPlanId.get(line.plan_id);
     const declaredDays = declaredDaysByQuoteLineId.get(line.quote_line_id);
-    const sentAt = orderId ? sentAtByOrder.get(orderId) : undefined;
-    const deliveredAt = orderId ? deliveredAtByOrder.get(orderId) : undefined;
-    if (!declaredDays || sentAt === undefined || deliveredAt === undefined) continue;
-    history.push({ declaredDays, actualDays: (deliveredAt - sentAt) / DAY_MS });
+    const startedAt = orderId ? executionStartedAtByOrder.get(orderId) : undefined;
+    const deliveredAt = orderId
+      ? (deliveredAtBySupplierOrder.get(`${orderId}:${line.supplier_company_id}`) ??
+        deliveredAtByOrder.get(orderId))
+      : undefined;
+    if (!declaredDays || startedAt === undefined || deliveredAt === undefined) continue;
+    history.push({ declaredDays, actualDays: (deliveredAt - startedAt) / DAY_MS });
   }
   if (history.length === 0) return;
 

@@ -50,8 +50,8 @@ export default async function MetricsPage({
               <p className="text-micro tracking-wide text-muted uppercase">QAJET · /metrics</p>
               <h1 className="mt-1 text-3xl font-extrabold text-ink">Юнит-экономика</h1>
               <p className="mt-2 max-w-2xl text-sm text-muted">
-                Комиссия {metrics.commissionRatePct}% — параметр в settings, меняется вживую при
-                вопросе жюри. Все числа ниже — реальные данные демо-сида, не иллюстрация.
+                Комиссия {metrics.commissionRatePct}% — параметр в settings. Числа зависят от
+                выбранной среды; demo seed и реальные pilot-заказы не смешиваются.
               </p>
             </div>
             {/* Кнопка выпуска ссылки — только под сессией админа, не по самой ссылке жюри
@@ -106,7 +106,7 @@ export default async function MetricsPage({
                 ? `${metrics.avgHoursPerOrder.toFixed(1)} ч`
                 : 'нет данных'
             }
-            note="Автотаймер консьержа (agents.md §9) — сумма time_entries.seconds по заказу, усреднено по заказам с хотя бы одной записью"
+            note="Только активные heartbeat и ручные записи; историческое elapsed-время не входит в эту метрику"
             tone="muted"
             className="p-6"
           />

@@ -1,13 +1,15 @@
 'use client';
 
+import type { ParsedRequestDraft } from '@qajet/engine/intake';
 import { useAsyncAction } from '@qajet/ui/hooks';
 import { Reveal, Stagger } from '@qajet/ui/motion';
 import { Button, Card } from '@qajet/ui/primitives';
 import Link from 'next/link';
 import { useState } from 'react';
-import { parseQuickTextAction, type QuickParseResult } from '../../../lib/actions/intake-actions';
+import { parseRequestTextAction } from '../../../lib/actions/intake-actions';
 import { createRequest } from '../../../lib/actions/request-actions';
 import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../lib/catalog';
+import { AttachmentForm } from '../../messages/_attachment-form';
 
 /**
  * Мастер новой заявки — agents.md §10 «Покупатель». Реальная форма:
@@ -19,7 +21,7 @@ import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../lib/cata
  * получить из свободного текста через @qajet/engine/intake (agents.md
  * §8A) — «Быстрое добавление» ниже: парсинг только ПРЕДЛАГАЕТ значения,
  * человек всегда видит и подтверждает результат перед добавлением строки.
- * Сам разбор теперь идёт через server action `parseQuickTextAction`
+ * Сам разбор теперь идёт через server action `parseRequestTextAction`
  * (lib/actions/intake-actions.ts) — ему нужен доступ к `extraction_aliases`
  * (волна 1, шаг 5), которого у клиента нет и не будет.
  */
@@ -81,7 +83,7 @@ export default function NewRequestPage() {
   const [items, setItems] = useState<ItemRow[]>([firstItemRow()]);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
   const [quickText, setQuickText] = useState('');
-  const [quickPreview, setQuickPreview] = useState<QuickParseResult | null>(null);
+  const [quickPreview, setQuickPreview] = useState<ParsedRequestDraft | null>(null);
   const [quickParsing, setQuickParsing] = useState(false);
 
   const { run, pending, error } = useAsyncAction(createRequest, (result) => {
@@ -102,7 +104,7 @@ export default function NewRequestPage() {
     if (!quickText.trim() || quickParsing) return;
     setQuickParsing(true);
     try {
-      setQuickPreview(await parseQuickTextAction(quickText));
+      setQuickPreview(await parseRequestTextAction(quickText));
     } finally {
       setQuickParsing(false);
     }
@@ -110,18 +112,27 @@ export default function NewRequestPage() {
 
   function acceptQuickPreview() {
     if (!quickPreview) return;
-    const catalogItem = quickPreview.itemKey
-      ? (CATALOG.find((c) => c.itemKey === quickPreview.itemKey) ?? DEFAULT_CATALOG_ITEM)
-      : DEFAULT_CATALOG_ITEM;
-    const qty = quickPreview.qty
-      ? Math.min(Math.max(quickPreview.qty, catalogItem.qtyMin), catalogItem.qtyMax)
-      : catalogItem.qtyMin;
+    const acceptedItems = quickPreview.items.flatMap((item) => {
+      if (item.needsClarification || !item.itemKey || !item.quantity.value) return [];
+      const catalogItem = CATALOG.find((c) => c.itemKey === item.itemKey);
+      return catalogItem
+        ? [{ catalogItem, qty: item.quantity.value.qty, sourceText: item.sourceText }]
+        : [];
+    });
+    if (acceptedItems.length === 0) return;
     setItems((prev) => [
       ...prev,
-      { rowId: nextRowId++, itemKey: catalogItem.itemKey, qty, sourceText: quickText },
+      ...acceptedItems.map(({ catalogItem, qty, sourceText }) => ({
+        rowId: nextRowId++,
+        itemKey: catalogItem.itemKey,
+        qty,
+        sourceText,
+      })),
     ]);
-    if (quickPreview.deadline && !deadlineDate) setDeadlineDate(quickPreview.deadline);
-    if (quickPreview.budget && !budget) setBudget(String(quickPreview.budget));
+    if (quickPreview.deadline.value && !deadlineDate) setDeadlineDate(quickPreview.deadline.value);
+    if (quickPreview.budget.value && !budget) setBudget(String(quickPreview.budget.value));
+    if (quickPreview.deliveryAddress.value && !deliveryAddress)
+      setDeliveryAddress(quickPreview.deliveryAddress.value);
     setQuickText('');
     setQuickPreview(null);
   }
@@ -157,6 +168,16 @@ export default function NewRequestPage() {
           Консьерж QAJET возьмёт её в работу и сделает оценку — заказ появится в «Мои заказы», как
           только это произойдёт.
         </p>
+        <div className="mt-6 rounded-card border border-rule bg-surface text-left">
+          <div className="px-6 py-4">
+            <p className="text-sm font-semibold text-ink">Есть готовое ТЗ или брендбук?</p>
+            <p className="mt-1 text-fine text-muted">
+              Прикрепите его к заявке — файл останется приватным и будет доступен только участникам
+              этого закупочного цикла.
+            </p>
+          </div>
+          <AttachmentForm requestId={createdRequestId} returnPath="/buyer" kind="spec" />
+        </div>
         <Link href="/buyer" className="mt-6 inline-block">
           <Button variant="primary">Вернуться на главную</Button>
         </Link>
@@ -287,39 +308,44 @@ export default function NewRequestPage() {
               </div>
               {quickPreview && (
                 <div className="mt-2 rounded-control border border-purple/40 bg-purple-10 p-3 text-fine">
-                  <p className="font-semibold text-ink">
-                    {quickPreview.itemLabel ? (
-                      <>
-                        Похоже на «{quickPreview.itemLabel}»{' '}
-                        <span className="font-normal text-muted">
-                          ({Math.round(quickPreview.itemConfidence * 100)}% совпадение)
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted">
-                        Не удалось уверенно распознать позицию — будет добавлена первая позиция
-                        каталога, поправьте вручную
-                      </span>
-                    )}
-                  </p>
-                  <p className="mt-1 text-muted">
-                    Количество: {quickPreview.qty ?? 'не распознано'} · Срок:{' '}
-                    {quickPreview.deadline ?? 'не распознан'} · Бюджет:{' '}
-                    {quickPreview.budget
-                      ? `${quickPreview.budget.toLocaleString('ru-RU')} ₸`
+                  <p className="font-semibold text-ink">Предпросмотр заявки</p>
+                  <ul className="mt-2 flex flex-col gap-1 text-muted">
+                    {quickPreview.items.map((item, index) => (
+                      <li key={`${item.sourceText}-${index}`}>
+                        {item.itemLabel ? `«${item.itemLabel}»` : 'Позиция не распознана'} ·{' '}
+                        {item.quantity.value
+                          ? `${item.quantity.value.qty} ${item.unit ?? ''}`
+                          : 'количество не распознано'}{' '}
+                        {item.needsClarification && (
+                          <span className="text-danger">— нужно уточнение</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-muted">
+                    Срок: {quickPreview.deadline.value ?? 'не распознан'} · Бюджет:{' '}
+                    {quickPreview.budget.value
+                      ? `${quickPreview.budget.value.toLocaleString('ru-RU')} ₸`
                       : 'не распознан'}
+                    {quickPreview.deliveryAddress.value
+                      ? ` · ${quickPreview.deliveryAddress.value}`
+                      : ''}
                   </p>
-                  {quickPreview.categoryHint && (
-                    <p className="mt-1 text-muted">
-                      Категория подсказана исправлениями консьержа:{' '}
-                      <span className="font-semibold text-ink">
-                        {quickPreview.categoryHint.label}
-                      </span>{' '}
-                      — позицию каталога это не меняет, поправьте вручную при необходимости.
+                  {quickPreview.needsClarification && (
+                    <p className="mt-2 text-danger">
+                      {quickPreview.clarificationReasons[0] ??
+                        'Часть полей нужно уточнить вручную. Неполные строки не будут добавлены.'}
                     </p>
                   )}
                   <div className="mt-2 flex gap-2">
-                    <Button variant="primary" size="sm" onClick={acceptQuickPreview}>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={acceptQuickPreview}
+                      disabled={quickPreview.items.every(
+                        (item) => item.needsClarification || !item.itemKey || !item.quantity.value,
+                      )}
+                    >
                       Добавить
                     </Button>
                     <Button variant="secondary" size="sm" onClick={dismissQuickPreview}>

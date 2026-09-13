@@ -79,15 +79,44 @@ export async function loadRequestComparison(
   const supplierIds = [...new Set(rfqList.map((rfq) => rfq.supplier_company_id))];
 
   const { data: suppliers } = supplierIds.length
-    ? await supabase.from('companies').select('id, name, city, tax_mode').in('id', supplierIds)
+    ? await supabase
+        .from('companies')
+        .select('id, name, city, tax_mode, supplier_profiles(service_cities)')
+        .in('id', supplierIds)
     : { data: [] };
   const supplierById = new Map((suppliers ?? []).map((s) => [s.id, s]));
 
   const rfqIds = rfqList.map((rfq) => rfq.id);
   const { data: quotes } = rfqIds.length
-    ? await supabase.from('quotes').select('id, rfq_id, valid_until').in('rfq_id', rfqIds)
+    ? await supabase
+        .from('quotes')
+        .select('id, rfq_id, version, submitted_at, valid_until')
+        .in('rfq_id', rfqIds)
     : { data: [] };
-  const quoteList = quotes ?? [];
+  const latestQuoteByRfqId = new Map<
+    string,
+    {
+      id: string;
+      rfq_id: string;
+      version: number;
+      submitted_at: string;
+      valid_until: string | null;
+    }
+  >();
+  for (const quote of quotes ?? []) {
+    const current = latestQuoteByRfqId.get(quote.rfq_id);
+    if (
+      !current ||
+      quote.version > current.version ||
+      (quote.version === current.version && quote.submitted_at > current.submitted_at) ||
+      (quote.version === current.version &&
+        quote.submitted_at === current.submitted_at &&
+        quote.id > current.id)
+    ) {
+      latestQuoteByRfqId.set(quote.rfq_id, quote);
+    }
+  }
+  const quoteList = [...latestQuoteByRfqId.values()];
   const rfqIdByQuoteId = new Map(quoteList.map((q) => [q.id, q.rfq_id]));
   const validUntilByQuoteId = new Map(quoteList.map((q) => [q.id, q.valid_until as string | null]));
 
@@ -104,10 +133,27 @@ export async function loadRequestComparison(
   const { data: settingsRows } = await supabase
     .from('settings')
     .select('key, value')
-    .in('key', ['commission_rate_pct', 'cit_rate_pct']);
+    .in('key', [
+      'commission_rate_pct',
+      'cit_rate_pct',
+      'logistics_buffer_days_almaty',
+      'logistics_buffer_days_intercity',
+      'logistics_delivery_kzt_local',
+      'logistics_delivery_kzt_intercity',
+    ]);
   const settingsMap = new Map((settingsRows ?? []).map((s) => [s.key, s.value as number]));
   const commissionRatePct = settingsMap.get('commission_rate_pct') ?? FALLBACK_COMMISSION_RATE_PCT;
   const citRatePct = settingsMap.get('cit_rate_pct') ?? FALLBACK_CIT_RATE_PCT;
+  const localBufferDays = settingsMap.get('logistics_buffer_days_almaty');
+  const intercityBufferDays = settingsMap.get('logistics_buffer_days_intercity');
+  const localDeliveryKzt = settingsMap.get('logistics_delivery_kzt_local');
+  const intercityDeliveryKzt = settingsMap.get('logistics_delivery_kzt_intercity');
+  const routeSettings = {
+    ...(typeof localBufferDays === 'number' ? { localBufferDays } : {}),
+    ...(typeof intercityBufferDays === 'number' ? { intercityBufferDays } : {}),
+    ...(typeof localDeliveryKzt === 'number' ? { localDeliveryKzt } : {}),
+    ...(typeof intercityDeliveryKzt === 'number' ? { intercityDeliveryKzt } : {}),
+  };
 
   const reliabilityBySupplierId = await loadSupplierReliabilityMap(supabase, supplierIds);
 
@@ -120,7 +166,7 @@ export async function loadRequestComparison(
     const supplier = supplierId ? supplierById.get(supplierId) : undefined;
     if (!supplierId || !supplier) continue;
 
-    const route = deliveryRoute(supplier.city, request.city);
+    const route = deliveryRoute(supplier.city, request.city, routeSettings);
     const kShrunk = reliabilityBySupplierId.get(supplierId) ?? 1.0;
     const bundleRule = line.bundle_rule as { thresholdKzt: number; discountPct: number } | null;
     const fieldFlags = (line.field_flags ?? {}) as Record<string, unknown>;

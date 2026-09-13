@@ -31,6 +31,21 @@ function one<T>(rows: T[]): T {
   return row;
 }
 
+async function approvePlan(tx: postgres.TransactionSql, orderId: string) {
+  const plan = (
+    await tx<{ id: string; version: number }[]>`
+      select p.id, p.version
+      from orders o
+      join plans p on p.id = o.approved_plan_id
+      where o.id = ${orderId}
+    `
+  )[0];
+  if (!plan) throw new Error('Тестовая фикстура не содержит план заказа.');
+  return tx<{ id: string; status: string }[]>`
+    select * from approve_plan(${orderId}, ${plan.id}, ${plan.version})
+  `;
+}
+
 async function insertAuthUser(admin: postgres.Sql, email: string): Promise<{ id: string }> {
   return one(
     await admin<{ id: string }[]>`
@@ -208,7 +223,7 @@ describeIfConfigured('комиссия по позиции плана (RLS + app
         const otherBuyerApprove = await asOtherBuyer
           .begin(async (tx) => {
             await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authOtherBuyer.id, role: 'authenticated' })}, true)`;
-            return tx<{ id: string; status: string }[]>`select * from approve_plan(${order.id})`;
+            return approvePlan(tx, order.id);
           })
           .catch(() => null);
         expect(otherBuyerApprove).toBeNull();
@@ -216,7 +231,7 @@ describeIfConfigured('комиссия по позиции плана (RLS + app
         // Покупатель-владелец может утвердить план через RPC — статус меняется.
         const buyerApprove = await asBuyer.begin(async (tx) => {
           await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: authBuyer.id, role: 'authenticated' })}, true)`;
-          return tx<{ id: string; status: string }[]>`select * from approve_plan(${order.id})`;
+          return approvePlan(tx, order.id);
         });
         expect(buyerApprove).toHaveLength(1);
         expect(buyerApprove[0]?.status).toBe('approved');

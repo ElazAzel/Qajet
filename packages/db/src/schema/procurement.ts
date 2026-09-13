@@ -317,6 +317,9 @@ export const rfqs = pgTable(
     }),
     selectionReason: jsonb('selection_reason').notNull().default({}),
     isExploration: boolean('is_exploration').notNull().default(false),
+    /** Staff can ask the supplier to correct a submitted quote without deleting history. */
+    revisionRequested: boolean('revision_requested').notNull().default(false),
+    revisionNote: text('revision_note'),
     ...timestamps,
   },
   (t) => [
@@ -329,7 +332,7 @@ export const rfqs = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
+      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery} and public.supplier_can_access_rfq(${t.id})`,
     }),
     // Внимание: раньше здесь было "request_id in (select id from requests)",
     // положившееся на то, что видимость requests сама всё отфильтрует. Это
@@ -341,24 +344,11 @@ export const rfqs = pgTable(
     // изоляции). Явная проверка buyer_company_id возвращает policy к её
     // исходному смыслу — «покупатель видит RFQ своей заявки» — не завися
     // от того, кому ещё видна сама requests.
-    pgPolicy('rfqs_select_buyer_of_request', {
-      as: 'permissive',
-      for: 'select',
-      to: authenticatedRole,
-      using: sql`${t.requestId} in (select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery})`,
-    }),
     pgPolicy('rfqs_select_staff', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
       using: staffOnly,
-    }),
-    pgPolicy('rfqs_update_own_supplier', {
-      as: 'permissive',
-      for: 'update',
-      to: authenticatedRole,
-      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
-      withCheck: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
     }),
     pgPolicy('rfqs_insert_staff', {
       as: 'permissive',
@@ -383,23 +373,28 @@ export const quotes = pgTable(
     rfqId: uuid('rfq_id')
       .notNull()
       .references(() => rfqs.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull().default(1),
+    supersedesQuoteId: uuid('supersedes_quote_id'),
+    submittedBy: uuid('submitted_by').references(() => users.id, { onDelete: 'set null' }),
     submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
     validUntil: date('valid_until'),
     currency: text('currency').notNull().default('KZT'),
     notes: text('notes'),
+    revisionReason: text('revision_reason'),
     source: quoteSourceEnum('source').notNull().default('form'),
     fileUrl: text('file_url'),
     ...timestamps,
   },
   (t) => [
     index('quotes_rfq_id_idx').on(t.rfqId),
+    uniqueIndex('quotes_rfq_version_unique').on(t.rfqId, t.version),
     // Через rfq_id таблица уже наследует изоляцию поставщиков rfqs —
     // «свой RFQ» здесь означает и «своё quote».
     pgPolicy('quotes_select_own_supplier', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.rfqId} in (select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery})`,
+      using: sql`${t.rfqId} in (select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery} and public.supplier_can_access_rfq(id))`,
     }),
     // Раньше здесь была quotes_select_buyer_of_request (тот же риск, что у
     // rfqs_select_buyer_of_request — см. комментарий там). Убрана целиком
@@ -419,12 +414,6 @@ export const quotes = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: staffOnly,
-    }),
-    pgPolicy('quotes_insert_own_supplier', {
-      as: 'permissive',
-      for: 'insert',
-      to: authenticatedRole,
-      withCheck: sql`${t.rfqId} in (select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery})`,
     }),
     pgPolicy('quotes_service_all', {
       as: 'permissive',
@@ -464,21 +453,7 @@ export const quoteLines = pgTable(
       to: authenticatedRole,
       using: sql`${t.quoteId} in (
         select id from ${quotes} where rfq_id in (
-          select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery}
-        )
-      )`,
-    }),
-    // Тот же риск, что у quotes_select_buyer_of_request — явная проверка
-    // buyer_company_id, а не "requests её всё равно отфильтрует".
-    pgPolicy('quote_lines_select_buyer_of_request', {
-      as: 'permissive',
-      for: 'select',
-      to: authenticatedRole,
-      using: sql`${t.quoteId} in (
-        select id from ${quotes} where rfq_id in (
-          select id from ${rfqs} where request_id in (
-            select id from ${requests} where buyer_company_id = ${currentCompanyIdSubquery}
-          )
+          select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery} and public.supplier_can_access_rfq(id)
         )
       )`,
     }),
@@ -487,16 +462,6 @@ export const quoteLines = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: staffOnly,
-    }),
-    pgPolicy('quote_lines_insert_own_supplier', {
-      as: 'permissive',
-      for: 'insert',
-      to: authenticatedRole,
-      withCheck: sql`${t.quoteId} in (
-        select id from ${quotes} where rfq_id in (
-          select id from ${rfqs} where supplier_company_id = ${currentCompanyIdSubquery}
-        )
-      )`,
     }),
     pgPolicy('quote_lines_service_all', {
       as: 'permissive',
@@ -523,6 +488,8 @@ export const plans = pgTable(
     commissionKzt: bigint('commission_kzt', { mode: 'number' }).notNull(),
     commissionBase: text('commission_base').notNull(),
     taxEffectKzt: bigint('tax_effect_kzt', { mode: 'number' }).notNull().default(0),
+    /** Дополнительное вознаграждение от поставщика, раскрываемое покупателю отдельно. */
+    supplierRebateKzt: bigint('supplier_rebate_kzt', { mode: 'number' }).notNull().default(0),
     totalKzt: bigint('total_kzt', { mode: 'number' }).notNull(),
     etaDate: date('eta_date'),
     slackDays: integer('slack_days'),
@@ -532,6 +499,10 @@ export const plans = pgTable(
     ...timestamps,
   },
   (t) => [
+    check(
+      'plans_amounts_nonnegative',
+      sql`${t.totalSupplierKzt} >= 0 and ${t.deliveryKzt} >= 0 and ${t.commissionKzt} >= 0 and ${t.taxEffectKzt} >= 0 and ${t.supplierRebateKzt} >= 0 and ${t.totalKzt} >= 0`,
+    ),
     index('plans_request_id_idx').on(t.requestId),
     pgPolicy('plans_select_via_request', {
       as: 'permissive',
@@ -561,7 +532,8 @@ export const plans = pgTable(
     // хотя approvePlan() в приложении трогает только status. RLS не умеет
     // колоночно: прямой PostgREST-запрос от покупателя мог бы переписать
     // commission_kzt/total_kzt/total_supplier_kzt в СВОЁМ же плане (подмена
-    // цены). Заменено на SECURITY INVOKER RPC approve_plan(p_order_id) —
+    // цены). Заменено на SECURITY DEFINER RPC
+    // approve_plan(p_order_id, p_expected_plan_id, p_expected_plan_version) —
     // тот же приём, что split_request_item/merge_request_items (волна 1,
     // шаг 6): функция сама проверяет владение заказом и меняет только
     // status, буквальный UPDATE-доступ покупателю на эту таблицу больше не
@@ -633,7 +605,8 @@ export const planLines = pgTable(
       for: 'select',
       to: authenticatedRole,
       using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}
-        and ${currentRoleSubquery} in ('owner', 'manager')`,
+        and ${currentRoleSubquery} in ('owner', 'manager')
+        and public.supplier_can_access_plan_line(${t.planId}, ${t.supplierCompanyId})`,
     }),
     pgPolicy('plan_lines_insert_staff', {
       as: 'permissive',
@@ -733,9 +706,7 @@ export const orders = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.approvedPlanId} in (
-        select plan_id from ${planLines} where supplier_company_id = ${currentCompanyIdSubquery}
-      )`,
+      using: sql`public.supplier_can_access_order(${t.id})`,
     }),
     // Допустимость самого перехода (from → to по актёру) проверяет
     // packages/engine order/transition() в server action ДО этого UPDATE;
@@ -774,12 +745,12 @@ export const orders = pgTable(
       as: 'permissive',
       for: 'update',
       to: authenticatedRole,
-      using: sql`${t.state} = 'shipped' and exists (
+      using: sql`${t.state} = 'shipped' and public.supplier_can_access_order(${t.id}) and exists (
         select 1 from ${planLines} pl
         where pl.plan_id = ${t.approvedPlanId}
           and pl.supplier_company_id = ${currentCompanyIdSubquery}
       )`,
-      withCheck: sql`${t.state} in ('shipped', 'delivered') and exists (
+      withCheck: sql`${t.state} in ('shipped', 'delivered') and public.supplier_can_access_order(${t.id}) and exists (
         select 1 from ${planLines} pl
         where pl.plan_id = ${t.approvedPlanId}
           and pl.supplier_company_id = ${currentCompanyIdSubquery}
@@ -820,7 +791,7 @@ export const orderSupplierDeliveries = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
+      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery} and public.supplier_can_access_order(${t.orderId})`,
     }),
     pgPolicy('order_supplier_deliveries_select_staff', {
       as: 'permissive',
@@ -844,6 +815,7 @@ export const orderSupplierDeliveries = pgTable(
           where o.id = ${t.orderId}
             and o.state = 'shipped'
             and pl.supplier_company_id = ${t.supplierCompanyId}
+            and public.supplier_can_access_order(${t.orderId})
         )`,
     }),
     pgPolicy('order_supplier_deliveries_service_all', {
@@ -924,7 +896,7 @@ export const supplierPayouts = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
+      using: sql`${t.supplierCompanyId} = ${currentCompanyIdSubquery} and public.supplier_can_access_order(${t.orderId})`,
     }),
     pgPolicy('supplier_payouts_select_staff', {
       as: 'permissive',
@@ -939,6 +911,92 @@ export const supplierPayouts = pgTable(
       withCheck: staffOnly,
     }),
     pgPolicy('supplier_payouts_service_all', {
+      as: 'permissive',
+      for: 'all',
+      to: serviceRole,
+      using: sql`true`,
+      withCheck: sql`true`,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * Аудируемые банковские факты — входящие переводы покупателя, возвраты и
+ * выплаты поставщикам. Статус заказа не является доказательством денег:
+ * переходы используют только подтверждённые строки этой таблицы.
+ */
+export const paymentFacts = pgTable(
+  'payment_facts',
+  {
+    id: id(),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    supplierCompanyId: uuid('supplier_company_id').references(() => companies.id, {
+      onDelete: 'restrict',
+    }),
+    direction: text('direction').notNull(),
+    kind: text('kind').notNull(),
+    status: text('status').notNull().default('pending'),
+    amountKzt: bigint('amount_kzt', { mode: 'number' }).notNull(),
+    reference: text('reference'),
+    proofUrl: text('proof_url'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    confirmedBy: uuid('confirmed_by').references(() => users.id, { onDelete: 'set null' }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    check('payment_facts_amount_nonnegative', sql`${t.amountKzt} >= 0`),
+    check(
+      'payment_facts_reference_valid',
+      sql`${t.status} = 'void' or length(trim(coalesce(${t.reference}, ''))) between 1 and 200`,
+    ),
+    check('payment_facts_direction_valid', sql`${t.direction} in ('inbound', 'outbound')`),
+    check(
+      'payment_facts_kind_valid',
+      sql`${t.kind} in ('prepayment', 'surcharge', 'refund', 'supplier_payout')`,
+    ),
+    check('payment_facts_status_valid', sql`${t.status} in ('pending', 'confirmed', 'void')`),
+    check(
+      'payment_facts_kind_direction_valid',
+      sql`(${t.direction} = 'inbound' and ${t.kind} in ('prepayment', 'surcharge')) or (${t.direction} = 'outbound' and ${t.kind} in ('refund', 'supplier_payout'))`,
+    ),
+    uniqueIndex('payment_facts_idempotency_key_idx').on(t.idempotencyKey),
+    index('payment_facts_order_id_idx').on(t.orderId),
+    index('payment_facts_status_idx').on(t.status),
+    pgPolicy('payment_facts_select_staff', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: staffOnly,
+    }),
+    pgPolicy('payment_facts_select_buyer_own', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: sql`${t.direction} = 'inbound' and ${t.orderId} in (select o.id from ${orders} o join ${requests} r on r.id = o.request_id where r.buyer_company_id = ${currentCompanyIdSubquery})`,
+    }),
+    pgPolicy('payment_facts_select_supplier_own', {
+      as: 'permissive',
+      for: 'select',
+      to: authenticatedRole,
+      using: sql`${t.direction} = 'outbound' and ${t.supplierCompanyId} = ${currentCompanyIdSubquery} and public.supplier_can_access_order(${t.orderId})`,
+    }),
+    pgPolicy('payment_facts_insert_staff', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('payment_facts_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
+    }),
+    pgPolicy('payment_facts_service_all', {
       as: 'permissive',
       for: 'all',
       to: serviceRole,

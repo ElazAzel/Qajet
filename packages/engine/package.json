@@ -6,10 +6,12 @@
   "exports": {
     "./money": "./src/money/index.ts",
     "./intake": "./src/intake/parse.ts",
+    "./catalog": "./src/catalog/index.ts",
     "./estimate": "./src/estimate/estimate.ts",
     "./match": "./src/match/match.ts",
     "./combine": "./src/combine/combine.ts",
     "./costing": "./src/costing/allocate.ts",
+    "./settlement": "./src/settlement/calculate.ts",
     "./leadtime": "./src/leadtime/predict.ts",
     "./tax": "./src/tax/snr.ts",
     "./order": "./src/order/transition.ts",

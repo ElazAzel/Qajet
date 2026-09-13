@@ -7,6 +7,7 @@ import {
   extractQuantity,
   matchNomenclature,
   normalizeText,
+  parseRequestText,
   resolveAlias,
   stringSimilarity,
 } from './parse.js';
@@ -186,5 +187,63 @@ describe('resolveAlias', () => {
 
   it('совпадение есть, но другой kind — null', () => {
     expect(resolveAlias('футболки поло', aliases, 'material')).toBeNull();
+  });
+});
+
+describe('parseRequestText', () => {
+  const catalog = [
+    {
+      key: 'tshirt-logo',
+      label: 'футболка с логотипом',
+      category: 'merch',
+      unit: 'шт',
+      qtyMin: 50,
+      qtyMax: 500,
+      requiredCapabilities: ['screen-print'],
+    },
+    {
+      key: 'mug-logo',
+      label: 'кружка с логотипом',
+      category: 'merch',
+      unit: 'шт',
+      qtyMin: 50,
+      qtyMax: 1000,
+      requiredCapabilities: ['screen-print'],
+    },
+  ];
+
+  it('разбирает несколько позиций, общие срок и бюджет, не меняя ввод молча', () => {
+    const result = parseRequestText(
+      '200 футболок с логотипом и 150 кружек с логотипом; бюджет до 1,2 млн; доставка до 15 октября',
+      catalog,
+      new Date('2026-09-01T00:00:00Z'),
+    );
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((item) => item.itemKey)).toEqual(['tshirt-logo', 'mug-logo']);
+    expect(result.items.map((item) => item.quantity.value?.qty)).toEqual([200, 150]);
+    expect(result.items.every((item) => !item.needsClarification)).toBe(true);
+    expect(result.budget.value).toBe(1_200_000);
+    expect(result.deadline.value).toBe('2026-10-15');
+    expect(result.needsClarification).toBe(false);
+  });
+
+  it('оставляет неуказанное количество и незнакомую позицию уточнением', () => {
+    const result = parseRequestText('футболка с логотипом; 20 неизвестных сувениров', catalog);
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0]?.quantity.value).toBeNull();
+    expect(result.items[0]?.needsClarification).toBe(true);
+    expect(result.items[1]?.itemKey).toBeNull();
+    expect(result.items[1]?.needsClarification).toBe(true);
+    expect(result.needsClarification).toBe(true);
+  });
+
+  it('не принимает отрицательный бюджет как отсутствие ограничения', () => {
+    const result = parseRequestText('-1000 тг на 200 футболок', catalog);
+
+    expect(result.budget.value).toBeNull();
+    expect(result.budget.needsClarification).toBe(true);
+    expect(result.budget.reason).toContain('положительным');
   });
 });

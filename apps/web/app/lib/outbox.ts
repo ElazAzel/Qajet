@@ -1,6 +1,6 @@
 import { createRfqResponseToken } from './rfq-response';
 
-export type OutboxStatus = 'pending' | 'sent' | 'failed';
+export type OutboxStatus = 'pending' | 'processing' | 'sent' | 'failed';
 export type OutboxStatusTone = 'attention' | 'success' | 'danger' | 'neutral';
 
 export interface OutboxMessageInput {
@@ -10,16 +10,19 @@ export interface OutboxMessageInput {
   subject: string;
   body: string;
   payload?: Record<string, unknown>;
+  idempotencyKey?: string;
 }
 
 const STATUS_LABELS: Record<OutboxStatus, string> = {
   pending: 'В очереди',
+  processing: 'Отправляется',
   sent: 'Отправлено',
   failed: 'Ошибка',
 };
 
 const STATUS_TONES: Record<OutboxStatus, OutboxStatusTone> = {
   pending: 'attention',
+  processing: 'attention',
   sent: 'success',
   failed: 'danger',
 };
@@ -53,6 +56,7 @@ export function buildRfqNotification(input: {
 
   return {
     kind: 'rfq_invitation',
+    idempotencyKey: `rfq-invitation:${input.rfqId}`,
     recipient: input.recipient,
     subject: `QAJET: запрос предложения — ${input.requestTitle}`,
     body: [

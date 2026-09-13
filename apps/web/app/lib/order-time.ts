@@ -34,7 +34,10 @@ const STAGE_ORDER: readonly TimeEntryStage[] = [
 export interface StageTime {
   stage: TimeEntryStage;
   label: string;
+  /** Legacy elapsed time between stage transitions; never presented as active work. */
   autoSeconds: number;
+  /** Server-capped visible-tab heartbeat time. */
+  activeSeconds: number;
   manualSeconds: number;
 }
 
@@ -54,12 +57,14 @@ export async function loadOrderTime(
       stage,
       label: TIME_ENTRY_STAGE_LABEL[stage],
       autoSeconds: 0,
+      activeSeconds: 0,
       manualSeconds: 0,
     };
     // Автоматическое и ручное складываются раздельно: правка консьержа не
     // должна выглядеть замером автотаймера.
     if (row.source === 'manual') current.manualSeconds += row.seconds;
-    else current.autoSeconds += row.seconds;
+    else if (row.source === 'active') current.activeSeconds += Math.max(0, row.seconds);
+    else current.autoSeconds += Math.max(0, row.seconds);
     byStage.set(stage, current);
   }
 

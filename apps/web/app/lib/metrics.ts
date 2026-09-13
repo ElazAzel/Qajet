@@ -48,6 +48,17 @@ export interface MetricsData {
   hourCostKzt: number;
 }
 
+const CONVERTED_ORDER_STATES = new Set([
+  'plan_approved',
+  'suppliers_paid',
+  'in_production',
+  'shipped',
+  'delivered',
+  'accepted',
+  'closed',
+]);
+const ACCEPTED_ORDER_STATES = new Set(['accepted', 'closed']);
+
 export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData> {
   const { data: rfqRows } = await supabase.from('rfqs').select('request_id');
   const { data: orderRows } = await supabase
@@ -59,7 +70,7 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
   let requestsWithRfqAndOrder = 0;
   for (const requestId of requestIdsWithRfq) {
     const order = orderByRequestId.get(requestId);
-    if (order && order.state !== 'cancelled') requestsWithRfqAndOrder++;
+    if (order && CONVERTED_ORDER_STATES.has(order.state)) requestsWithRfqAndOrder++;
   }
 
   const { data: latestEstimatorSnapshot } = await supabase
@@ -85,9 +96,7 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
   const companyOrderCounts = new Map<string, number>();
   for (const row of requestsWithOrders ?? []) {
     const orders = Array.isArray(row.orders) ? row.orders : row.orders ? [row.orders] : [];
-    const hasRealOrder = orders.some(
-      (o: { state: string }) => o.state !== 'draft' && o.state !== 'cancelled',
-    );
+    const hasRealOrder = orders.some((o: { state: string }) => ACCEPTED_ORDER_STATES.has(o.state));
     if (hasRealOrder) {
       companyOrderCounts.set(
         row.buyer_company_id,
@@ -98,11 +107,11 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
   const totalCompanies = companyOrderCounts.size;
   const repeatCompanies = [...companyOrderCounts.values()].filter((n) => n > 1).length;
 
-  const closedOrderIds = (orderRows ?? [])
+  const closedPlanIds = (orderRows ?? [])
     .filter((o) => o.state === 'closed')
     .map((o) => o.approved_plan_id);
-  const { data: closedPlans } = closedOrderIds.length
-    ? await supabase.from('plans').select('commission_kzt, total_kzt').in('id', closedOrderIds)
+  const { data: closedPlans } = closedPlanIds.length
+    ? await supabase.from('plans').select('commission_kzt, total_kzt').in('id', closedPlanIds)
     : { data: [] };
 
   const gmvTotal = (orderRows ?? [])
@@ -112,7 +121,8 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
 
   const { data: timeEntryRows } = await supabase
     .from('time_entries')
-    .select('order_id, seconds, created_at');
+    .select('order_id, seconds, created_at, source')
+    .in('source', ['active', 'manual']);
   const secondsByOrder = new Map<string, number>();
   for (const row of timeEntryRows ?? []) {
     secondsByOrder.set(row.order_id, (secondsByOrder.get(row.order_id) ?? 0) + row.seconds);
@@ -158,7 +168,7 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
   // через второй, отдельно посчитанный процент.
   const serviceCost = buildServiceCost({
     secondsByOrder,
-    closedOrderCount: closedOrderIds.length,
+    closedOrderCount: closedPlanIds.length,
     requestsWithRfq: requestIdsWithRfq.size,
     requestsWithRfqAndOrder,
     hourCostKzt,
@@ -175,7 +185,7 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
     },
     estimatorMapePct,
     repeatCompanies: { total: totalCompanies, repeat: repeatCompanies },
-    gmv: { closedOrders: closedOrderIds.length, totalKzt: gmvTotal },
+    gmv: { closedOrders: closedPlanIds.length, totalKzt: gmvTotal },
     commission: {
       closedOrders: closedPlans?.length ?? 0,
       totalKzt: commissionTotal,
@@ -196,18 +206,28 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
  * стали 4, то на каждый выигранный заказ приходится ещё 1.5 подбора,
  * которые тоже кто-то делал руками.
  */
-function buildServiceCost(input: {
+export function buildServiceCost(input: {
   secondsByOrder: Map<string, number>;
   closedOrderCount: number;
   requestsWithRfq: number;
   requestsWithRfqAndOrder: number;
   hourCostKzt: number;
 }): ServiceCost | null {
-  const { secondsByOrder, requestsWithRfq, requestsWithRfqAndOrder, hourCostKzt } = input;
-  if (secondsByOrder.size === 0 || hourCostKzt <= 0) return null;
+  const {
+    secondsByOrder,
+    closedOrderCount,
+    requestsWithRfq,
+    requestsWithRfqAndOrder,
+    hourCostKzt,
+  } = input;
+  if (secondsByOrder.size === 0 || closedOrderCount <= 0 || hourCostKzt <= 0) return null;
 
   const totalHours = [...secondsByOrder.values()].reduce((s, v) => s + v, 0) / 3600;
-  const directHours = totalHours / secondsByOrder.size;
+  // The numerator includes all recorded work in the reporting cohort; divide
+  // by actual closed wins, not by whichever orders happened to have a row.
+  // This keeps the unit cost honest when open/lost RFQ work is allocated to
+  // the orders that paid for the service.
+  const directHours = totalHours / closedOrderCount;
 
   // Конверсия ниже 100% означает, что часть подборов не окупилась заказом.
   const conversion = requestsWithRfq > 0 ? requestsWithRfqAndOrder / requestsWithRfq : 1;

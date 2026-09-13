@@ -6,6 +6,18 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../current-user';
 import type { ActionResult } from './request-actions';
 
+function safeMessageReturnPath(value: unknown): string {
+  if (typeof value !== 'string') return '/buyer/messages';
+  if (
+    value.startsWith('/buyer/messages') ||
+    value.startsWith('/supplier/messages') ||
+    (value.startsWith('/concierge/orders/') && value.includes('/messages'))
+  ) {
+    return value;
+  }
+  return '/buyer/messages';
+}
+
 /**
  * Отправка сообщения в тред — agents.md §5. Роль здесь не проверяется
  * намеренно: писать в тред может любой, кому он виден, а видимость уже
@@ -29,7 +41,54 @@ export async function sendMessage(threadId: string, body: string): Promise<Actio
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/buyer/messages');
-  revalidatePath('/concierge');
+  revalidatePath('/supplier/messages');
+  revalidatePath('/concierge', 'layout');
+  return { ok: true };
+}
+
+/** Отметка последнего просмотренного сообщения — не флаг на каждом сообщении. */
+export async function markThreadRead(threadId: string): Promise<ActionResult> {
+  const user = await requireCurrentUser();
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from('thread_reads').upsert(
+    {
+      thread_id: threadId,
+      user_id: user.id,
+      last_read_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'thread_id,user_id' },
+  );
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Автор может поправить только собственный текст; это также продублировано RLS. */
+export async function editMessage(
+  messageId: string,
+  body: string,
+  returnPath = '/buyer/messages',
+): Promise<ActionResult> {
+  const user = await requireCurrentUser();
+  const text = body.trim();
+  if (!text) return { ok: false, error: 'Сообщение пустое' };
+  if (text.length > 10_000) return { ok: false, error: 'Сообщение слишком длинное' };
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('messages')
+    .update({ body: text, updated_at: new Date().toISOString() })
+    .eq('id', messageId)
+    .eq('author_user_id', user.id)
+    .select('id')
+    .maybeSingle();
+  if (error || !data) return { ok: false, error: error?.message ?? 'Сообщение не найдено' };
+
+  revalidatePath('/buyer/messages');
+  revalidatePath('/supplier/messages');
+  revalidatePath('/concierge', 'layout');
+  const safePath = safeMessageReturnPath(returnPath);
+  revalidatePath(safePath.split('?')[0] ?? safePath);
   return { ok: true };
 }
 
@@ -52,5 +111,5 @@ export async function sendMessageFormAction(
   // действия Next не перезапрашивал маршрут, сообщение доходило до базы, но
   // появлялось в треде только после полной перезагрузки страницы. Redirect
   // на тот же адрес форсирует настоящую навигацию и перерисовку.
-  redirect(`/buyer/messages?thread=${threadId}`);
+  redirect(safeMessageReturnPath(formData.get('returnPath')));
 }

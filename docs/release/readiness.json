@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "service": "QAJET",
+  "scope": "web-and-mobile-web",
+  "status": "implementation-in-progress",
+  "verifiedAt": "2026-09-13",
+  "sourceSha": null,
+  "gates": {
+    "source": "pending-local-gate",
+    "typecheck": "pending-local-gate",
+    "lint": "pending-local-gate",
+    "unitTests": "pending-local-gate",
+    "webBuild": "pending-local-gate",
+    "liveSupabase": "external-environment-required",
+    "productionDeployment": "pending-current-release",
+    "backupRestore": "external-environment-required",
+    "pdResidency": "external-infrastructure-decision-required",
+    "pilot": "external-real-order-required"
+  },
+  "externalRequirements": [
+    "Production/staging Supabase URL, anon key, service-role key and database URL",
+    "CRON_SECRET and LINK_SIGNING_SECRET in every production environment",
+    "Mail domain and Resend credentials, or an operator for the outbox",
+    "A tested backup and restore procedure for database, Auth and private files",
+    "A Kazakhstan data-residency decision before real personal data is used",
+    "A real pilot company, supplier and bank-transfer operator"
+  ]
+}

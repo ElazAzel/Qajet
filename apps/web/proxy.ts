@@ -35,6 +35,7 @@ export const config = {
     '/supplier/:path*',
     '/concierge/:path*',
     '/admin/:path*',
+    '/auth/:path*',
     '/metrics',
     '/login',
   ],

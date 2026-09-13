@@ -13,7 +13,9 @@ import { ORDER_STATE_LABEL, type OrderState } from './order-state';
  * (decomposition) из `plans` — задача «комиссия платформы»: покупатель
  * видит только итоговую цену исполнения заказа, без разбивки поставщик/
  * комиссия. `delivery_kzt` оставлен отдельной строкой — это логистика, не
- * структура наценки. Честная оговорка: `plans_select_via_request`
+ * структура наценки. Отдельное вознаграждение поставщика, если оно есть,
+ * раскрывается отдельной строкой по правилу §7.9. Честная оговорка:
+ * `plans_select_via_request`
  * по-прежнему пускает покупательскую сессию читать ВСЮ строку `plans`
  * напрямую через PostgREST (RLS не умеет колоночно), так что
  * `commission_kzt`/`total_supplier_kzt` в самой БД остаются technically
@@ -32,9 +34,12 @@ export interface StageEvent {
 }
 
 export interface BuyerOrderPlan {
+  id: string;
+  version: number;
   kind: string;
   status: string;
   deliveryKzt: number;
+  supplierRebateKzt: number;
   totalKzt: number;
   etaDate: string | null;
   slackDays: number | null;
@@ -81,6 +86,7 @@ export interface BuyerOrderDetail {
   events: StageEvent[];
   rejections: RejectionSummary[];
   ratingTargets: BuyerRatingTarget[];
+  alternatives: BuyerOrderPlan[];
 }
 
 export async function loadBuyerOrder(
@@ -109,25 +115,31 @@ export async function loadBuyerOrder(
     rated: row.rated,
   }));
 
-  let plan: BuyerOrderPlan | null = null;
-  if (order.approved_plan_id) {
-    const { data: planRow } = await supabase
-      .from('plans')
-      .select('kind, status, delivery_kzt, total_kzt, eta_date, slack_days, supplier_count')
-      .eq('id', order.approved_plan_id)
-      .maybeSingle();
-    if (planRow) {
-      plan = {
-        kind: planRow.kind,
-        status: planRow.status,
-        deliveryKzt: planRow.delivery_kzt,
-        totalKzt: planRow.total_kzt,
-        etaDate: planRow.eta_date,
-        slackDays: planRow.slack_days,
-        supplierCount: planRow.supplier_count,
-      };
-    }
-  }
+  const { data: planRows } = await supabase
+    .from('plans')
+    .select(
+      'id, version, kind, status, delivery_kzt, supplier_rebate_kzt, total_kzt, eta_date, slack_days, supplier_count',
+    )
+    .eq('request_id', order.request_id)
+    .in('status', ['draft', 'proposed', 'approved'])
+    .order('version', { ascending: false });
+  const toPlan = (planRow: NonNullable<typeof planRows>[number]): BuyerOrderPlan => ({
+    id: planRow.id,
+    version: planRow.version,
+    kind: planRow.kind,
+    status: planRow.status,
+    deliveryKzt: planRow.delivery_kzt,
+    supplierRebateKzt: planRow.supplier_rebate_kzt,
+    totalKzt: planRow.total_kzt,
+    etaDate: planRow.eta_date,
+    slackDays: planRow.slack_days,
+    supplierCount: planRow.supplier_count,
+  });
+  const currentPlanRow = planRows?.find((planRow) => planRow.id === order.approved_plan_id) ?? null;
+  const plan = currentPlanRow ? toPlan(currentPlanRow) : null;
+  const alternatives = (planRows ?? [])
+    .filter((planRow) => ['proposed', 'approved'].includes(planRow.status))
+    .map(toPlan);
 
   const { data: rejectionRows } = await supabase
     .from('plan_rejections')
@@ -189,5 +201,6 @@ export async function loadBuyerOrder(
     events,
     rejections,
     ratingTargets,
+    alternatives,
   };
 }

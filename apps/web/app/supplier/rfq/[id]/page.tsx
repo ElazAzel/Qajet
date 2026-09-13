@@ -23,6 +23,8 @@ interface RfqDetailRow {
   id: string;
   status: string;
   respond_by: string | null;
+  revision_requested: boolean;
+  revision_note: string | null;
   requests: {
     id: string;
     title: string;
@@ -40,7 +42,7 @@ export default async function SupplierRfqPage({ params }: { params: Promise<{ id
   const { data } = await supabase
     .from('rfqs')
     .select(
-      'id, status, respond_by, requests(id, title, deadline_date, companies(name), request_items(id, name, qty, unit, category))',
+      'id, status, respond_by, revision_requested, revision_note, requests(id, title, deadline_date, companies(name), request_items(id, name, qty, unit, category))',
     )
     .eq('id', id)
     .maybeSingle<RfqDetailRow>();
@@ -50,7 +52,8 @@ export default async function SupplierRfqPage({ params }: { params: Promise<{ id
   const request = data.requests;
   const buyerCompany = Array.isArray(request.companies) ? request.companies[0] : request.companies;
   const items = request.request_items ?? [];
-  const alreadyAnswered = data.status !== 'sent';
+  const revisionRequested = data.status === 'quoted' && data.revision_requested;
+  const alreadyAnswered = !['sent', 'quick_responded'].includes(data.status) && !revisionRequested;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
@@ -74,7 +77,19 @@ export default async function SupplierRfqPage({ params }: { params: Promise<{ id
           На этот запрос уже дан ответ ({data.status === 'quoted' ? 'КП отправлено' : 'отказ'}).
         </div>
       ) : (
-        <QuoteForm rfqId={data.id} items={items} />
+        <>
+          {revisionRequested && (
+            <div className="mt-6 rounded-card border border-signal/40 bg-signal/10 p-4 text-fine text-ink">
+              <p className="font-semibold">QAJET запросил исправление КП</p>
+              <p className="mt-1 text-muted">{data.revision_note}</p>
+              <p className="mt-2 text-muted">
+                Предыдущая версия сохранена в истории. Отправьте новую версию целиком или только
+                позиции, по которым есть уточнение.
+              </p>
+            </div>
+          )}
+          <QuoteForm rfqId={data.id} items={items} revision={revisionRequested} />
+        </>
       )}
     </div>
   );

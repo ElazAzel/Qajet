@@ -32,6 +32,7 @@ const valid: QuoteLineInput = {
   requestItemId: '00000000-0000-4000-8000-000000000001',
   unitPriceKzt: 100,
   leadTimeDays: 2,
+  capabilityConfirmed: true,
 };
 const validRfqId = '00000000-0000-4000-8000-000000000002';
 

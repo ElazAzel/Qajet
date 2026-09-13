@@ -8,6 +8,8 @@ import {
   extractQuantity,
   matchNomenclature,
   normalizeText,
+  type ParsedRequestDraft,
+  parseRequestText,
   resolveAlias,
 } from '@qajet/engine/intake';
 import { z } from 'zod';
@@ -67,6 +69,28 @@ export interface QuickParseResult {
    *  собственной категорией найденной каталожной позиции — только для
    *  показа, не для записи (см. комментарий в шапке файла). */
   categoryHint: { category: CatalogCategory; label: string } | null;
+}
+
+/** Полный серверный preview заявки: несколько позиций и общие поля. */
+export async function parseRequestTextAction(text: string): Promise<ParsedRequestDraft> {
+  await requireCurrentUser();
+  const parsedText = quickTextSchema.safeParse(text);
+  if (!parsedText.success) {
+    return parseRequestText('', [], new Date());
+  }
+  return parseRequestText(
+    parsedText.data,
+    CATALOG.map((item) => ({
+      key: item.itemKey,
+      label: item.name,
+      category: item.category,
+      unit: item.unit,
+      qtyMin: item.qtyMin,
+      qtyMax: item.qtyMax,
+      requiredCapabilities: item.requiredCapabilities,
+    })),
+    new Date(),
+  );
 }
 
 export async function parseQuickTextAction(text: string): Promise<QuickParseResult> {

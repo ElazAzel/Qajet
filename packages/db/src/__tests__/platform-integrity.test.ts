@@ -82,6 +82,19 @@ async function asUser(tx: postgres.TransactionSql, id: string) {
   await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: id, role: 'authenticated' })}, true)`;
 }
 
+async function approvePlan(tx: postgres.TransactionSql, orderId: string) {
+  const plan = (
+    await tx<{ id: string; version: number }[]>`
+      select p.id, p.version
+      from orders o
+      join plans p on p.id = o.approved_plan_id
+      where o.id = ${orderId}
+    `
+  )[0];
+  if (!plan) throw new Error('Тестовая фикстура не содержит план заказа.');
+  return tx`select approve_plan(${orderId}, ${plan.id}, ${plan.version})`;
+}
+
 describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', () => {
   it('supplier cannot attach a quote line from another request', async () =>
     scenario(async (tx, f) => {
@@ -122,7 +135,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
   it('approval changes plan, order and history together', async () =>
     scenario(async (tx, f) => {
       await asUser(tx, f[2]);
-      await tx`select approve_plan(${f[11]})`;
+      await approvePlan(tx, f[11]);
       expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe(
         'plan_approved',
       );
@@ -142,7 +155,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
         values (${planLine}, ${f[10]}, ${f[7]}, ${f[1]}, ${quoteLine}, 10, 100000, 23, 23000)`;
 
       await asUser(tx, f[2]);
-      await tx`select approve_plan(${f[11]})`;
+      await approvePlan(tx, f[11]);
       await asUser(tx, f[3]);
       await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at)
         values (${f[11]}, ${f[1]}, 100000, 'paid', now())`;
@@ -198,7 +211,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
         (${planLineB}, ${f[10]}, ${f[7]}, ${supplierB}, ${lineB}, 5, 50000, 23, 11500)`;
 
       await asUser(tx, f[2]);
-      await tx`select approve_plan(${f[11]})`;
+      await approvePlan(tx, f[11]);
       await asUser(tx, f[3]);
       await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at) values
         (${f[11]}, ${f[1]}, 50000, 'paid', now()), (${f[11]}, ${supplierB}, 50000, 'paid', now())`;
@@ -235,7 +248,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     scenario(async (tx, f) => {
       await tx`update public.users set role = 'manager', approval_limit_kzt = 100000 where id = ${f[2]}`;
       await asUser(tx, f[2]);
-      await tx`select approve_plan(${f[11]})`;
+      await approvePlan(tx, f[11]);
       expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe(
         'awaiting_internal_approval',
       );
@@ -245,9 +258,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     scenario(async (tx, f) => {
       await tx`insert into permissions(user_id, key, value) values (${f[2]}, 'can_approve_plan', 'false')`;
       await asUser(tx, f[2]);
-      await expect(tx.savepoint((sp) => sp`select approve_plan(${f[11]})`)).rejects.toThrow(
-        'отозвано',
-      );
+      await expect(tx.savepoint((sp) => approvePlan(sp, f[11]))).rejects.toThrow('отозвано');
       expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe(
         'plan_proposed',
       );
@@ -256,7 +267,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
   it('approved plans can be superseded without unlocking their terms', async () =>
     scenario(async (tx, f) => {
       await asUser(tx, f[2]);
-      await tx`select approve_plan(${f[11]})`;
+      await approvePlan(tx, f[11]);
       const events = await tx`select note from order_stage_events where order_id = ${f[11]}`;
       expect(events[0]?.note).toContain(f[10]);
       await asUser(tx, f[3]);
@@ -320,7 +331,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
         values (${planLine}, ${f[10]}, ${f[7]}, ${f[1]}, ${quoteLine}, 10, 100000, 23, 23000)`;
 
       await asUser(tx, f[2]);
-      await tx`select approve_plan(${f[11]})`;
+      await approvePlan(tx, f[11]);
       await asUser(tx, f[3]);
       await tx`insert into supplier_payouts (order_id, supplier_company_id, amount_kzt, status, paid_at)
         values (${f[11]}, ${f[1]}, 100000, 'paid', now())`;
@@ -409,7 +420,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
         Number((await tx`select total_kzt from plans where id = ${f[10]}`)[0]?.total_kzt),
       ).toBe(121000);
       await asUser(tx, f[2]);
-      await tx`select approve_plan(${f[11]})`;
+      await approvePlan(tx, f[11]);
       await asUser(tx, f[3]);
       await expect(
         tx.savepoint((sp) => sp`update plan_lines set commission_pct = 24 where id = ${line}`),

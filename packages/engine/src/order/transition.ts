@@ -73,6 +73,8 @@ export const ORDER_TRANSITION_GRAPH: Record<OrderState, readonly Edge[]> = {
     { to: 'cancelled', actors: STAFF },
   ],
   on_hold: [
+    { to: 'plan_approved', actors: ['buyer'] },
+    { to: 'awaiting_internal_approval', actors: ['buyer'] },
     { to: 'suppliers_paid', actors: STAFF },
     { to: 'cancelled', actors: STAFF },
   ],

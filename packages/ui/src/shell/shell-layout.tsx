@@ -76,6 +76,7 @@ export function ShellLayout({
   const pathname = usePathname();
   const router = useRouter();
   const ordersHref = navItems[0]?.href;
+  const messagesHref = navItems.find((item) => item.key === 'messages')?.href;
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Палитра (⌘K) монтируется здесь, а не в каждой роли: компонент был
@@ -205,17 +206,15 @@ export function ShellLayout({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-4">
-            <button
-              type="button"
-              aria-label="Уведомления"
-              className="relative flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-page hover:text-ink"
-            >
-              <Bell size={18} aria-hidden="true" />
-              <span
-                className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-signal"
-                aria-hidden="true"
-              />
-            </button>
+            {messagesHref && (
+              <a
+                href={messagesHref}
+                aria-label="Открыть сообщения"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-page hover:text-ink"
+              >
+                <Bell size={18} aria-hidden="true" />
+              </a>
+            )}
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-10 text-sm font-semibold text-purple">
                 {initials(user.name)}

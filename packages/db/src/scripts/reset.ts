@@ -21,6 +21,8 @@ import { assertSeedEnv, runSeed } from '../seed/run.js';
 
 /** Порядок обязан идти от детей к родителям — внешние ключи без каскада. */
 const TABLES_IN_DELETE_ORDER = [
+  'outbox',
+  'attachments',
   'messages',
   'threads',
   'change_requests',
@@ -30,7 +32,9 @@ const TABLES_IN_DELETE_ORDER = [
   'price_observations',
   'ratings',
   'documents',
+  'payment_facts',
   'supplier_payouts',
+  'order_supplier_deliveries',
   'order_stage_events',
   'orders',
   'plan_rejections',

@@ -6,7 +6,6 @@ import {
   isValidCommissionPct,
   suggestCommissionPct,
 } from '@qajet/engine/commission';
-import { percentOfKzt } from '@qajet/engine/money';
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { orderActorFor, requireCurrentUser } from '../current-user';
@@ -92,15 +91,11 @@ export async function updatePlanLineCommission(
     return { ok: false, error: 'Комиссию нельзя менять после утверждения плана покупателем' };
   }
 
-  const newCommissionKzt = percentOfKzt(line.lineTotalKzt, pct);
-
-  const { error: updateError } = await supabase
-    .from('plan_lines')
-    .update({ commission_pct: pct, commission_kzt: newCommissionKzt })
-    .eq('id', planLineId);
+  const { error: updateError } = await supabase.rpc('update_plan_line_commission', {
+    p_plan_line_id: planLineId,
+    p_commission_pct: pct,
+  });
   if (updateError) return { ok: false, error: updateError.message };
-
-  // The database updates the aggregate in the same transaction as the line.
 
   if (line.category) {
     await supabase.from('learning_events').insert({

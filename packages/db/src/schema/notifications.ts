@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, jsonb, pgPolicy, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  jsonb,
+  pgPolicy,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 import { authenticatedRole, serviceRole } from 'drizzle-orm/supabase';
 import { id, timestamps } from './_columns.js';
 import { currentRoleSubquery } from './identity.js';
@@ -29,12 +38,19 @@ export const outbox = pgTable(
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
     availableAt: timestamp('available_at', { withTimezone: true }).notNull().defaultNow(),
+    leaseId: text('lease_id'),
+    leasedUntil: timestamp('leased_until', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').notNull().default(sql`gen_random_uuid()::text`),
+    providerMessageId: text('provider_message_id'),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    deliveryError: text('delivery_error'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
     index('outbox_status_available_at_idx').on(t.status, t.availableAt),
     index('outbox_created_at_idx').on(t.createdAt),
+    uniqueIndex('outbox_idempotency_key_idx').on(t.idempotencyKey),
     pgPolicy('outbox_select_staff', {
       as: 'permissive',
       for: 'select',

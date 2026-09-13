@@ -13,12 +13,11 @@ import { orderActorFor, requireCurrentUser } from '../current-user';
  * отдельным действием (intakeRequest, order-actions.ts), когда берёт
  * заявку в работу. До этого момента заявка существует сама по себе.
  *
- * Позиции берутся из фиксированного каталога (apps/web/app/lib/catalog.ts),
- * не из свободного текста: полноценный NLP-интейк (agents.md §14,
- * matchNomenclature/extractQuantity) — отдельный, ещё не собранный кусок
- * движка; ручной выбор из каталога даёт тот же результат в БД (реальные
- * request_items с category/requiredCapabilities) без риска, что парсер
- * угадает позицию неверно.
+ * Позиции можно выбрать из фиксированного каталога или добавить через
+ * подтверждённый разбор свободного текста в intake-actions.ts. В обоих
+ * случаях в БД попадают реальные request_items с category и
+ * requiredCapabilities; неоднозначный результат парсера не проходит без
+ * явного подтверждения покупателя.
  */
 
 export interface ActionResult {

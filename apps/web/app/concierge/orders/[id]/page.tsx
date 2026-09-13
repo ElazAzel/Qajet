@@ -1,5 +1,6 @@
 import type { CombinedPlan, PlanKind } from '@qajet/engine/combine';
 import { nextStatesFor } from '@qajet/engine/order';
+import { calculateSettlement } from '@qajet/engine/settlement';
 import { BarGrow, type BarSegment, Reveal, Stagger, Stamp } from '@qajet/ui/motion';
 import { Card, formatKzt, Money } from '@qajet/ui/primitives';
 import Link from 'next/link';
@@ -21,6 +22,9 @@ import {
 import { loadOrderTime, type StageTime } from '../../../lib/order-time';
 import { supplierCountLabel } from '../../../lib/pluralize';
 import { createRfqResponseToken } from '../../../lib/rfq-response';
+import { ConciergeAssignment } from './_assignment-form';
+import { PrepaymentActions, SettlementActions, SupplierPayoutActions } from './_financial-actions';
+import { PlanChangeActions } from './_plan-change-actions';
 import { PlanLinesReview } from './_plan-lines';
 import { ProposePlanButton } from './_propose-plan-button';
 import { StageAdvanceButton } from './_stage-advance-button';
@@ -29,9 +33,9 @@ import { TimeTracking } from './_time-tracking';
 /**
  * Экран сравнения вариантов — agents.md §8D, §12, фаза 4: «сюда уходит
  * больше всего времени на дизайн», «это и есть максимально работающий
- * прототип». Сейчас покрыта только стадия quotes_received — единственная,
- * где есть входные КП для combine(); для остальных стадий честный
- * заглушечный экран вместо притворства, что тут уже что-то есть.
+ * прототип». Сравнение использует входные КП на стадии quotes_received;
+ * остальные стадии показывают отдельную панель текущего состояния с
+ * доступными действиями, ссылками и учётом времени.
  */
 
 const PLAN_LABEL: Record<PlanKind, string> = {
@@ -39,6 +43,14 @@ const PLAN_LABEL: Record<PlanKind, string> = {
   cheaper: 'Дешевле',
   more_slack: 'С запасом по сроку',
 };
+
+const PLAN_SCREEN_STATES: readonly OrderState[] = [
+  ...PLAN_EDITABLE_STATES,
+  'estimated',
+  'plan_approved',
+  'on_hold',
+  'accepted',
+];
 
 export default async function ConciergeOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -49,18 +61,38 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
 
   const { data: order } = await supabase
     .from('orders')
-    .select('id, state, request_id, approved_plan_id')
+    .select('id, state, request_id, approved_plan_id, concierge_user_id')
     .eq('id', id)
     .maybeSingle();
   if (!order) notFound();
 
   const state = order.state as OrderState;
+  const { data: conciergeRows } = canPropose
+    ? await supabase
+        .from('users')
+        .select('id, full_name, role')
+        .in('role', ['concierge', 'admin'])
+        .eq('is_active', true)
+        .is('company_id', null)
+        .order('full_name', { ascending: true })
+    : { data: [] };
+  const assignment = canPropose ? (
+    <ConciergeAssignment
+      orderId={order.id}
+      currentUserId={order.concierge_user_id}
+      options={(conciergeRows ?? []).map((row) => ({
+        id: row.id,
+        fullName: row.full_name,
+        role: row.role,
+      }))}
+    />
+  ) : null;
   // Учёт времени по стадиям (agents.md §10 «Консьерж») показывается на любой
   // стадии заказа, а не только там, где есть экран сравнения: работа идёт
   // весь жизненный цикл, и §9 называет её функцией первого класса.
   const timeStages = canPropose ? await loadOrderTime(supabase, order.id) : [];
 
-  if (PLAN_EDITABLE_STATES.includes(state)) {
+  if (PLAN_SCREEN_STATES.includes(state)) {
     return (
       <>
         <PlanLinesScreen
@@ -69,9 +101,10 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
           state={state}
           actor={actor}
         />
+        {assignment}
         {canPropose && (
           <div className="mt-6 max-w-md">
-            <TimeTracking orderId={order.id} stages={timeStages} />
+            <TimeTracking orderId={order.id} currentState={state} stages={timeStages} />
           </div>
         )}
       </>
@@ -83,25 +116,31 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
     const rfqLinks =
       state === 'rfq_sent' ? await loadRfqResponseLinks(supabase, order.request_id) : [];
     return (
-      <NotComparableYet
-        state={state}
-        orderId={order.id}
-        nextStates={nextStates}
-        timeStages={timeStages}
-        rfqLinks={rfqLinks}
-      />
+      <>
+        <OrderStagePanel
+          state={state}
+          orderId={order.id}
+          nextStates={nextStates}
+          timeStages={timeStages}
+          rfqLinks={rfqLinks}
+        />
+        {assignment}
+      </>
     );
   }
 
   const comparison = await loadRequestComparison(supabase, order.request_id);
   if (!comparison || comparison.result.plans.length === 0) {
     return (
-      <NotComparableYet
-        state={state}
-        orderId={order.id}
-        note="Ни один вариант не прошёл допустимость — все КП отбракованы."
-        timeStages={timeStages}
-      />
+      <>
+        {assignment}
+        <OrderStagePanel
+          state={state}
+          orderId={order.id}
+          note="Ни один вариант не прошёл допустимость — все КП отбракованы."
+          timeStages={timeStages}
+        />
+      </>
     );
   }
 
@@ -121,7 +160,22 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
           {result.plans[0]?.explanation.comparedOffersCount ?? 0} предложений, отсеяно{' '}
           {result.rejections.length}
         </p>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-fine font-semibold">
+          <Link
+            href={`/concierge/orders/${order.id}/messages`}
+            className="text-purple hover:underline"
+          >
+            Переписка заказа →
+          </Link>
+          <Link
+            href={`/concierge/orders/${order.id}/quotes`}
+            className="text-purple hover:underline"
+          >
+            Все версии КП →
+          </Link>
+        </div>
       </Reveal>
+      {assignment}
 
       <Stagger startIndex={1} className="mt-6 flex flex-col gap-4">
         {result.plans.map((plan) => (
@@ -165,7 +219,7 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
       )}
       {canPropose && (
         <Reveal className="mt-6 max-w-md">
-          <TimeTracking orderId={order.id} stages={timeStages} />
+          <TimeTracking orderId={order.id} currentState={state} stages={timeStages} />
         </Reveal>
       )}
     </div>
@@ -258,8 +312,8 @@ function PlanCard({
 
 /**
  * Позиции утверждённого плана — задача «комиссия платформы»: раньше здесь
- * (state !== quotes_received) всегда была заглушка NotComparableYet, у
- * консьержа не было экрана с plan_lines вообще. Показывает цену
+ * (state !== quotes_received) раньше не было экрана с plan_lines вообще.
+ * Показывает цену
  * поставщика + комиссию по каждой строке (staff-контекст, покупатель
  * этого не видит — apps/web/app/buyer/orders/[id]/page.tsx показывает
  * только общий итог) и позволяет точечно менять % — 21-24%,
@@ -285,7 +339,7 @@ async function PlanLinesScreen({
 
   if (!plan) {
     return (
-      <NotComparableYet state={state} orderId={orderId} nextStates={nextStatesFor(state, actor)} />
+      <OrderStagePanel state={state} orderId={orderId} nextStates={nextStatesFor(state, actor)} />
     );
   }
 
@@ -293,8 +347,49 @@ async function PlanLinesScreen({
     loadPlanLinesForConcierge(supabase, plan.id),
     loadCommissionSuggestions(supabase),
   ]);
+  const { data: changeRequests } = await supabase
+    .from('change_requests')
+    .select('id, status, diff, created_at')
+    .eq('order_id', orderId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  const { data: paymentRows } = await supabase
+    .from('payment_facts')
+    .select('direction, kind, amount_kzt')
+    .eq('order_id', orderId)
+    .eq('status', 'confirmed')
+    .in('kind', ['prepayment', 'surcharge', 'refund']);
+  let receivedKzt = 0;
+  let refundedKzt = 0;
+  for (const payment of paymentRows ?? []) {
+    if (payment.direction === 'inbound') receivedKzt += payment.amount_kzt;
+    if (payment.direction === 'outbound' && payment.kind === 'refund') {
+      refundedKzt += payment.amount_kzt;
+    }
+  }
+  const settlement = calculateSettlement(plan.total_kzt, receivedKzt - refundedKzt);
 
   const nextStates = nextStatesFor(state, actor);
+  const { data: payoutRows } = await supabase
+    .from('plan_lines')
+    .select('supplier_company_id, line_total_kzt, companies(name)')
+    .eq('plan_id', plan.id)
+    .order('created_at', { ascending: true });
+  const suppliersById = new Map<
+    string,
+    { supplierCompanyId: string; supplierName: string; expectedAmountKzt: number }
+  >();
+  for (const row of payoutRows ?? []) {
+    const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+    const current = suppliersById.get(row.supplier_company_id);
+    suppliersById.set(row.supplier_company_id, {
+      supplierCompanyId: row.supplier_company_id,
+      supplierName: current?.supplierName ?? company?.name ?? 'Поставщик',
+      expectedAmountKzt: (current?.expectedAmountKzt ?? 0) + row.line_total_kzt,
+    });
+  }
+  const suppliers = [...suppliersById.values()];
 
   return (
     <div className="max-w-3xl">
@@ -307,6 +402,20 @@ async function PlanLinesScreen({
           По умолчанию 23% на каждую позицию — можно точечно менять, 21-24%, по объёму и сложности
           исполнения.
         </p>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-fine font-semibold">
+          <Link
+            href={`/concierge/orders/${orderId}/messages`}
+            className="text-purple hover:underline"
+          >
+            Переписка заказа →
+          </Link>
+          <Link
+            href={`/concierge/orders/${orderId}/quotes`}
+            className="text-purple hover:underline"
+          >
+            Все версии КП →
+          </Link>
+        </div>
       </Reveal>
 
       <PlanLinesReview
@@ -315,23 +424,64 @@ async function PlanLinesScreen({
         totalKzt={plan.total_kzt}
       />
 
-      {nextStates.length > 0 && (
-        <div className="mt-6 flex flex-wrap items-start gap-3">
-          {nextStates.map((toState, i) => (
-            <StageAdvanceButton
-              key={toState}
+      {(changeRequests ?? [])
+        .filter((change) => change.status === 'pending')
+        .map((change) => {
+          const diff = (change.diff ?? {}) as {
+            reason?: unknown;
+            requestedSupplierDeltaKzt?: unknown;
+            requestedDeliveryDeltaKzt?: unknown;
+          };
+          return (
+            <Card key={change.id} padding="sm" className="mt-6 border-status-warning-fg/30">
+              <p className="text-sm font-bold text-ink">Запрос изменения условий</p>
+              <p className="mt-1 text-fine text-muted">
+                {typeof diff.reason === 'string' ? diff.reason : 'Без комментария'}
+              </p>
+              <p className="mt-2 text-fine text-muted">
+                Закупка: {Number(diff.requestedSupplierDeltaKzt ?? 0).toLocaleString('ru-RU')} ₸ ·{' '}
+                доставка: {Number(diff.requestedDeliveryDeltaKzt ?? 0).toLocaleString('ru-RU')} ₸
+              </p>
+              <PlanChangeActions changeRequestId={change.id} />
+            </Card>
+          );
+        })}
+
+      {state === 'estimated' ? (
+        <PrepaymentActions orderId={orderId} />
+      ) : (
+        <>
+          {(state === 'plan_approved' || state === 'on_hold') && (
+            <SupplierPayoutActions orderId={orderId} suppliers={suppliers} />
+          )}
+          {state === 'accepted' && (
+            <SettlementActions
               orderId={orderId}
-              toState={toState}
-              primary={i === 0}
+              kind={settlement.kind}
+              amountKzt={settlement.amountKzt}
             />
-          ))}
-        </div>
+          )}
+          {nextStates.filter((toState) => toState !== 'suppliers_paid').length > 0 && (
+            <div className="mt-6 flex flex-wrap items-start gap-3">
+              {nextStates
+                .filter((toState) => toState !== 'suppliers_paid')
+                .map((toState, i) => (
+                  <StageAdvanceButton
+                    key={toState}
+                    orderId={orderId}
+                    toState={toState}
+                    primary={i === 0}
+                  />
+                ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function NotComparableYet({
+function OrderStagePanel({
   state,
   note,
   orderId,
@@ -351,16 +501,14 @@ function NotComparableYet({
       <Stamp tone={ORDER_STATE_TONE[state]} className="w-fit">
         {ORDER_STATE_LABEL[state]}
       </Stamp>
-      <h1 className="text-lg font-bold text-ink">
-        Экран сравнения пока только для стадии «КП получены»
-      </h1>
+      <h1 className="text-lg font-bold text-ink">Текущая стадия заказа</h1>
       <p className="text-sm text-muted">
         {note ??
-          'Этот заказ на другой стадии жизненного цикла — раскладка вариантов появляется один раз, сразу после получения предложений от поставщиков, и уже неактуальна после того, как план утверждён.'}
+          'Для этой стадии доступны действия ниже. Сравнение исполнений показывается на шаге «КП получены», а здесь сохраняются переходы, ссылки поставщикам и рабочее время.'}
       </p>
       {orderId && timeStages !== undefined && (
         <div className="mt-4 w-full max-w-md">
-          <TimeTracking orderId={orderId} stages={timeStages} />
+          <TimeTracking orderId={orderId} currentState={state} stages={timeStages} />
         </div>
       )}
       {orderId && nextStates.length > 0 && (
@@ -396,6 +544,22 @@ function NotComparableYet({
             ))}
           </ul>
         </div>
+      )}
+      {orderId && (state === 'rfq_sent' || state === 'quotes_received') && (
+        <Link
+          href={`/concierge/orders/${orderId}/quotes`}
+          className="mt-1 text-fine font-medium text-purple hover:underline"
+        >
+          Проверить КП и запросить исправление →
+        </Link>
+      )}
+      {orderId && (
+        <Link
+          href={`/concierge/orders/${orderId}/messages`}
+          className="mt-1 text-fine font-medium text-purple hover:underline"
+        >
+          Открыть переписку заказа →
+        </Link>
       )}
       {orderId && ITEMS_EDITABLE_STATES.includes(state) && (
         <Link

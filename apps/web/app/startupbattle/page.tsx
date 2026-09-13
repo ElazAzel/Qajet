@@ -203,8 +203,8 @@ export default function StartupBattlePage() {
           </ScrollReveal>
           <div className={styles.productBottom}>
             <p>
-              <span className={styles.statusDot} /> MVP в разработке · На экранах демонстрационные
-              данные
+              <span className={styles.statusDot} /> Веб-MVP готовится к пилотам · На экранах
+              демонстрационные данные
             </p>
             <Link href="/login">
               Открыть платформу <ArrowUpRight size={16} aria-hidden="true" />

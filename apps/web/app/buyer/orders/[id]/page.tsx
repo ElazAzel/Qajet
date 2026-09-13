@@ -1,24 +1,35 @@
 import { nextStatesFor } from '@qajet/engine/order';
 import { Reveal, Stamp } from '@qajet/ui/motion';
 import { Card, formatKzt, Money } from '@qajet/ui/primitives';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerOrder } from '../../../lib/buyer-order';
 import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE } from '../../../lib/order-state';
 import { supplierCountLabel } from '../../../lib/pluralize';
+import { AttachmentForm } from '../../messages/_attachment-form';
+import { BuyerIssueActions } from './_issue-actions';
 import {
   AcceptDeliveryCta,
   ApprovePlanCta,
   CloseOrderForm,
   SupplierRatingForm,
 } from './_order-actions';
+import { PlanAlternativeSelector } from './_plan-alternatives';
+import { PlanChangeForm } from './_plan-change-form';
 import { ShareOrderButton } from './_share-order-button';
 
 const PLAN_LABEL: Record<string, string> = {
   recommended: 'Рекомендованный',
   cheaper: 'Дешевле',
   more_slack: 'С запасом по сроку',
+};
+
+const DOCUMENT_LABEL: Record<string, string> = {
+  prepay_invoice: 'Счёт на предоплату',
+  act: 'Акт выполненных работ',
+  final_invoice: 'Итоговый счёт',
 };
 
 export default async function BuyerOrderPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,6 +43,27 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
   const canApprove = actor === 'buyer' && nextForBuyer.includes('plan_approved');
   const canAccept = actor === 'buyer' && nextForBuyer.includes('accepted');
   const canClose = actor === 'buyer' && nextForBuyer.includes('closed');
+  const canCancel = actor === 'buyer' && nextForBuyer.includes('cancelled');
+  const canDispute = actor === 'buyer' && nextForBuyer.includes('disputed');
+  const { data: changeRequests } = await supabase
+    .from('change_requests')
+    .select('id, status, diff, created_at')
+    .eq('order_id', order.id)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  const pendingChange = changeRequests?.find((change) => change.status === 'pending');
+  const [{ data: documents }, { data: attachments }] = await Promise.all([
+    supabase
+      .from('documents')
+      .select('id, type, url, created_at')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('attachments')
+      .select('id, file_name, size_bytes, kind, created_at')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: false }),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -74,12 +106,41 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
                 <span className="text-muted">Доставка</span>
                 <span className="numeric text-ink">{formatKzt(order.plan.deliveryKzt)}</span>
               </div>
+              {order.plan.supplierRebateKzt > 0 && (
+                <div className="flex items-center justify-between text-fine">
+                  <span className="text-muted">Дополнительное вознаграждение поставщика</span>
+                  <span className="numeric text-ink">
+                    {formatKzt(order.plan.supplierRebateKzt)}
+                  </span>
+                </div>
+              )}
             </div>
 
             {canApprove && (
               <div className="mt-4">
                 <ApprovePlanCta orderId={order.id} />
               </div>
+            )}
+            {(order.state === 'plan_approved' || order.state === 'on_hold') && !pendingChange && (
+              <PlanChangeForm orderId={order.id} />
+            )}
+            {pendingChange && (
+              <p className="mt-4 border-rule border-t pt-4 text-fine text-muted">
+                Запрос изменения условий передан QAJET и ожидает решения.
+              </p>
+            )}
+            <Link
+              href={`/buyer/orders/${order.id}/changes`}
+              className="mt-4 inline-block text-fine font-semibold text-purple hover:underline"
+            >
+              История изменений условий →
+            </Link>
+            {canApprove && order.plan && (
+              <PlanAlternativeSelector
+                orderId={order.id}
+                currentPlanId={order.plan.id}
+                alternatives={order.alternatives}
+              />
             )}
           </Card>
         </Reveal>
@@ -120,6 +181,12 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
         </Reveal>
       )}
 
+      {(canCancel || canDispute) && (
+        <Reveal className="mt-6" from="up">
+          <BuyerIssueActions orderId={order.id} canCancel={canCancel} canDispute={canDispute} />
+        </Reveal>
+      )}
+
       {order.closedAt && (
         <Reveal className="mt-6" from="up">
           <Card padding="sm">
@@ -138,6 +205,80 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
                 </span>
               </div>
             )}
+          </Card>
+        </Reveal>
+      )}
+
+      {(documents ?? []).length > 0 && (
+        <Reveal className="mt-6" from="up">
+          <Card padding="sm">
+            <p className="text-sm font-bold text-ink">Документы заказа</p>
+            <ul className="mt-3 flex flex-col gap-2">
+              {(documents ?? []).map((document) => (
+                <li
+                  key={document.id}
+                  className="flex flex-wrap items-center justify-between gap-3 border-rule border-t pt-2 first:border-t-0 first:pt-0"
+                >
+                  <span className="text-fine text-ink">
+                    {DOCUMENT_LABEL[document.type] ?? 'Документ'}
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <Link
+                      href={document.url}
+                      className="whitespace-nowrap text-fine font-semibold text-purple hover:underline"
+                    >
+                      Открыть
+                    </Link>
+                    <a
+                      href={`/api/documents/${document.id}/download`}
+                      className="whitespace-nowrap text-fine font-semibold text-muted hover:text-ink hover:underline"
+                    >
+                      Печать / PDF
+                    </a>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </Reveal>
+      )}
+
+      {order.state !== 'closed' && order.state !== 'cancelled' && (
+        <Reveal className="mt-6" from="up">
+          <Card padding="sm">
+            <p className="text-sm font-bold text-ink">Подтверждение перевода</p>
+            <p className="mt-1 text-fine text-muted">
+              Загрузите банковское подтверждение к заказу. Сотрудник QAJET сверит его с фактом
+              поступления и отдельно подтвердит оплату.
+            </p>
+            <AttachmentForm
+              orderId={order.id}
+              kind="prepay_proof"
+              returnPath={`/buyer/orders/${order.id}`}
+            />
+          </Card>
+        </Reveal>
+      )}
+
+      {(attachments ?? []).length > 0 && (
+        <Reveal className="mt-6" from="up">
+          <Card padding="sm">
+            <p className="text-sm font-bold text-ink">Вложения заказа</p>
+            <ul className="mt-3 flex flex-col gap-2">
+              {(attachments ?? []).map((attachment) => (
+                <li key={attachment.id} className="border-rule border-t pt-2 first:border-t-0">
+                  <a
+                    href={`/api/attachments/${attachment.id}/download`}
+                    className="text-fine font-semibold text-purple hover:underline"
+                  >
+                    {attachment.file_name}
+                  </a>
+                  <span className="ml-2 text-micro text-muted">
+                    {formatAttachmentSize(attachment.size_bytes)} · {attachment.kind}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </Card>
         </Reveal>
       )}
@@ -189,4 +330,10 @@ export default async function BuyerOrderPage({ params }: { params: Promise<{ id:
       </Reveal>
     </div>
   );
+}
+
+function formatAttachmentSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
 }

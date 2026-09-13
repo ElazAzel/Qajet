@@ -17,10 +17,16 @@ export default async function AdminLearningPage() {
     { estimator, leadtime, exploration, explorationSuppliersTotal },
     { correctionsTotal, aliases },
     commissionSuggestions,
+    { data: queueRows, error: queueError },
   ] = await Promise.all([
     loadLearningMetrics(supabase),
     loadAliasMetrics(supabase),
     loadCommissionSuggestions(supabase),
+    supabase
+      .from('learning_events')
+      .select('id, type, processed_at, attempts, leased_until, last_error, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50),
   ]);
 
   const latestEstimator = estimator.at(-1);
@@ -194,8 +200,82 @@ export default async function AdminLearningPage() {
           )}
         </Card>
       </Reveal>
+
+      <Reveal delay={0.36}>
+        <Card>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-ink">Очередь обучающих событий</h3>
+              <p className="mt-1 text-fine text-muted">
+                События закрытых заказов обрабатываются отдельно от пользовательского запроса; сбой
+                остаётся видимым и может быть повторен worker-ом.
+              </p>
+            </div>
+            <Stamp tone="neutral">последние 50</Stamp>
+          </div>
+          {queueError ? (
+            <p className="mt-4 text-fine text-danger">Очередь недоступна: {queueError.message}</p>
+          ) : queueRows?.length ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-fine">
+                <thead>
+                  <tr className="border-rule border-b text-micro text-muted uppercase tracking-wide">
+                    <th className="px-2 py-2.5 text-left font-semibold">Создано</th>
+                    <th className="px-2 py-2.5 text-left font-semibold">Тип</th>
+                    <th className="px-2 py-2.5 text-left font-semibold">Состояние</th>
+                    <th className="px-2 py-2.5 text-left font-semibold">Попытки / ошибка</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queueRows.map((row) => {
+                    const failed = Boolean(row.last_error);
+                    const done = Boolean(row.processed_at);
+                    return (
+                      <tr key={row.id} className="border-rule border-b align-top last:border-b-0">
+                        <td className="whitespace-nowrap px-2 py-3 text-muted">
+                          {formatDateTime(row.created_at)}
+                        </td>
+                        <td className="px-2 py-3 font-semibold">{row.type}</td>
+                        <td className="px-2 py-3">
+                          <Stamp tone={failed ? 'signal' : done ? 'success' : 'pending'}>
+                            {failed ? 'Ошибка' : done ? 'Обработано' : 'В очереди'}
+                          </Stamp>
+                          {row.leased_until && !done && (
+                            <p className="mt-1 text-micro text-muted">
+                              lease до {formatDateTime(row.leased_until)}
+                            </p>
+                          )}
+                        </td>
+                        <td className="max-w-80 px-2 py-3 text-muted">
+                          {row.attempts}
+                          {row.last_error && <p className="mt-1 text-danger">{row.last_error}</p>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-4 text-fine text-muted">Обучающих событий пока нет.</p>
+          )}
+        </Card>
+      </Reveal>
     </div>
   );
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
 }
 
 function EmptyNote({ text }: { text: string }) {

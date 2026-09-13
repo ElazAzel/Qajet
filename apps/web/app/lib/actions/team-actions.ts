@@ -20,12 +20,14 @@ import { type InviteTeamMemberInput, normalizeInviteTeamMemberInput } from './te
  * чтения бизнес-данных.
  */
 
-async function requireOwner(): Promise<ActionResult & { companyId?: string }> {
+async function requireOwner(): Promise<
+  ActionResult & { companyId?: string; companyType?: 'buyer' | 'supplier' }
+> {
   const user = await requireCurrentUser();
-  if (user.role !== 'owner' || user.companyType !== 'buyer' || !user.companyId) {
+  if (user.role !== 'owner' || !user.companyType || !user.companyId) {
     return { ok: false, error: 'Менять доступы может только владелец компании' };
   }
-  return { ok: true, companyId: user.companyId };
+  return { ok: true, companyId: user.companyId, companyType: user.companyType };
 }
 
 export async function inviteTeamMember(input: InviteTeamMemberInput): Promise<ActionResult> {
@@ -46,6 +48,7 @@ export async function inviteTeamMember(input: InviteTeamMemberInput): Promise<Ac
       full_name: normalized.fullName,
       company_id: gate.companyId,
       role: 'manager',
+      company_type: gate.companyType,
     },
   });
   if (inviteError || !data.user) {
@@ -68,6 +71,7 @@ export async function inviteTeamMember(input: InviteTeamMemberInput): Promise<Ac
   }
 
   revalidatePath('/buyer/team');
+  revalidatePath('/supplier/team');
   return { ok: true };
 }
 
@@ -100,6 +104,7 @@ export async function setTeamMemberAccess(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/buyer/team');
+  revalidatePath('/supplier/team');
   return { ok: true };
 }
 
@@ -135,5 +140,6 @@ export async function setTeamMemberPermission(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/buyer/team');
+  revalidatePath('/supplier/team');
   return { ok: true };
 }

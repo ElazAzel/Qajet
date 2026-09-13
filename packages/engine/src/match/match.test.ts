@@ -94,6 +94,14 @@ describe('passesHardFilters', () => {
     );
     expect(result).toEqual({ passes: false, reason: 'city_not_served' });
   });
+
+  it('сопоставляет города без зависимости от регистра и лишних пробелов', () => {
+    const result = passesHardFilters(
+      { id: 's1', ...baseSupplier, servesCities: ['  АЛМАТЫ  '] },
+      { ...baseRequest, city: ' Алматы ' },
+    );
+    expect(result).toEqual({ passes: true });
+  });
 });
 
 describe('scoreSupplier / predictSuccessProbability', () => {

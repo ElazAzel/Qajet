@@ -22,4 +22,36 @@ describe('deliveryRoute', () => {
     expect(deliveryRoute(null, 'Алматы').kind).toBe('intercity');
     expect(deliveryRoute(' ', null).kind).toBe('intercity');
   });
+
+  it('uses configured buffers and tariffs for both route kinds', () => {
+    const settings = {
+      localBufferDays: 2,
+      intercityBufferDays: 7,
+      localDeliveryKzt: 8_000,
+      intercityDeliveryKzt: 25_000,
+    };
+    expect(deliveryRoute('Алматы', 'алматы', settings)).toEqual({
+      kind: 'local',
+      bufferDays: 2,
+      deliveryKzt: 8_000,
+    });
+    expect(deliveryRoute('Караганда', 'Алматы', settings)).toEqual({
+      kind: 'intercity',
+      bufferDays: 7,
+      deliveryKzt: 25_000,
+    });
+  });
+
+  it('falls back safely for invalid settings', () => {
+    expect(
+      deliveryRoute('Алматы', 'Алматы', {
+        localBufferDays: -1,
+        localDeliveryKzt: 1.5,
+      }),
+    ).toEqual({
+      kind: 'local',
+      bufferDays: 1,
+      deliveryKzt: 5_000,
+    });
+  });
 });

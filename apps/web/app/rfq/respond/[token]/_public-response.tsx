@@ -86,6 +86,7 @@ function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem
           requestItemId: item.id,
           unitPriceKzt,
           leadTimeDays,
+          capabilityConfirmed: draft.capabilityConfirmed === 'true',
           setupFeeKzt: draft.setupFeeKzt ? Number(draft.setupFeeKzt) : undefined,
           minQty: draft.minQty ? Number(draft.minQty) : undefined,
         },
@@ -129,6 +130,17 @@ function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem
                 onChange={(value) => patch(item.id, 'minQty', value)}
               />
             </div>
+            <label className="mt-3 flex items-start gap-2 text-fine text-muted">
+              <input
+                type="checkbox"
+                checked={draft.capabilityConfirmed === 'true'}
+                onChange={(event) =>
+                  patch(item.id, 'capabilityConfirmed', event.target.checked ? 'true' : 'false')
+                }
+                className="mt-0.5 accent-purple"
+              />
+              <span>Подтверждаю возможность исполнить позицию и указанные условия.</span>
+            </label>
           </div>
         );
       })}
