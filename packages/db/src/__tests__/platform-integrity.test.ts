@@ -160,6 +160,7 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
     }));
   it('buyer cannot mark suppliers paid through a direct update', async () =>
     scenario(async (tx, f) => {
+      await addApprovalLine(tx, f);
       await asUser(tx, f[2]);
       await tx`update orders set state = 'plan_approved' where id = ${f[11]}`;
       await asUser(tx, f[2]);

@@ -808,3 +808,29 @@ DROP TRIGGER IF EXISTS orders_prepaid_payment_guard ON public.orders;
 CREATE TRIGGER orders_prepaid_payment_guard
 BEFORE UPDATE OF state ON public.orders
 FOR EACH ROW EXECUTE FUNCTION public.guard_prepaid_payment_contract();
+--> statement-breakpoint
+
+-- PostgreSQL needs the partial-index predicate in the conflict target. Without
+-- it, every delivered/closed order transition fails before the learning event
+-- can be written, even though source_event_id is protected by a partial unique
+-- index for non-null values.
+CREATE OR REPLACE FUNCTION public.enqueue_order_learning_event()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF current_setting('role', true) = 'service_role' THEN RETURN NEW; END IF;
+  IF NEW.to_state IN ('delivered', 'closed') THEN
+    INSERT INTO public.learning_events(type, payload, source_event_id)
+    VALUES (
+      CASE WHEN NEW.to_state = 'delivered' THEN 'order_delivered' ELSE 'order_closed' END,
+      jsonb_build_object('orderId', NEW.order_id, 'toState', NEW.to_state),
+      NEW.id
+    )
+    ON CONFLICT (source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
