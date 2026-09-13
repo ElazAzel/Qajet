@@ -300,3 +300,47 @@ describe('combine — фильтр допустимости и журнал от
     expect(result.rejections[0]?.code).toBe('capability_not_confirmed');
   });
 });
+
+describe('combine — reconciliation of supplier costs', () => {
+  it('charges setup once and keeps line, commission, and plan totals consistent', () => {
+    const items = [
+      { id: 'item-a', qty: 3 },
+      { id: 'item-b', qty: 7 },
+    ];
+    const offers: QuoteOffer[] = [
+      offer({
+        id: 'offer-a',
+        requestItemId: 'item-a',
+        supplierId: 'supplier-a',
+        unitPriceKzt: 1_000,
+        setupFeeKzt: 2_000,
+        supplierDeliveryKzt: 5_000,
+      }),
+      offer({
+        id: 'offer-b',
+        requestItemId: 'item-b',
+        supplierId: 'supplier-a',
+        unitPriceKzt: 1_000,
+        setupFeeKzt: 2_000,
+        supplierDeliveryKzt: 5_000,
+      }),
+    ];
+
+    const result = combine({
+      ...baseInput,
+      items,
+      offers,
+      commissionRatePct: 23,
+    });
+    const recommended = result.plans.find((plan) => plan.kind === 'recommended');
+
+    expect(recommended).toBeDefined();
+    expect(recommended?.totalSupplierKzt).toBe(12_000);
+    expect(recommended?.lines.map((line) => line.lineTotalKzt)).toEqual([3_600, 8_400]);
+    expect(recommended?.commissionKzt).toBe(2_760);
+    expect((recommended?.lines ?? []).reduce((sum, line) => sum + line.lineTotalKzt, 0)).toBe(
+      recommended?.totalSupplierKzt,
+    );
+    expect(recommended?.totalKzt).toBe(19_760);
+  });
+});

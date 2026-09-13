@@ -1,3 +1,4 @@
+import { allocateSupplierCosts } from '../costing/allocate.js';
 import type { Explanation } from '../explain/types.js';
 import { calculateSlackDays } from '../leadtime/predict.js';
 import type { Kzt } from '../money/index.js';
@@ -209,7 +210,7 @@ function evaluateAssembly(
     );
   }
 
-  const lines: PlanLine[] = [];
+  const costLines: Array<Parameters<typeof allocateSupplierCosts>[0][number]> = [];
   let productSubtotalKzt = 0;
   let bundleDiscountKzt = 0;
   const deliveryBySupplier = new Map<string, number>();
@@ -224,19 +225,28 @@ function evaluateAssembly(
       discount = roundKzt((lineAmount * rule.discountPct) / 100);
       bundleDiscountKzt += discount;
     }
-    lines.push({
+    costLines.push({
       requestItemId: a.requestItemId,
       offerId: a.offer.id,
       supplierId: a.offer.supplierId,
       qty: a.qty,
-      lineTotalKzt: lineAmount - discount,
+      productNetKzt: lineAmount - discount,
+      setupFeeKzt: a.offer.setupFeeKzt,
     });
     deliveryBySupplier.set(a.offer.supplierId, a.offer.supplierDeliveryKzt);
   }
 
-  const setupFeeKzt = sumKzt(assignments.map((a) => a.offer.setupFeeKzt));
+  const supplierCosts = allocateSupplierCosts(costLines);
+  const lines: PlanLine[] = supplierCosts.lines.map((line) => ({
+    requestItemId: line.requestItemId,
+    offerId: line.offerId,
+    supplierId: line.supplierId,
+    qty: line.qty,
+    lineTotalKzt: line.lineTotalKzt,
+  }));
+  const setupFeeKzt = supplierCosts.setupFeeKzt;
   const deliveryKzt = sumKzt([...deliveryBySupplier.values()]);
-  const totalSupplierKzt = productSubtotalKzt - bundleDiscountKzt + setupFeeKzt;
+  const totalSupplierKzt = supplierCosts.totalSupplierKzt;
   const commissionKzt = percentOfKzt(totalSupplierKzt, commissionRatePct);
   const etaDays =
     assignments.length > 0 ? Math.max(...assignments.map((a) => a.offer.predictedLeadDays)) : 0;

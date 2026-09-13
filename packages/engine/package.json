@@ -9,6 +9,7 @@
     "./estimate": "./src/estimate/estimate.ts",
     "./match": "./src/match/match.ts",
     "./combine": "./src/combine/combine.ts",
+    "./costing": "./src/costing/allocate.ts",
     "./leadtime": "./src/leadtime/predict.ts",
     "./tax": "./src/tax/snr.ts",
     "./order": "./src/order/transition.ts",

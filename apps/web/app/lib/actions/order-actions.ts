@@ -2,6 +2,7 @@
 
 import type { PlanKind } from '@qajet/engine/combine';
 import { checkRequestCompleteness } from '@qajet/engine/completeness';
+import { allocateCommission } from '@qajet/engine/costing';
 import { estimate as engineEstimate } from '@qajet/engine/estimate';
 import {
   DEFAULT_WEIGHTS,
@@ -11,7 +12,7 @@ import {
   pickExplorationCandidate,
   scoreSupplier,
 } from '@qajet/engine/match';
-import { percentOfKzt, roundKzt } from '@qajet/engine/money';
+import { roundKzt } from '@qajet/engine/money';
 import { transition } from '@qajet/engine/order';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -278,6 +279,11 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
   const comparison = await loadRequestComparison(supabase, requestId);
   const chosen = comparison?.result.plans.find((p) => p.kind === kind);
   if (!comparison || !chosen) return { ok: false, error: 'Этот вариант плана не найден' };
+  const lineCommissions = allocateCommission(
+    chosen.totalSupplierKzt,
+    comparison.commissionRatePct,
+    chosen.lines.map((line) => line.lineTotalKzt),
+  );
 
   const stageStartedAt = await captureStageStart(supabase, order.id, actor);
   const { error: planError } = await supabase.rpc('propose_order_plan', {
@@ -296,14 +302,14 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
       supplier_count: chosen.supplierCount,
       explanation: chosen.explanation,
     },
-    p_lines: chosen.lines.map((line) => ({
+    p_lines: chosen.lines.map((line, index) => ({
       request_item_id: line.requestItemId,
       supplier_company_id: line.supplierId,
       quote_line_id: line.offerId,
       qty: line.qty,
       line_total_kzt: line.lineTotalKzt,
       commission_pct: comparison.commissionRatePct,
-      commission_kzt: percentOfKzt(line.lineTotalKzt, comparison.commissionRatePct),
+      commission_kzt: lineCommissions[index] ?? 0,
     })),
     p_rejections: comparison.result.rejections.map((r) => ({
       quote_line_id: r.offerId,
