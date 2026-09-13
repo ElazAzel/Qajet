@@ -4,9 +4,9 @@
   "scope": "web-and-mobile-web",
   "status": "technically-ready-for-pilot",
   "verifiedAt": "2026-09-14",
-  "sourceSha": "f870f160048d0481fb622a74dd88841490e96a14",
+  "sourceSha": "d7f1f78c4af2046cb0767e4a0e7a72f6c5e71b29",
   "gates": {
-    "source": "passed-ci: CI 34776683997; release gate 34776683992",
+    "source": "passed-ci: CI 34776932305; release gate 34776932293",
     "typecheck": "passed-ci",
     "lint": "passed-ci",
     "unitTests": "passed-ci: unit suite passed; real PostgreSQL RLS suite passed",
