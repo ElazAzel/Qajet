@@ -48,6 +48,18 @@ export const threads = pgTable(
       to: authenticatedRole,
       using: sql`${t.kind} = 'supplier' and ${t.supplierCompanyId} = ${currentCompanyIdSubquery}`,
     }),
+    // §10 «Консьерж → внутренние заметки». До миграции 0021 не было ни
+    // одной INSERT-политики на threads для authenticated (только
+    // service_all) — создать внутренний тред можно было только в обход
+    // PostgREST. Область — строго 'internal': у kind='buyer'/'supplier'
+    // своя семантика (заводится вместе с RFQ/заявкой), эта политика её не
+    // трогает.
+    pgPolicy('threads_insert_staff_internal', {
+      as: 'permissive',
+      for: 'insert',
+      to: authenticatedRole,
+      withCheck: sql`${t.kind} = 'internal' and ${staffOnly}`,
+    }),
     pgPolicy('threads_service_all', {
       as: 'permissive',
       for: 'all',

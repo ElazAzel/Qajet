@@ -11,6 +11,7 @@ import {
 } from '../../../lib/actions/plan-actions';
 import { loadRequestComparison } from '../../../lib/comparison';
 import { type OrderActor, orderActorFor, requireCurrentUser } from '../../../lib/current-user';
+import { loadOrderNotes, type OrderNote } from '../../../lib/order-notes';
 import {
   ITEMS_EDITABLE_STATES,
   ORDER_STATE_LABEL,
@@ -20,6 +21,7 @@ import {
 } from '../../../lib/order-state';
 import { loadOrderTime, type StageTime } from '../../../lib/order-time';
 import { supplierCountLabel } from '../../../lib/pluralize';
+import { OrderNotes } from './_order-notes';
 import { PlanLinesReview } from './_plan-lines';
 import { ProposePlanButton } from './_propose-plan-button';
 import { StageAdvanceButton } from './_stage-advance-button';
@@ -58,6 +60,7 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
   // стадии заказа, а не только там, где есть экран сравнения: работа идёт
   // весь жизненный цикл, и §9 называет её функцией первого класса.
   const timeStages = canPropose ? await loadOrderTime(supabase, order.id) : [];
+  const orderNotes = canPropose ? await loadOrderNotes(supabase, order.id) : [];
 
   if (PLAN_EDITABLE_STATES.includes(state)) {
     return (
@@ -69,8 +72,9 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
           actor={actor}
         />
         {canPropose && (
-          <div className="mt-6 max-w-md">
+          <div className="mt-6 flex max-w-md flex-col gap-4">
             <TimeTracking orderId={order.id} stages={timeStages} />
+            <OrderNotes orderId={order.id} notes={orderNotes} />
           </div>
         )}
       </>
@@ -85,6 +89,7 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
         orderId={order.id}
         nextStates={nextStates}
         timeStages={timeStages}
+        notes={orderNotes}
       />
     );
   }
@@ -97,6 +102,7 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
         orderId={order.id}
         note="Ни один вариант не прошёл допустимость — все КП отбракованы."
         timeStages={timeStages}
+        notes={orderNotes}
       />
     );
   }
@@ -160,8 +166,9 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
         </Reveal>
       )}
       {canPropose && (
-        <Reveal className="mt-6 max-w-md">
+        <Reveal className="mt-6 flex max-w-md flex-col gap-4">
           <TimeTracking orderId={order.id} stages={timeStages} />
+          <OrderNotes orderId={order.id} notes={orderNotes} />
         </Reveal>
       )}
     </div>
@@ -333,12 +340,14 @@ function NotComparableYet({
   orderId,
   nextStates = [],
   timeStages = [],
+  notes = [],
 }: {
   state: OrderState;
   note?: string;
   orderId?: string;
   nextStates?: OrderState[];
   timeStages?: StageTime[];
+  notes?: OrderNote[];
 }) {
   return (
     <Reveal className="flex max-w-md flex-col gap-3 py-16">
@@ -353,8 +362,9 @@ function NotComparableYet({
           'Этот заказ на другой стадии жизненного цикла — раскладка вариантов появляется один раз, сразу после получения предложений от поставщиков, и уже неактуальна после того, как план утверждён.'}
       </p>
       {orderId && timeStages !== undefined && (
-        <div className="mt-4 w-full max-w-md">
+        <div className="mt-4 flex w-full max-w-md flex-col gap-4">
           <TimeTracking orderId={orderId} stages={timeStages} />
+          <OrderNotes orderId={orderId} notes={notes} />
         </div>
       )}
       {orderId && nextStates.length > 0 && (

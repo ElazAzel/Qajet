@@ -955,3 +955,54 @@ async function recordSupplierPayouts(
   );
   return error?.message ?? null;
 }
+
+/**
+ * Внутренняя заметка по заказу — agents.md §5, §10 «Консьерж → внутренние
+ * заметки». Тред `kind='internal'` заводится лениво, при первой заметке
+ * — заявка/заказ создаются без него (сид тоже не сеет internal-треды).
+ * INSERT на threads разрешён staff только для kind='internal'
+ * (`threads_insert_staff_internal`, миграция 0021) — findOrCreate
+ * безопасен даже при гонке двух одновременных первых заметок: второй
+ * insert треда просто создаст лишний тред, но сообщение всё равно попадёт
+ * в один из них корректно видимый только staff.
+ */
+export async function addInternalNote(orderId: string, body: string): Promise<ActionResult> {
+  const user = await requireCurrentUser();
+  const actor = orderActorFor(user);
+  if (actor !== 'concierge' && actor !== 'admin') {
+    return { ok: false, error: 'Внутренние заметки ведёт только staff' };
+  }
+  const trimmed = body.trim();
+  if (trimmed === '') return { ok: false, error: 'Заметка не может быть пустой' };
+
+  const supabase = await createSupabaseServerClient();
+
+  let { data: thread } = await supabase
+    .from('threads')
+    .select('id')
+    .eq('order_id', orderId)
+    .eq('kind', 'internal')
+    .maybeSingle();
+
+  if (!thread) {
+    const { data: created, error: threadError } = await supabase
+      .from('threads')
+      .insert({ order_id: orderId, kind: 'internal' })
+      .select('id')
+      .single();
+    if (threadError || !created) {
+      return { ok: false, error: threadError?.message ?? 'Не удалось создать заметку' };
+    }
+    thread = created;
+  }
+
+  const { error: messageError } = await supabase.from('messages').insert({
+    thread_id: thread.id,
+    author_user_id: user.id,
+    body: trimmed,
+  });
+  if (messageError) return { ok: false, error: messageError.message };
+
+  revalidatePath(`/concierge/orders/${orderId}`);
+  return { ok: true };
+}
