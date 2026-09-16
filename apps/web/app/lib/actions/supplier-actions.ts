@@ -97,3 +97,96 @@ export async function declineRfq(rfqId: string): Promise<ActionResult> {
   revalidatePath('/supplier');
   return { ok: true };
 }
+
+/**
+ * Подтверждение стадии поставщиком — agents.md §10 «Поставщик → статусы,
+ * которые он подтверждает сам». До этого все операционные стадии двигал
+ * только консьерж: «взял в производство» и «отгрузил» попадали в систему
+ * пересказом и с задержкой, хотя первым о них узнаёт поставщик.
+ *
+ * Запись идёт через RPC `supplier_confirm_stage` (миграция 0020), а не
+ * прямым update: RLS не умеет ограничивать целевое значение, и политика
+ * «поставщик может UPDATE своих заказов» дала бы ему выставить любое
+ * состояние, до которого из текущего есть ребро — включая cancelled. Та
+ * же причина, по которой approvePlan() ходит в approve_plan().
+ *
+ * Функция сама пишет и `order_stage_events`: политика на эту таблицу
+ * поставщика не пускает, и расширять её значило бы дать ему писать в
+ * таймлайн произвольные события.
+ */
+export async function confirmSupplierStage(
+  orderId: string,
+  toState: string,
+): Promise<ActionResult> {
+  const user = await requireCurrentUser();
+  if (orderActorFor(user) !== 'supplier') {
+    return { ok: false, error: 'Только поставщик подтверждает эти стадии' };
+  }
+  if (toState !== 'in_production' && toState !== 'shipped') {
+    return { ok: false, error: 'Эту стадию поставщик не подтверждает' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('supplier_confirm_stage', {
+    p_order_id: orderId,
+    p_to_state: toState,
+  });
+  if (error) return { ok: false, error: 'Не удалось подтвердить стадию' };
+
+  revalidatePath('/supplier');
+  revalidatePath('/supplier/orders');
+  return { ok: true };
+}
+
+export interface SupplierProfileInput {
+  minOrderKzt: number | null;
+  leadTimeDaysDefault: number | null;
+  portfolioUrls: string[];
+  notes: string | null;
+}
+
+/**
+ * Правка профиля поставщика — agents.md §10 «Поставщик → профиль и
+ * портфолио». `supplier_profiles_update_own` уже ограничивает запись
+ * своей компанией (миграция схемы с самого начала) — прямой update без
+ * RPC достаточен, в отличие от approve_plan/supplier_confirm_stage, где
+ * решение зависит от чужих данных (плана, лимита), а не только от
+ * принадлежности строки.
+ *
+ * `categories`/`capabilities` не в форме намеренно: это словарь, по
+ * которому работает матчер (packages/engine/src/match), правка мимо
+ * согласованного списка тихо выбила бы поставщика из подбора.
+ */
+export async function updateSupplierProfile(input: SupplierProfileInput): Promise<ActionResult> {
+  const user = await requireCurrentUser();
+  if (orderActorFor(user) !== 'supplier') {
+    return { ok: false, error: 'Только поставщик может править свой профиль' };
+  }
+  if (
+    input.minOrderKzt !== null &&
+    (!Number.isFinite(input.minOrderKzt) || input.minOrderKzt < 0)
+  ) {
+    return { ok: false, error: 'Минимальная сумма заказа указана неверно' };
+  }
+  if (
+    input.leadTimeDaysDefault !== null &&
+    (!Number.isFinite(input.leadTimeDaysDefault) || input.leadTimeDaysDefault <= 0)
+  ) {
+    return { ok: false, error: 'Срок поставки указан неверно' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from('supplier_profiles')
+    .update({
+      min_order_kzt: input.minOrderKzt,
+      lead_time_days_default: input.leadTimeDaysDefault,
+      portfolio_urls: input.portfolioUrls,
+      notes: input.notes,
+    })
+    .eq('company_id', user.companyId ?? '');
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/supplier/profile');
+  return { ok: true };
+}

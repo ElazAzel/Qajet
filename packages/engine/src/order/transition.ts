@@ -77,8 +77,19 @@ export const ORDER_TRANSITION_GRAPH: Record<OrderState, readonly Edge[]> = {
     { to: 'suppliers_paid', actors: STAFF },
     { to: 'cancelled', actors: STAFF },
   ],
-  suppliers_paid: [{ to: 'in_production', actors: STAFF }],
-  in_production: [{ to: 'shipped', actors: STAFF }],
+  // Две стадии, которые поставщик подтверждает сам (agents.md §10
+  // «Поставщик → статусы, которые он подтверждает сам»): «взял в
+  // производство» и «отгрузил» — единственные события во всём цикле, о
+  // которых первым узнаёт он, а не консьерж. До этого их двигал только
+  // консьерж, то есть по чужому пересказу и с задержкой.
+  //
+  // Право на UPDATE orders поставщику при этом НЕ выдано: RLS не умеет
+  // ограничивать колонкой, и такая политика позволила бы ему выставить
+  // любое состояние, до которого есть ребро. Запись идёт через
+  // SECURITY DEFINER-RPC `supplier_confirm_stage` — тот же приём, что
+  // approve_plan() для покупателя (миграция 0013).
+  suppliers_paid: [{ to: 'in_production', actors: [...STAFF, 'supplier'] }],
+  in_production: [{ to: 'shipped', actors: [...STAFF, 'supplier'] }],
   shipped: [{ to: 'delivered', actors: STAFF }],
   delivered: [
     { to: 'accepted', actors: ['buyer'] },

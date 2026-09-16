@@ -47,12 +47,21 @@ describe('transition', () => {
     if (!result.ok) expect(result.reason).toContain('draft → closed');
   });
 
-  it('supplier не инициирует ни один переход состояния заказа', () => {
-    for (const edges of Object.values(ORDER_TRANSITION_GRAPH)) {
+  it('поставщик подтверждает ровно две стадии — производство и отгрузку', () => {
+    // §10 «Поставщик → статусы, которые он подтверждает сам». Это
+    // единственные два события, о которых первым узнаёт он. Всё
+    // остальное — деньги, план, приёмка, спор, отмена — остаётся вне его
+    // рук: заказ не должен уметь двигаться по воле одной стороны сделки.
+    expect(transition('suppliers_paid', 'in_production', 'supplier')).toEqual({ ok: true });
+    expect(transition('in_production', 'shipped', 'supplier')).toEqual({ ok: true });
+
+    const supplierEdges: string[] = [];
+    for (const [from, edges] of Object.entries(ORDER_TRANSITION_GRAPH)) {
       for (const edge of edges) {
-        expect(edge.actors.includes('supplier')).toBe(false);
+        if (edge.actors.includes('supplier')) supplierEdges.push(`${from}→${edge.to}`);
       }
     }
+    expect(supplierEdges.sort()).toEqual(['in_production→shipped', 'suppliers_paid→in_production']);
   });
 
   it('closed и cancelled — терминальные состояния без исходящих рёбер', () => {
