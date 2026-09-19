@@ -73,16 +73,22 @@ if (existsSync(readinessFile)) {
 let readyProblems = 0;
 if (readyUrl) {
   try {
-    const response = await fetch(new URL('/api/ready', readyUrl), { signal: AbortSignal.timeout(15000) });
+    const response = await fetch(new URL('/api/ready', readyUrl), {
+      signal: AbortSignal.timeout(15000),
+    });
     const body = await response.text();
     if (response.status !== 200) {
-      console.error(`Release gate: ${readyUrl}/api/ready ответил ${response.status}: ${body.slice(0, 300)}`);
+      console.error(
+        `Release gate: ${readyUrl}/api/ready ответил ${response.status}: ${body.slice(0, 300)}`,
+      );
       readyProblems++;
     } else {
       console.log(`Release gate: ${readyUrl}/api/ready = 200.`);
     }
   } catch (error) {
-    console.error(`Release gate: не удалось запросить /api/ready: ${error instanceof Error ? error.message : error}`);
+    console.error(
+      `Release gate: не удалось запросить /api/ready: ${error instanceof Error ? error.message : error}`,
+    );
     readyProblems++;
   }
 } else if (strict) {

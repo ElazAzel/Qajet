@@ -56,7 +56,9 @@
         "**/scripts/**",
         "packages/db/src/seed/**"
       ],
-      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+      "linter": {
+        "rules": { "suspicious": { "noConsole": "off", "noUndeclaredEnvVars": "off" } }
+      }
     },
     {
       "includes": ["**/globals.css"],

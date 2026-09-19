@@ -5,6 +5,7 @@ import {
   createQuotesReceivedOrder,
   gotoUntilButtonVisible,
   loginAs,
+  press,
   skipLiveReason,
 } from './fixtures';
 
@@ -64,7 +65,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         orderUrl,
         'Предложить этот план',
       );
-      await proposePlanButton.click();
+      await press(concierge, proposePlanButton);
       await expect(concierge.getByRole('button', { name: 'Предложить этот план' })).toHaveCount(0);
 
       // 7. Покупатель открывает экран условий и утверждает конкретную версию
@@ -78,7 +79,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         `/buyer/orders/${orderId}/confirm`,
         'Подтверждаю заказ на этих условиях',
       );
-      await approvePlanButton.click();
+      await press(buyer, approvePlanButton);
       await expect(
         buyer.getByRole('button', { name: 'Подтверждаю заказ на этих условиях' }),
       ).toHaveCount(0);
@@ -93,7 +94,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         .locator('visible=true')
         .first()
         .fill(`E2E-PAYOUT-${Date.now()}`);
-      await payoutButton.click();
+      await press(concierge, payoutButton);
       await expect(concierge.getByRole('button', { name: 'Подтвердить выплату' })).toHaveCount(0);
       await advanceStage(concierge, orderUrl, '→ В производстве');
       await advanceStage(concierge, orderUrl, '→ Отгружен');
@@ -102,7 +103,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       // экран, который поставщик использует после исполнения заказа.
       await loginAs(supplier, 'supplier@demo.qajet.kz');
       await supplier.goto(`/supplier/orders/${orderId}`);
-      await supplier.getByRole('button', { name: 'Подтвердить доставку' }).click();
+      await press(supplier, supplier.getByRole('button', { name: 'Подтвердить доставку' }));
       await expect(supplier.getByRole('button', { name: 'Подтвердить доставку' })).toHaveCount(0);
 
       // 9. Покупатель принимает поставку
@@ -111,7 +112,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         buyerOrderUrl,
         'Принять поставку',
       );
-      await acceptDeliveryButton.click();
+      await press(buyer, acceptDeliveryButton);
       await expect(buyer.getByRole('button', { name: 'Принять поставку' })).toHaveCount(0);
 
       // 10. Staff фиксирует требуемый возврат/доплату, покупатель закрывает
@@ -126,7 +127,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         .getByLabel('Банковский reference')
         .locator('visible=true')
         .fill(`E2E-SETTLEMENT-${Date.now()}`);
-      await settlementButton.click();
+      await press(concierge, settlementButton);
       await expect(
         concierge.getByRole('button', {
           name: settlement === 'refund' ? 'Подтвердить возврат' : 'Подтвердить доплату',
@@ -134,7 +135,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       ).toHaveCount(0);
 
       await gotoUntilButtonVisible(buyer, buyerOrderUrl, 'Подтвердить сверку и закрыть');
-      await buyer.getByRole('button', { name: 'Подтвердить сверку и закрыть' }).click();
+      await press(buyer, buyer.getByRole('button', { name: 'Подтвердить сверку и закрыть' }));
       await expect(buyer.getByText('Заказ закрыт', { exact: true })).toBeVisible();
     } finally {
       await buyerCtx.close();

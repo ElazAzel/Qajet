@@ -1,4 +1,4 @@
-import { type Browser, expect, type Page } from '@playwright/test';
+import { type Browser, expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * Общие приёмы для e2e-тестов, которые ведут реальные экраны через живые
@@ -35,6 +35,25 @@ export const skipLiveReason = hasSupabaseEnv
 /** Идентификатор прогона: все создаваемые записи получают заголовок `E2E-<runId>-<имя теста>`. */
 export const RUN_ID = process.env.E2E_RUN_ID ?? Date.now().toString(36);
 export const e2eTitle = (testName: string): string => `E2E-${RUN_ID}-${testName}`;
+
+/**
+ * Клик по кнопке, вызывающей server action, с ожиданием завершения.
+ *
+ * Во время выполнения действия кнопка перерисовывается («Перевожу…») и
+ * исчезает, поэтому проверка «кнопки больше нет» проходит мгновенно, а
+ * следующий `goto()` обрывает действие на полпути: заказ остаётся в прежнем
+ * состоянии. Раньше это прикрывал цикл из пяти перезагрузок.
+ *
+ * Ждать «какой-нибудь POST server action» нельзя: на странице консьержа
+ * регулярно уходят heartbeat-запросы учёта времени, тоже server action, и они
+ * подойдут под любой такой фильтр. Поэтому после клика ждём сетевой тишины —
+ * действие и обновление страницы завершились, — а результат вызывающий код
+ * проверяет по видимому состоянию.
+ */
+export async function press(page: Page, locator: Locator): Promise<void> {
+  await locator.click();
+  await page.waitForLoadState('networkidle');
+}
 
 export async function loginAs(page: Page, email: string): Promise<void> {
   await page.goto('/login');
@@ -76,8 +95,10 @@ export async function gotoUntilButtonVisible(page: Page, url: string, label: str
 
 export async function advanceStage(page: Page, orderUrl: string, label: string): Promise<void> {
   const button = await gotoUntilButtonVisible(page, orderUrl, label);
-  await button.click();
-  await expect(page.getByRole('button', { name: label })).toHaveCount(0);
+  await press(page, button);
+  // Результат — новое состояние на странице, а не исчезновение кнопки.
+  const state = label.replace('→ ', '');
+  await expect(page.getByText(state, { exact: true }).first()).toBeVisible();
 }
 
 /**
@@ -131,13 +152,13 @@ export async function createQuotesReceivedOrder(
     const orderUrl = concierge.url();
     const orderId = orderUrl.split('/').filter(Boolean).pop() as string;
 
-    await concierge.getByRole('button', { name: '→ Оценён' }).click();
+    await press(concierge, concierge.getByRole('button', { name: '→ Оценён' }));
     await expect(concierge.getByRole('button', { name: '→ Оценён' })).toHaveCount(0);
 
     // Оценка создаёт только счёт на P80. Факт банковского перевода
     // подтверждается отдельным staff-действием; тест заполняет все поля
     // формы, чтобы не обходить completeness/RLS-путь.
-    await concierge.getByRole('button', { name: 'Выставить счёт на P80' }).click();
+    await press(concierge, concierge.getByRole('button', { name: 'Выставить счёт на P80' }));
     await concierge
       .getByLabel('Фактически поступило, ₸')
       .locator('visible=true')
@@ -146,11 +167,14 @@ export async function createQuotesReceivedOrder(
       .getByLabel('Банковский reference')
       .locator('visible=true')
       .fill(`E2E-PRE-${Date.now()}`);
-    await concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }).click();
+    await press(
+      concierge,
+      concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }),
+    );
     await expect(
       concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }),
     ).toHaveCount(0);
-    await concierge.getByRole('button', { name: '→ RFQ отправлен' }).click();
+    await press(concierge, concierge.getByRole('button', { name: '→ RFQ отправлен' }));
     await expect(concierge.getByRole('button', { name: '→ RFQ отправлен' })).toHaveCount(0);
 
     await loginAs(supplier, 'supplier@demo.qajet.kz');

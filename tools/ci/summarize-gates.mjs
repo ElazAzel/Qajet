@@ -29,7 +29,10 @@ const rows = Object.entries(gates).map(([name, outcome]) => `| ${name} | ${outco
 const table = ['| Gate | Result |', '| --- | --- |', ...rows].join('\n');
 console.log(table);
 if (process.env.GITHUB_STEP_SUMMARY) {
-  appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Gates for ${commit.slice(0, 7)}\n\n${table}\n`);
+  appendFileSync(
+    process.env.GITHUB_STEP_SUMMARY,
+    `### Gates for ${commit.slice(0, 7)}\n\n${table}\n`,
+  );
 }
 
 const failed = Object.values(gates).includes('FAIL');

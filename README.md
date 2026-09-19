@@ -115,8 +115,8 @@ pnpm e2e            # сборка + Playwright; идёт только прот�
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres pnpm --filter @qajet/db test:rls
 ```
 
-Корневой `pnpm test` эти тесты пропускает (Turborepo не передаёт `DATABASE_URL`),
-поэтому зелёный `pnpm test` ничего не говорит об RLS.
+Корневой `pnpm test` запускает их только при заданном `DATABASE_URL` и без него
+пропускает молча, поэтому зелёный `pnpm test` без базы ничего не говорит об RLS.
 
 ```bash
 pnpm rag:sync              # перегенерировать docs/state/ и переиндексировать корпус

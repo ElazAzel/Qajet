@@ -24,7 +24,9 @@ const status = spawnSync(bin, ['status', '-o', 'env'], {
   shell: process.platform === 'win32',
 });
 if (status.status !== 0) {
-  console.error('local-supabase-env: `supabase status` не вернул параметры. Запустите `supabase start`.');
+  console.error(
+    'local-supabase-env: `supabase status` не вернул параметры. Запустите `supabase start`.',
+  );
   console.error(status.stderr?.trim() ?? '');
   process.exit(1);
 }
@@ -71,7 +73,9 @@ if (toGithubEnv) {
     }
     appendFileSync(target, `${key}=${value}\n`);
   }
-  console.log(`local-supabase-env: ${Object.keys(values).length} переменных добавлено в GITHUB_ENV.`);
+  console.log(
+    `local-supabase-env: ${Object.keys(values).length} переменных добавлено в GITHUB_ENV.`,
+  );
 } else {
   const body = `# Сгенерировано tools/dev/local-supabase-env.mjs из \`supabase status\`. Не коммитить.\n${Object.entries(
     values,

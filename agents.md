@@ -39,7 +39,8 @@ a documentation claim. Use only `CONFIRMED`, `REPRODUCED`, `NOT REPRODUCED`,
   named local/test database.
 - RLS contracts: `pnpm --filter @qajet/db test:rls` only against an explicitly
   named local/test database. It fails without `DATABASE_URL`; root `pnpm test`
-  skips these tests, so a green `pnpm test` says nothing about RLS.
+  runs them only when `DATABASE_URL` is set and skips them silently otherwise,
+  so a green `pnpm test` without a database says nothing about RLS.
 - Generated state: `pnpm rag:sync`, then review and commit resulting
   `docs/state/` changes when appropriate.
 
