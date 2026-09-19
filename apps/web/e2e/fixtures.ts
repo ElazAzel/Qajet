@@ -55,6 +55,32 @@ export async function press(page: Page, locator: Locator): Promise<void> {
   await page.waitForLoadState('networkidle');
 }
 
+/**
+ * Рассылка RFQ идёт по трём лучшим по оценке поставщикам, а оценка меняется от
+ * накопленной нагрузки: демо-поставщик, единственный с входом в систему, иногда
+ * выпадал из тройки и не видел запроса — сценарий проходил или падал на одном и
+ * том же коммите. Размер рассылки — параметр экономики на экране админа
+ * (agents.md §9), им и пользуется тест: рассылка идёт всем подходящим.
+ */
+export async function setSetting(browser: Browser, label: string, value: string) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await loginAs(page, 'admin@demo.qajet.kz');
+    await page.goto('/admin/settings');
+    const input = page.getByLabel(label);
+    // Кнопка «Применить» активна только при изменении: если значение уже стоит, менять нечего.
+    if ((await input.inputValue()) === value) return;
+    await input.fill(value);
+    const row = input.locator('xpath=ancestor::li[1]');
+    await press(page, row.getByRole('button', { name: 'Применить' }));
+    await page.reload();
+    await expect(page.getByLabel(label)).toHaveValue(value);
+  } finally {
+    await context.close();
+  }
+}
+
 export async function loginAs(page: Page, email: string): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
@@ -121,6 +147,7 @@ export async function createQuotesReceivedOrder(
   } = {},
 ): Promise<{ orderUrl: string; orderId: string; requestId: string; title: string }> {
   const title = e2eTitle(options.name ?? 'fixture');
+  await setSetting(browser, 'Поставщиков в рассылке RFQ', '20');
 
   const buyerCtx = await browser.newContext();
   const conciergeCtx = await browser.newContext();
