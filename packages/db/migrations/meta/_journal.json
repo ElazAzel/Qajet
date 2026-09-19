@@ -309,6 +309,13 @@
       "when": 1789825654343,
       "tag": "0043_function_default_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789825732345,
+      "tag": "0044_plan_change_request_rpc",
+      "breakpoints": true
     }
   ]
 }

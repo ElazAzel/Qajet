@@ -164,7 +164,9 @@ describeIfConfigured('изоляция вложений заказа (RLS)', () 
         await tx`insert into storage.objects (bucket_id, name, owner_id) values ('qajet-docs', ${file.objectKey}, ${f.staff})`;
       }
       await impersonate(tx, f.supplierAOwner);
-      const rows = await tx<{ name: string }[]>`select name from storage.objects where bucket_id = 'qajet-docs'`;
+      const rows = await tx<
+        { name: string }[]
+      >`select name from storage.objects where bucket_id = 'qajet-docs'`;
       await tx`reset role`;
       const names = new Set(rows.map((r) => r.name));
       expect(names.has(f.files.aDelivery.objectKey)).toBe(true);

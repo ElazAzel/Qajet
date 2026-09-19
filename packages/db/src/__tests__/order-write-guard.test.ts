@@ -101,7 +101,8 @@ async function deliverOrder(tx: postgres.TransactionSql, f: Fixture) {
   await asUser(tx, f.buyerOwner);
   const [plan] = await tx<{ id: string; version: number }[]>`
     select p.id, p.version from orders o join plans p on p.id = o.approved_plan_id where o.id = ${f.order}`;
-  await tx`select approve_plan(${f.order}, ${plan?.id}, ${plan?.version})`;
+  if (!plan) throw new Error('fixture: у заказа нет плана');
+  await tx`select approve_plan(${f.order}, ${plan.id}, ${plan.version})`;
   await asUser(tx, f.staff);
   await tx`insert into payment_facts (
     order_id, supplier_company_id, direction, kind, status, amount_kzt, reference, confirmed_by, idempotency_key
@@ -187,7 +188,8 @@ describeIfConfigured('защита записи в orders и подтвержд�
       await asUser(tx, f.buyerOwner);
       const [plan] = await tx<{ id: string; version: number }[]>`
         select p.id, p.version from orders o join plans p on p.id = o.approved_plan_id where o.id = ${f.order}`;
-      await tx`select approve_plan(${f.order}, ${plan?.id}, ${plan?.version})`;
+      if (!plan) throw new Error('fixture: у заказа нет плана');
+      await tx`select approve_plan(${f.order}, ${plan.id}, ${plan.version})`;
       await asUser(tx, f.staff);
       await tx`insert into payment_facts (
         order_id, supplier_company_id, direction, kind, status, amount_kzt, reference, confirmed_by, idempotency_key
