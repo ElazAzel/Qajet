@@ -1,25 +1,30 @@
 import { NextResponse } from 'next/server';
+import { isCronAuthorized } from '../../../lib/cron-auth';
 import { dispatchLearningEvents } from '../../../lib/learning/dispatcher';
+import { logActionFailure } from '../../../lib/server-log';
 
 export const runtime = 'nodejs';
 
-function isAuthorized(request: Request): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return process.env.NODE_ENV !== 'production';
-  return request.headers.get('authorization') === `Bearer ${secret}`;
-}
-
-export async function GET(request: Request) {
-  if (!isAuthorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+async function run(request: Request) {
+  if (!isCronAuthorized(request))
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const result = await dispatchLearningEvents(10);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : 'Learning dispatcher failed' },
-      { status: 503 },
+    const supportId = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+    logActionFailure(
+      {
+        supportId,
+        operation: 'job.learning',
+        code: 'internal',
+        errorName: error instanceof Error ? error.name : 'unknown',
+      },
+      error,
     );
+    return NextResponse.json({ ok: false, error: 'Job failed', supportId }, { status: 503 });
   }
 }
 
-export const POST = GET;
+export const GET = run;
+export const POST = run;
