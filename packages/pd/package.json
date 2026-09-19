@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:rls": "vitest run postgres-backend-rls --passWithNoTests",
+    "test:rls": "node ../../tools/ci/require-database-url.mjs && vitest run postgres-backend-rls",
     "clean": "rm -rf .turbo"
   },
   "dependencies": {

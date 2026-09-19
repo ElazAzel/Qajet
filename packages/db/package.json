@@ -17,7 +17,7 @@
     "db:demo-order": "tsx src/scripts/dump-demo-order-sql.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "test:rls": "vitest run src/__tests__ --passWithNoTests",
+    "test:rls": "node ../../tools/ci/require-database-url.mjs && vitest run src/__tests__",
     "clean": "rm -rf .turbo"
   },
   "dependencies": {

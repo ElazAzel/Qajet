@@ -293,6 +293,18 @@ export const prepayments = pgTable(
       to: authenticatedRole,
       withCheck: staffOnly,
     }),
+    // Без UPDATE-политики staff не мог ни выставить счёт повторно (upsert падал на
+    // ON CONFLICT DO UPDATE), ни подтвердить предоплату: confirm_prepayment берёт
+    // строку через SELECT ... FOR UPDATE, а под RLS блокировка строки невозможна
+    // без права UPDATE — строка «не находилась». Статус paid по-прежнему требует
+    // банковского факта (триггер prepayments_paid_guard).
+    pgPolicy('prepayments_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
+      withCheck: staffOnly,
+    }),
     pgPolicy('prepayments_service_all', {
       as: 'permissive',
       for: 'all',
