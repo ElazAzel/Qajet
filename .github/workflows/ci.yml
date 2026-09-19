@@ -257,6 +257,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          # Здесь нужен только node: pnpm не ставится, а setup-node@v5 иначе включает
+          # кеш pnpm по полю packageManager и падает.
+          package-manager-cache: false
 
       - name: Сводка
         run: node tools/ci/summarize-gates.mjs
