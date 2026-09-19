@@ -288,6 +288,13 @@
       "when": 1789817260199,
       "tag": "0040_attachment_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789825497476,
+      "tag": "0041_order_write_guard",
+      "breakpoints": true
     }
   ]
 }
