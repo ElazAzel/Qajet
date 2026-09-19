@@ -7,6 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type ActionResult, actionFailure } from '../action-result';
 import { CATALOG_BY_KEY, type CatalogItem } from '../catalog';
 import { orderActorFor, requireCurrentUser } from '../current-user';
+import { isDeadlineInPast, requestFieldErrors } from '../request-validation';
 
 /**
  * Создание заявки покупателем — agents.md §10. Пишет только requests +
@@ -40,6 +41,8 @@ export interface CreateRequestInput {
   deadlineDate?: string | undefined;
   deliveryAddress?: string | undefined;
   items: CreateRequestItemInput[];
+  /** UUID, созданный при открытии формы: повторная отправка вернёт ту же заявку. */
+  submissionKey?: string | undefined;
 }
 
 const safeKztSchema = z
@@ -63,6 +66,7 @@ const createRequestSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
     deliveryAddress: z.string().trim().max(500).optional(),
+    submissionKey: z.string().uuid().optional(),
     items: z
       .array(
         z
@@ -89,8 +93,23 @@ export async function createRequest(
     return { ok: false, error: 'У пользователя нет компании' };
   }
   const parsedInput = createRequestSchema.safeParse(input);
-  if (!parsedInput.success) return { ok: false, error: 'Данные заявки указаны некорректно' };
+  if (!parsedInput.success) {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: 'Проверьте выделенные поля',
+      fieldErrors: requestFieldErrors(parsedInput.error.issues),
+    };
+  }
   const requestInput = parsedInput.data;
+  if (requestInput.deadlineDate && isDeadlineInPast(requestInput.deadlineDate)) {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: 'Проверьте выделенные поля',
+      fieldErrors: { deadlineDate: 'Срок не может быть в прошлом' },
+    };
+  }
 
   // Жёсткий фильтр категорий (agents.md §11.5) — именно здесь, в валидаторе
   // на сервере, а не подсказкой в интерфейсе: клиентскую проверку можно
@@ -99,7 +118,8 @@ export async function createRequest(
   // свободный текст — название и описание заявки.
   const restricted = findRestrictedCategory(requestInput.title, requestInput.description);
   if (restricted) {
-    return { ok: false, error: restrictedCategoryMessage(restricted) };
+    const message = restrictedCategoryMessage(restricted);
+    return { ok: false, code: 'invalid', error: message, fieldErrors: { title: message } };
   }
 
   const resolvedItems: {
@@ -132,6 +152,7 @@ export async function createRequest(
         : { itemKey: catalogItem.itemKey },
       required_capabilities: catalogItem.requiredCapabilities,
     })),
+    ...(requestInput.submissionKey ? { p_submission_key: requestInput.submissionKey } : {}),
   });
   if (requestError || !requestId) {
     return actionFailure('request.createRequest', requestError, 'Не удалось создать заявку');
@@ -155,6 +176,7 @@ export async function createRequest(
 export async function reorderItem(
   itemKey: string,
   qty: number,
+  submissionKey?: string,
 ): Promise<ActionResult & { requestId?: string }> {
   const catalogItem = CATALOG_BY_KEY.get(itemKey);
   if (!catalogItem) return { ok: false, error: 'Позиции больше нет в каталоге' };
@@ -173,5 +195,6 @@ export async function reorderItem(
     description: `Повтор заказа: ${catalogItem.name} — ${qty} ${catalogItem.unit}.`,
     deliveryAddress: previous?.delivery_address ?? undefined,
     items: [{ itemKey, qty }],
+    submissionKey,
   });
 }

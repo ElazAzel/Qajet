@@ -1,35 +1,29 @@
-import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
-import { Card, StatTile } from '@qajet/ui/primitives';
-import { Clock3, FilePlus, ListChecks, Package, Repeat, Wrench } from 'lucide-react';
+import { Reveal, Stamp } from '@qajet/ui/motion';
+import { buttonClass, Card } from '@qajet/ui/primitives';
+import { FilePlus } from 'lucide-react';
 import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { loadBuyerHome } from '../lib/buyer-home';
-import { ORDER_STATE_LABEL, ORDER_STATE_TONE } from '../lib/order-state';
+import { type BuyerCaseSummary, loadBuyerCases } from '../lib/buyer-case';
+import { hrefForAction, isBuyerTurn, waitingOnLabel } from '../lib/buyer-stage';
+import { requireActor } from '../lib/current-user';
 import { BuyerHero } from './_hero';
 
-const EVENT_LABEL: Record<string, string> = {
-  draft: 'Заявка создана',
-  estimated: 'Оценка готова',
-  prepaid: 'Предоплата внесена',
-  rfq_sent: 'Запрос отправлен поставщикам',
-  quotes_received: 'Получены предложения',
-  plan_proposed: 'Предложен план',
-  plan_approved: 'План утверждён',
-  suppliers_paid: 'Поставщики оплачены',
-  in_production: 'Запущено производство',
-  shipped: 'Заказ отгружен',
-  delivered: 'Заказ доставлен',
-  accepted: 'Заказ принят',
-  closed: 'Заказ закрыт',
-  awaiting_internal_approval: 'Ждёт вашего согласования',
-  on_hold: 'Поставлен на паузу',
-  cancelled: 'Заказ отменён',
-  disputed: 'Открыт спор',
-};
+/**
+ * Главная покупателя — список закупок. Заявка попадает сюда сразу после
+ * отправки формы, а не тогда, когда консьерж заведёт заказ. Наверху те
+ * закупки, где сейчас ход покупателя: он видит, что от него ждут, не
+ * открывая каждую.
+ */
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
 
 export default async function BuyerHome() {
+  const user = await requireActor('buyer');
   const supabase = await createSupabaseServerClient();
-  const { orders, updates, stats } = await loadBuyerHome(supabase);
+  const cases = await loadBuyerCases(supabase, user.role === 'owner');
+  const waiting = cases.filter((c) => isBuyerTurn(c.description));
+  const rest = cases.filter((c) => !isBuyerTurn(c.description));
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,128 +31,125 @@ export default async function BuyerHome() {
         <BuyerHero />
       </Reveal>
 
-      <Stagger startIndex={1} className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatTile icon={<Package size={18} />} value={stats.active} title="Активных заказов" />
-        <StatTile
-          icon={<Wrench size={18} />}
-          value={stats.inProduction}
-          title="В производстве/отгрузке"
-        />
-        <StatTile
-          icon={<Clock3 size={18} />}
-          value={stats.awaitingDecision}
-          title="Ждут вашего решения"
-        />
-      </Stagger>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.15fr_1fr]">
+      {cases.length === 0 ? (
         <Reveal>
-          <Card>
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-ink">Обновления по заказам</h3>
-            </div>
-            <div className="mt-3 flex flex-col">
-              {updates.length === 0 && <p className="py-6 text-sm text-muted">Пока нет событий.</p>}
-              {updates.map((update) => (
-                <div
-                  key={`${update.orderId}-${update.at}`}
-                  className="flex items-center justify-between gap-4 border-t border-rule py-3 first:border-t-0"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink">
-                      {EVENT_LABEL[update.toState] ?? ORDER_STATE_LABEL[update.toState]}
-                    </p>
-                    <p className="mt-0.5 truncate text-fine text-muted">{update.orderTitle}</p>
-                  </div>
-                  <span className="shrink-0 text-fine text-muted">
-                    {new Date(update.at).toLocaleDateString('ru-RU', {
-                      day: 'numeric',
-                      month: 'short',
-                    })}
-                  </span>
+          <Card className="flex flex-col items-start gap-3 py-8">
+            <h2 className="text-lg font-bold text-ink">Закупок пока нет</h2>
+            <p className="max-w-md text-sm text-muted">
+              Опишите задачу — консьерж оценит стоимость, соберёт предложения исполнителей и
+              проведёт заказ до закрывающих документов.
+            </p>
+            <Link href="/buyer/requests/new" className={buttonClass('primary')}>
+              <FilePlus size={16} aria-hidden="true" />
+              Создать заявку
+            </Link>
+          </Card>
+        </Reveal>
+      ) : (
+        <>
+          {waiting.length > 0 && (
+            <Reveal>
+              <Card>
+                <h2 className="text-lg font-bold text-ink">Ждут вашего решения</h2>
+                <div className="mt-3 flex flex-col">
+                  {waiting.map((item) => (
+                    <WaitingRow key={item.requestId} item={item} />
+                  ))}
                 </div>
-              ))}
-            </div>
-          </Card>
-        </Reveal>
+              </Card>
+            </Reveal>
+          )}
 
-        <Reveal from="up">
-          <Card>
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-ink">Мои заказы</h3>
-              <Link href="/buyer" className="text-fine font-semibold text-purple">
-                Все заказы →
-              </Link>
-            </div>
-            <div className="mt-3 flex flex-col gap-3">
-              {orders.slice(0, 6).map((order) => (
-                <Link
-                  key={order.id}
-                  href={`/buyer/orders/${order.id}`}
-                  className="flex items-center gap-3 rounded-control -mx-2 px-2 py-1 hover:bg-page"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-ink">{order.title}</p>
-                  </div>
-                  <Stamp tone={ORDER_STATE_TONE[order.state]} className="shrink-0">
-                    {ORDER_STATE_LABEL[order.state]}
-                  </Stamp>
+          <Reveal from="up">
+            <Card>
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="text-lg font-bold text-ink">
+                  {waiting.length > 0 ? 'Остальные закупки' : 'Все закупки'}
+                </h2>
+                <Link href="/buyer/requests/new" className={buttonClass('primary', 'sm')}>
+                  <FilePlus size={14} aria-hidden="true" />
+                  Новая заявка
                 </Link>
-              ))}
-            </div>
-          </Card>
-        </Reveal>
-      </div>
+              </div>
+              {rest.length === 0 ? (
+                <p className="py-6 text-sm text-muted">Других закупок нет.</p>
+              ) : (
+                <ul className="mt-3 flex flex-col">
+                  {rest.map((item) => (
+                    <CaseRow key={item.requestId} item={item} />
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </Reveal>
+        </>
+      )}
 
-      <Reveal>
-        <Card className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <h3 className="shrink-0 text-lg font-bold text-ink">Быстрые действия</h3>
-          <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <QuickAction
-              href="/buyer/requests/new"
-              icon={<FilePlus size={16} />}
-              title="Создать заявку"
-              sub="Запустить новую закупку"
-            />
-            <QuickAction
-              href="/buyer/reorder"
-              icon={<Repeat size={16} />}
-              title="Повторить заказ"
-              sub="По истории своих заказов"
-            />
-            <QuickAction
-              href="/buyer"
-              icon={<ListChecks size={16} />}
-              title="Все заказы"
-              sub="Перейти к списку"
-            />
-          </div>
-        </Card>
-      </Reveal>
+      <p className="text-fine text-muted">
+        <Link href="/buyer/reorder" className="font-semibold text-purple hover:underline">
+          Повторить прошлый заказ
+        </Link>
+        <span className="mx-2" aria-hidden="true">
+          ·
+        </span>
+        <Link href="/buyer/analytics" className="font-semibold text-purple hover:underline">
+          Аналитика закупок
+        </Link>
+      </p>
     </div>
   );
 }
 
-function QuickAction({
-  href,
-  icon,
-  title,
-  sub,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  title: string;
-  sub: string;
-}) {
+function WaitingRow({ item }: { item: BuyerCaseSummary }) {
+  const { description } = item;
+  const action = description.nextAction;
   return (
-    <Link href={href} className="flex items-center gap-3 hover:opacity-80">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-purple-10 text-purple">
-        {icon}
-      </span>
+    <div className="flex flex-col gap-2 border-t border-rule py-3 first:border-t-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-ink">{title}</p>
-        <p className="truncate text-fine text-muted">{sub}</p>
+        <Link
+          href={`/buyer/requests/${item.requestId}`}
+          className="block truncate text-sm font-semibold text-ink hover:text-purple"
+        >
+          {item.title}
+        </Link>
+        <p className="mt-0.5 text-fine text-muted">{description.headline}</p>
       </div>
-    </Link>
+      {action ? (
+        <Link
+          href={hrefForAction(action.kind, { requestId: item.requestId, orderId: item.orderId })}
+          className={`${buttonClass('primary', 'sm')} shrink-0`}
+        >
+          {action.label}
+        </Link>
+      ) : (
+        <Stamp tone={description.tone} className="w-fit shrink-0">
+          {description.label}
+        </Stamp>
+      )}
+    </div>
+  );
+}
+
+function CaseRow({ item }: { item: BuyerCaseSummary }) {
+  const { description } = item;
+  const waiting = waitingOnLabel(description.waitingOn);
+  return (
+    <li className="border-t border-rule first:border-t-0">
+      <Link
+        href={`/buyer/requests/${item.requestId}`}
+        className="-mx-2 flex flex-col gap-1 rounded-control px-2 py-3 hover:bg-page sm:flex-row sm:items-center sm:gap-4"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
+          <p className="mt-0.5 truncate text-fine text-muted">
+            {waiting ? `Ход за: ${waiting}` : description.headline}
+            {item.expectedAt ? ` · к ${formatDate(item.expectedAt)}` : ''}
+          </p>
+        </div>
+        <Stamp tone={description.tone} className="w-fit shrink-0">
+          {description.label}
+        </Stamp>
+      </Link>
+    </li>
   );
 }
