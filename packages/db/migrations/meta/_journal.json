@@ -281,6 +281,13 @@
       "when": 1789288396840,
       "tag": "0039_abandoned_randall_flagg",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789817260199,
+      "tag": "0040_attachment_isolation",
+      "breakpoints": true
     }
   ]
 }
