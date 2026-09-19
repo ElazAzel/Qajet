@@ -58,7 +58,7 @@ describe('supplier RFQ actions', () => {
     expect(await submitQuote(validRfqId, [valid, valid])).toMatchObject({ ok: false });
   });
   it('не сообщает об успешном отказе, если запрос недоступен или уже отвечен', async () => {
-    mocks.rpc.mockResolvedValueOnce({ error: { message: 'RFQ недоступен' } });
+    mocks.rpc.mockResolvedValueOnce({ error: { code: 'P0001', message: 'RFQ недоступен' } });
     expect(await declineRfq(validRfqId)).toMatchObject({ ok: false });
   });
   it('принимает корректное предложение', async () => {

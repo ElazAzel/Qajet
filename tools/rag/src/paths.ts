@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '../../..');
 
-export const AGENTS_MD_PATH = path.join(REPO_ROOT, 'agents.md');
+export const AGENTS_MD_PATH = path.join(REPO_ROOT, 'docs/product/qajet-master-spec.md');
 export const DECISIONS_DIR = path.join(REPO_ROOT, 'docs/decisions');
 export const JOURNAL_DIR = path.join(REPO_ROOT, 'docs/journal');
 export const STATE_DIR = path.join(REPO_ROOT, 'docs/state');

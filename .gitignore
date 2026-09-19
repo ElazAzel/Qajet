@@ -50,3 +50,6 @@ Thumbs.db
 supabase/.branches/
 supabase/.temp/
 .vercel
+
+# Local superpowers execution ledger and review packages
+.superpowers/

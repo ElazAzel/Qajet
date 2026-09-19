@@ -1,21 +1,18 @@
 import { BuyerShell } from '@qajet/ui/shell';
-import { FilePlus, ListChecks, MessageSquare, Repeat, Settings, Users } from 'lucide-react';
+import { FilePlus, ListChecks, MessageSquare, Settings, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { requireActor, shellUserFrom } from '../lib/current-user';
 
+// Пять пунктов вместо семи: на мобильной панели семь уезжали в горизонтальный
+// скролл. «Повтор заказа» и «Аналитика» остались страницами, но ссылки на них
+// живут на главной — это вторичные сценарии, а не разделы.
 const NAV_ITEMS = [
-  { key: 'orders', href: '/buyer', label: 'Заказы', icon: <ListChecks size={18} /> },
+  { key: 'orders', href: '/buyer', label: 'Закупки', icon: <ListChecks size={18} /> },
   {
     key: 'new-request',
     href: '/buyer/requests/new',
     label: 'Новая заявка',
     icon: <FilePlus size={18} />,
-  },
-  {
-    key: 'reorder',
-    href: '/buyer/reorder',
-    label: 'Повтор заказа',
-    icon: <Repeat size={18} />,
   },
   {
     key: 'messages',

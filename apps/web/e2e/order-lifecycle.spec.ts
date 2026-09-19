@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test';
 import {
   advanceStage,
+  canRunLive,
   createQuotesReceivedOrder,
   gotoUntilButtonVisible,
-  hasSupabaseEnv,
   loginAs,
+  press,
+  skipLiveReason,
 } from './fixtures';
 
 /**
@@ -30,7 +32,7 @@ import {
  * очистка — вручную, как это делалось в ходе разработки.
  */
 
-test.skip(!hasSupabaseEnv, 'NEXT_PUBLIC_SUPABASE_URL не задан — нет живой Supabase-сессии для e2e');
+test.skip(!canRunLive, skipLiveReason);
 
 test.describe.configure({ mode: 'serial' });
 
@@ -50,7 +52,8 @@ for (const settlement of ['refund', 'surcharge'] as const) {
     const supplier = await supplierCtx.newPage();
 
     try {
-      const { orderUrl, orderId } = await createQuotesReceivedOrder(browser, {
+      const { orderUrl, orderId, requestId } = await createQuotesReceivedOrder(browser, {
+        name: `lifecycle-${settlement}`,
         prepaymentAmountKzt: settlement === 'refund' ? 2_000_000_000 : 1_000_000,
         quotePriceKzt: settlement === 'refund' ? 4_500 : 1_000_000,
       });
@@ -62,12 +65,12 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         orderUrl,
         'Предложить этот план',
       );
-      await proposePlanButton.click();
+      await press(concierge, proposePlanButton);
       await expect(concierge.getByRole('button', { name: 'Предложить этот план' })).toHaveCount(0);
 
       // 7. Покупатель открывает экран условий и утверждает конкретную версию
       await loginAs(buyer, 'buyer@demo.qajet.kz');
-      const buyerOrderUrl = `/buyer/orders/${orderId}`;
+      const buyerOrderUrl = `/buyer/requests/${requestId}`;
       await buyer.goto(buyerOrderUrl);
       await buyer.getByRole('link', { name: 'Перейти к подтверждению' }).click();
       await buyer.waitForURL(new RegExp(`/buyer/orders/${orderId}/confirm`));
@@ -76,7 +79,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         `/buyer/orders/${orderId}/confirm`,
         'Подтверждаю заказ на этих условиях',
       );
-      await approvePlanButton.click();
+      await press(buyer, approvePlanButton);
       await expect(
         buyer.getByRole('button', { name: 'Подтверждаю заказ на этих условиях' }),
       ).toHaveCount(0);
@@ -86,8 +89,12 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       await concierge.goto(orderUrl);
       const payoutButton = concierge.getByRole('button', { name: 'Подтвердить выплату' }).first();
       await expect(payoutButton).toBeVisible();
-      await concierge.getByLabel('Reference').first().fill(`E2E-PAYOUT-${Date.now()}`);
-      await payoutButton.click();
+      await concierge
+        .getByLabel('Reference')
+        .locator('visible=true')
+        .first()
+        .fill(`E2E-PAYOUT-${Date.now()}`);
+      await press(concierge, payoutButton);
       await expect(concierge.getByRole('button', { name: 'Подтвердить выплату' })).toHaveCount(0);
       await advanceStage(concierge, orderUrl, '→ В производстве');
       await advanceStage(concierge, orderUrl, '→ Отгружен');
@@ -96,7 +103,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       // экран, который поставщик использует после исполнения заказа.
       await loginAs(supplier, 'supplier@demo.qajet.kz');
       await supplier.goto(`/supplier/orders/${orderId}`);
-      await supplier.getByRole('button', { name: 'Подтвердить доставку' }).click();
+      await press(supplier, supplier.getByRole('button', { name: 'Подтвердить доставку' }));
       await expect(supplier.getByRole('button', { name: 'Подтвердить доставку' })).toHaveCount(0);
 
       // 9. Покупатель принимает поставку
@@ -105,7 +112,7 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         buyerOrderUrl,
         'Принять поставку',
       );
-      await acceptDeliveryButton.click();
+      await press(buyer, acceptDeliveryButton);
       await expect(buyer.getByRole('button', { name: 'Принять поставку' })).toHaveCount(0);
 
       // 10. Staff фиксирует требуемый возврат/доплату, покупатель закрывает
@@ -116,8 +123,11 @@ for (const settlement of ['refund', 'surcharge'] as const) {
         name: settlement === 'refund' ? 'Подтвердить возврат' : 'Подтвердить доплату',
       });
       await expect(settlementButton).toBeVisible();
-      await concierge.getByLabel('Банковский reference').fill(`E2E-SETTLEMENT-${Date.now()}`);
-      await settlementButton.click();
+      await concierge
+        .getByLabel('Банковский reference')
+        .locator('visible=true')
+        .fill(`E2E-SETTLEMENT-${Date.now()}`);
+      await press(concierge, settlementButton);
       await expect(
         concierge.getByRole('button', {
           name: settlement === 'refund' ? 'Подтвердить возврат' : 'Подтвердить доплату',
@@ -125,8 +135,8 @@ for (const settlement of ['refund', 'surcharge'] as const) {
       ).toHaveCount(0);
 
       await gotoUntilButtonVisible(buyer, buyerOrderUrl, 'Подтвердить сверку и закрыть');
-      await buyer.getByRole('button', { name: 'Подтвердить сверку и закрыть' }).click();
-      await expect(buyer.getByText('Заказ закрыт')).toBeVisible();
+      await press(buyer, buyer.getByRole('button', { name: 'Подтвердить сверку и закрыть' }));
+      await expect(buyer.getByText('Заказ закрыт', { exact: true })).toBeVisible();
     } finally {
       await buyerCtx.close();
       await conciergeCtx.close();

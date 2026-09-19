@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { requireActor } from '../current-user';
 import type { ActionResult } from './request-actions';
 
@@ -30,7 +31,7 @@ export async function retryOutbox(id: string): Promise<ActionResult> {
     .eq('status', 'failed')
     .select('id')
     .maybeSingle();
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('outbox.retryOutbox', error);
   if (!data) return { ok: false, error: 'Повтор доступен только для failed-сообщения' };
 
   revalidatePath('/admin/outbox');

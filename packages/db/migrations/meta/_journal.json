@@ -281,6 +281,83 @@
       "when": 1789288396840,
       "tag": "0039_abandoned_randall_flagg",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789817260199,
+      "tag": "0040_attachment_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789825497476,
+      "tag": "0041_order_write_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1789825594093,
+      "tag": "0042_function_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1789825654343,
+      "tag": "0043_function_default_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789825732345,
+      "tag": "0044_plan_change_request_rpc",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1789826138366,
+      "tag": "0045_request_submission_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1789828023843,
+      "tag": "0046_prepayments_update_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1789828776748,
+      "tag": "0047_active_time_heartbeat_conflict",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789829141208,
+      "tag": "0048_propose_plans_keep_draft_placeholder",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789829879675,
+      "tag": "0049_buyer_sees_own_refund",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789830987476,
+      "tag": "0050_change_request_integrity",
+      "breakpoints": true
     }
   ]
 }

@@ -14,10 +14,12 @@ import type { ReorderCandidate } from '../../lib/buyer-reorder';
 export function ReorderCard({ candidate }: { candidate: ReorderCandidate }) {
   const router = useRouter();
   const [qty, setQty] = useState(candidate.lastQty);
+  // Повторный клик или повтор после обрыва сети не создаёт вторую заявку.
+  const [submissionKey] = useState(() => crypto.randomUUID());
   const { run, pending, error } = useAsyncAction(async () => {
     if (!candidate.itemKey) return { ok: false, error: 'Позиции больше нет в каталоге' };
-    const result = await reorderItem(candidate.itemKey, qty);
-    if (result.ok) router.push('/buyer');
+    const result = await reorderItem(candidate.itemKey, qty, submissionKey);
+    if (result.ok && result.requestId) router.push(`/buyer/requests/${result.requestId}`);
     return result;
   });
 

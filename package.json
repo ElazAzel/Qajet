@@ -7,16 +7,16 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "pnpm --filter @qajet/web dev",
     "dev:bootstrap": "node tools/dev/bootstrap.mjs",
-    "build": "turbo run build",
+    "build": "pnpm --filter @qajet/web build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
-    "e2e": "turbo run e2e",
+    "e2e": "pnpm --filter @qajet/web build && pnpm --filter @qajet/web e2e",
     "db:generate": "pnpm --filter @qajet/db db:generate",
     "db:migrate": "pnpm --filter @qajet/db db:migrate",
     "db:reset": "pnpm --filter @qajet/db db:reset",
@@ -26,7 +26,12 @@
     "rag:search": "tsx tools/rag/src/cli.ts search",
     "rag:check": "tsx tools/rag/src/cli.ts check",
     "rag:log": "tsx tools/rag/src/cli.ts log",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "dev:all": "turbo run dev",
+    "build:all": "turbo run build",
+    "e2e:all": "turbo run e2e",
+    "dev:local-env": "node tools/dev/local-supabase-env.mjs",
+    "release:check:strict": "node tools/ci/check-release-readiness.mjs --strict"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.12",

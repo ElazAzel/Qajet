@@ -3,7 +3,13 @@
   "ui": "stream",
   "globalDependencies": ["tsconfig.base.json", ".env"],
   "globalEnv": ["NODE_ENV"],
-  "globalPassThroughEnv": ["JWT_SECRET", "LINK_SIGNING_SECRET", "FEATURE_LLM_ASSIST"],
+  "globalPassThroughEnv": [
+    "JWT_SECRET",
+    "LINK_SIGNING_SECRET",
+    "FEATURE_LLM_ASSIST",
+    "DATABASE_URL",
+    "RLS_ALLOW_REMOTE"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

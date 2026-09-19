@@ -3,12 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type ActionResult, actionFailure } from '../action-result';
 import { requireCurrentUser } from '../current-user';
 
-export interface AssignmentActionResult {
-  ok: boolean;
-  error?: string;
-}
+export type AssignmentActionResult = ActionResult;
 
 const uuid = z.string().uuid();
 
@@ -33,7 +31,7 @@ export async function assignSupplierRfq(
     p_rfq_id: rfqId,
     p_supplier_user_id: supplierUserId,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('assignment.assignSupplierRfq', error);
 
   revalidatePath('/supplier');
   revalidatePath('/supplier/messages');
@@ -61,7 +59,7 @@ export async function assignOrderConcierge(
     p_order_id: orderId,
     p_concierge_user_id: conciergeUserId,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('assignment.assignOrderConcierge', error);
 
   revalidatePath('/concierge');
   revalidatePath(`/concierge/orders/${orderId}`);

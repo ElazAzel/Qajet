@@ -3,9 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type ActionResult, actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
-import { loadOrder } from './order-actions';
-import type { ActionResult } from './request-actions';
 
 const uuid = z.string().uuid();
 const requestSchema = z
@@ -31,59 +30,18 @@ export async function requestPlanChange(
   if (!parsed.success) return { ok: false, error: 'Опишите изменение и корректную сумму' };
 
   const supabase = await createSupabaseServerClient();
-  const order = await loadOrder(supabase, { orderId });
-  if (!order?.approved_plan_id) return { ok: false, error: 'У заказа нет утверждённого плана' };
-  if (!['plan_approved', 'on_hold'].includes(order.state)) {
-    return { ok: false, error: 'Изменение условий доступно до выплаты поставщикам' };
-  }
-
-  const { data: pending } = await supabase
-    .from('change_requests')
-    .select('id')
-    .eq('order_id', order.id)
-    .eq('status', 'pending')
-    .limit(1)
-    .maybeSingle();
-  if (pending) return { ok: false, error: 'По заказу уже есть запрос на рассмотрении' };
-
-  const { data: plan } = await supabase
-    .from('plans')
-    .select('id, version, status')
-    .eq('id', order.approved_plan_id)
-    .maybeSingle();
-  if (plan?.status !== 'approved') return { ok: false, error: 'План уже изменён' };
-
-  const { error } = await supabase.from('change_requests').insert({
-    order_id: order.id,
-    proposed_plan_id: plan.id,
-    initiator_user_id: user.id,
-    diff: {
-      reason: parsed.data.reason,
-      requestedSupplierDeltaKzt: parsed.data.supplierDeltaKzt,
-      requestedDeliveryDeltaKzt: parsed.data.deliveryDeltaKzt,
-      expectedPlanId: plan.id,
-      expectedPlanVersion: plan.version,
-    },
-    status: 'pending',
+  // Проверки состояния, запись запроса и сообщение покупателю — один RPC в
+  // одной транзакции; единственность pending держит частичный индекс.
+  const { error } = await supabase.rpc('request_plan_change', {
+    p_order_id: orderId,
+    p_reason: parsed.data.reason,
+    p_supplier_delta_kzt: parsed.data.supplierDeltaKzt,
+    p_delivery_delta_kzt: parsed.data.deliveryDeltaKzt,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('changeRequest.request', error, 'Не удалось создать запрос');
 
-  const { data: buyerThread } = await supabase
-    .from('threads')
-    .select('id')
-    .eq('order_id', order.id)
-    .eq('kind', 'buyer')
-    .maybeSingle();
-  if (buyerThread) {
-    await supabase.from('messages').insert({
-      thread_id: buyerThread.id,
-      author_user_id: user.id,
-      body: `Запрос изменения условий: ${parsed.data.reason}`,
-    });
-  }
-
-  revalidatePath(`/buyer/orders/${order.id}`);
-  revalidatePath(`/concierge/orders/${order.id}`);
+  revalidatePath(`/buyer/orders/${orderId}`);
+  revalidatePath(`/concierge/orders/${orderId}`);
   revalidatePath('/concierge');
   return { ok: true };
 }
@@ -106,7 +64,7 @@ export async function resolvePlanChange(
     .eq('id', changeRequestId)
     .maybeSingle();
   if (changeError || !change)
-    return { ok: false, error: changeError?.message ?? 'Запрос не найден' };
+    return actionFailure('change-request.resolvePlanChange', changeError, 'Запрос не найден');
   if (change.status !== 'pending') return { ok: false, error: 'Запрос уже обработан' };
 
   if (decision === 'declined') {
@@ -115,7 +73,7 @@ export async function resolvePlanChange(
       .update({ status: 'declined', updated_at: new Date().toISOString() })
       .eq('id', change.id)
       .eq('status', 'pending');
-    if (error) return { ok: false, error: error.message };
+    if (error) return actionFailure('change-request.resolvePlanChange', error);
   } else {
     const diff = (change.diff ?? {}) as {
       requestedSupplierDeltaKzt?: unknown;
@@ -137,7 +95,7 @@ export async function resolvePlanChange(
       p_supplier_delta_kzt: supplierDelta,
       p_delivery_delta_kzt: deliveryDelta,
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return actionFailure('change-request.resolvePlanChange', error);
   }
 
   revalidatePath(`/buyer/orders/${change.order_id}`);

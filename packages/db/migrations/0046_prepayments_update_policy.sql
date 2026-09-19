@@ -1,0 +1,1 @@
+CREATE POLICY "prepayments_update_staff" ON "prepayments" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((select public.current_role()) in ('concierge', 'admin')) WITH CHECK ((select public.current_role()) in ('concierge', 'admin'));

@@ -1,0 +1,59 @@
+name: Scheduled jobs
+
+# Фоновые задачи приложения (/api/jobs/outbox, /api/jobs/learning) закрыты
+# секретом CRON_SECRET и сами по себе никого не будят. На тарифе Vercel Hobby
+# cron чаще раза в сутки недоступен, поэтому очередь уведомлений (в том числе
+# рассылку RFQ поставщикам) разбирает это расписание. Секрет лежит в секретах
+# репозитория и в переменных окружения Vercel, в коде его нет.
+#
+# GitHub запускает расписание только для ветки по умолчанию и не гарантирует
+# точность до минуты; для очереди с ответом в пределах минут этого достаточно.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  drain:
+    name: Разобрать очереди
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: outbox и learning
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://qajet-seven.vercel.app' }}
+        shell: bash
+        run: |
+          set -eu
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET не задан в секретах репозитория"
+            exit 1
+          fi
+          # Пока приложение не готово (нет ключей окружения), задачи не имеют смысла.
+          # Это NOT RUN, а не успех: причина видна в сообщении, а готовность
+          # проверяет release-gate.
+          ready=$(curl -sS -o /tmp/ready.json -w '%{http_code}' "$APP_URL/api/ready" || echo 000)
+          if [ "$ready" != "200" ]; then
+            echo "::warning::NOT RUN: $APP_URL/api/ready вернул $ready, очереди не разбирались"
+            cat /tmp/ready.json 2>/dev/null || true
+            exit 0
+          fi
+          for job in outbox learning; do
+            code=$(curl -sS -o /tmp/out.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/jobs/$job" || echo 000)
+            echo "$job: HTTP $code"
+            cat /tmp/out.json 2>/dev/null || true
+            echo
+            if [ "$code" != "200" ]; then
+              echo "::error::задача $job завершилась с HTTP $code"
+              exit 1
+            fi
+          done

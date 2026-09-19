@@ -11,7 +11,13 @@ import { defineConfig } from 'vitest/config';
  * or fixture".
  */
 export default defineConfig({
-  resolve: { alias: { '@': fileURLToPath(new URL('.', import.meta.url)) } },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('.', import.meta.url)),
+      // Пакет server-only бросает при импорте вне Server Component; в юнит-тестах он не нужен.
+      'server-only': fileURLToPath(new URL('./test/server-only-stub.ts', import.meta.url)),
+    },
+  },
   test: {
     exclude: ['**/node_modules/**', '**/.git/**', 'e2e/**'],
   },

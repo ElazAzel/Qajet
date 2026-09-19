@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { failureText } from './action-result';
 
 /**
  * Document Engine (agents.md §11.3 «экран подтверждения с реквизитами»,
@@ -109,7 +110,7 @@ export async function createPrepayInvoiceDocument(
     url: document.url,
     meta: document.meta,
   });
-  return error?.message ?? null;
+  return error ? failureText('documents.save', error) : null;
 }
 
 export interface ActItem {
@@ -173,5 +174,5 @@ export async function createActDocument(
     url: document.url,
     meta: document.meta,
   });
-  return error?.message ?? null;
+  return error ? failureText('documents.save', error) : null;
 }

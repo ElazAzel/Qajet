@@ -307,8 +307,14 @@ export const attachments = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
+      // Покупатель видит только файлы своей компании и документы QAJET.
+      // Файлы поставщиков раскрыли бы личность исполнителя (ADR-0009), а
+      // `supplier_invoice` — ещё и его цену, даже если его приложил консьерж.
       using: sql`${t.kind} <> 'supplier_invoice' and exists (
         select 1 from ${companies} c where c.id = ${currentCompanyIdSubquery} and c.type = 'buyer'
+      ) and (
+        exists (select 1 from ${users} u where u.id = ${t.uploadedBy} and u.company_id = ${currentCompanyIdSubquery}) or
+        public.is_staff_user(${t.uploadedBy})
       ) and (
         ${t.requestId} in (select id from ${requests}) or
         ${t.orderId} in (select id from ${orders}) or
@@ -316,6 +322,11 @@ export const attachments = pgTable(
         ${t.messageId} in (select m.id from ${messages} m join ${threads} th on th.id = m.thread_id where th.kind = 'buyer')
       )`,
     }),
+    // На уровне заказа поставщику видны только файлы своей компании. Раньше
+    // здесь было всё с тем же order_id: счета и акты другого поставщика и
+    // платёжка покупателя (qajet-master-spec.md §3.4). Остальное приходит
+    // через тред поставщика, который и так изолирован по компании.
+    // Внутри sql`` комментарии `--` писать нельзя: drizzle-kit ломает на них SQL.
     pgPolicy('attachments_select_supplier', {
       as: 'permissive',
       for: 'select',
@@ -323,7 +334,9 @@ export const attachments = pgTable(
       using: sql`(
         ${t.threadId} in (select id from ${threads} where kind = 'supplier' and supplier_company_id = ${currentCompanyIdSubquery}) or
         ${t.messageId} in (select m.id from ${messages} m join ${threads} th on th.id = m.thread_id where th.kind = 'supplier' and th.supplier_company_id = ${currentCompanyIdSubquery}) or
-        (${t.orderId} is not null and public.supplier_can_access_order(${t.orderId}))
+        (${t.orderId} is not null and public.supplier_can_access_order(${t.orderId}) and exists (
+          select 1 from ${users} u where u.id = ${t.uploadedBy} and u.company_id = ${currentCompanyIdSubquery}
+        ))
       )`,
     }),
     pgPolicy('attachments_insert_staff', {

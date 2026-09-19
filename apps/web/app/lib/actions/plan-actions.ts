@@ -8,6 +8,7 @@ import {
 } from '@qajet/engine/commission';
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import { PLAN_EDITABLE_STATES } from '../order-state';
 import type { ActionResult } from './order-actions';
@@ -95,7 +96,7 @@ export async function updatePlanLineCommission(
     p_plan_line_id: planLineId,
     p_commission_pct: pct,
   });
-  if (updateError) return { ok: false, error: updateError.message };
+  if (updateError) return actionFailure('plan.updatePlanLineCommission', updateError);
 
   if (line.category) {
     await supabase.from('learning_events').insert({

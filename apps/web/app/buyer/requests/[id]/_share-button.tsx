@@ -10,14 +10,12 @@ import { shareOrder } from '../../../lib/native-bridge';
  * с сервера — на превью-деплоях Vercel и на локальном `pnpm dev` домен
  * разный, а обе ссылки должны вести на тот же адрес, с которого поделились.
  */
-export function ShareOrderButton({ orderId, title }: { orderId: string; title: string }) {
+export function ShareCaseButton({ path, title }: { path: string; title: string }) {
   return (
     <button
       type="button"
-      onClick={() =>
-        shareOrder({ title, url: `${window.location.origin}/buyer/orders/${orderId}` })
-      }
-      aria-label="Поделиться заказом"
+      onClick={() => shareOrder({ title, url: `${window.location.origin}${path}` })}
+      aria-label="Поделиться закупкой"
       className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-page hover:text-ink"
     >
       <Share2 size={16} aria-hidden="true" />

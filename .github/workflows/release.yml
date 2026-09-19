@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Строгая проверка развёртывания: обязательные переменные и /api/ready = 200'
+        type: boolean
+        default: false
+      ready_url:
+        description: 'Адрес развёртывания для проверки /api/ready (нужен при strict)'
+        type: string
+        default: ''
 
 concurrency:
   group: release-${{ github.ref }}
@@ -29,8 +38,30 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # Каждый push в main проверяет исходники. Строгий режим — про развёртывание:
+      # он запускается вручную и падает, если в окружении нет обязательных
+      # переменных или живой /api/ready не отвечает 200. Раньше «готовность»
+      # подтверждалась записью в readiness.json, пока /api/ready в production
+      # отдавал 503.
       - name: Source readiness (non-strict)
+        if: ${{ !inputs.strict }}
         run: pnpm release:check
+
+      - name: Deployment readiness (strict)
+        if: ${{ inputs.strict }}
+        run: node tools/ci/check-release-readiness.mjs --strict --ready-url="$READY_URL"
+        env:
+          # Через переменную, а не подстановкой в команду: вход workflow_dispatch не должен попадать в shell.
+          READY_URL: ${{ inputs.ready_url }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LINK_SIGNING_SECRET: ${{ secrets.LINK_SIGNING_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

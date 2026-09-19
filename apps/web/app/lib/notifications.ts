@@ -1,4 +1,5 @@
 import type { createSupabaseServerClient } from '@/lib/supabase/server';
+import { failureText } from './action-result';
 import type { OutboxMessageInput } from './outbox';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
@@ -30,5 +31,5 @@ export async function enqueueOutbox(
         `${message.kind}:${String(message.payload?.rfqId ?? message.payload?.orderId ?? message.recipient)}`,
     })),
   );
-  return error?.message ?? null;
+  return error ? failureText('notifications.enqueue', error) : null;
 }

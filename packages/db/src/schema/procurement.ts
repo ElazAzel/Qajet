@@ -81,12 +81,17 @@ export const requests = pgTable(
     city: text('city'),
     status: requestStatusEnum('status').notNull().default('draft'),
     extractionConfidence: real('extraction_confidence'),
+    /** Ключ идемпотентности отправки формы: повторная отправка возвращает уже созданную заявку. */
+    submissionKey: uuid('submission_key'),
     ...timestamps,
   },
   (t) => [
     check('requests_budget_nonnegative', sql`${t.budgetKzt} is null or ${t.budgetKzt} >= 0`),
     index('requests_buyer_company_id_idx').on(t.buyerCompanyId),
     index('requests_created_by_idx').on(t.createdBy),
+    uniqueIndex('requests_created_by_submission_key_unique')
+      .on(t.createdBy, t.submissionKey)
+      .where(sql`${t.submissionKey} is not null`),
     pgPolicy('requests_select_own_company', {
       as: 'permissive',
       for: 'select',
@@ -286,6 +291,18 @@ export const prepayments = pgTable(
       as: 'permissive',
       for: 'insert',
       to: authenticatedRole,
+      withCheck: staffOnly,
+    }),
+    // Без UPDATE-политики staff не мог ни выставить счёт повторно (upsert падал на
+    // ON CONFLICT DO UPDATE), ни подтвердить предоплату: confirm_prepayment берёт
+    // строку через SELECT ... FOR UPDATE, а под RLS блокировка строки невозможна
+    // без права UPDATE — строка «не находилась». Статус paid по-прежнему требует
+    // банковского факта (триггер prepayments_paid_guard).
+    pgPolicy('prepayments_update_staff', {
+      as: 'permissive',
+      for: 'update',
+      to: authenticatedRole,
+      using: staffOnly,
       withCheck: staffOnly,
     }),
     pgPolicy('prepayments_service_all', {
@@ -975,7 +992,10 @@ export const paymentFacts = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.direction} = 'inbound' and ${t.orderId} in (select o.id from ${orders} o join ${requests} r on r.id = o.request_id where r.buyer_company_id = ${currentCompanyIdSubquery})`,
+      // Покупатель видит свои входящие платежи и возврат ему же. Выплаты поставщикам
+      // скрыты (ADR-0009). Без возврата закрытие со сверкой невозможно: приложение считает
+      // сверку по видимым покупателю платежам и не находит возвращённое.
+      using: sql`(${t.direction} = 'inbound' or (${t.direction} = 'outbound' and ${t.kind} = 'refund')) and ${t.orderId} in (select o.id from ${orders} o join ${requests} r on r.id = o.request_id where r.buyer_company_id = ${currentCompanyIdSubquery})`,
     }),
     pgPolicy('payment_facts_select_supplier_own', {
       as: 'permissive',

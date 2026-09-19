@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { requireCurrentUser } from '../current-user';
 import type { ActionResult } from './request-actions';
 import { type InviteTeamMemberInput, normalizeInviteTeamMemberInput } from './team-invitation';
@@ -40,7 +41,7 @@ export async function inviteTeamMember(input: InviteTeamMemberInput): Promise<Ac
   try {
     admin = createSupabaseAdminClient();
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Приглашения отключены' };
+    return actionFailure('team.inviteTeamMember', error, 'Приглашения отключены');
   }
 
   const { data, error: inviteError } = await admin.auth.admin.inviteUserByEmail(normalized.email, {
@@ -52,7 +53,7 @@ export async function inviteTeamMember(input: InviteTeamMemberInput): Promise<Ac
     },
   });
   if (inviteError || !data.user) {
-    return { ok: false, error: inviteError?.message ?? 'Не удалось создать приглашение' };
+    return actionFailure('team.inviteTeamMember', inviteError, 'Не удалось создать приглашение');
   }
 
   const { error: profileError } = await admin.from('users').insert({
@@ -67,7 +68,7 @@ export async function inviteTeamMember(input: InviteTeamMemberInput): Promise<Ac
   if (profileError) {
     // Не оставлять auth-пользователя без профиля при сбое записи профиля.
     await admin.auth.admin.deleteUser(data.user.id);
-    return { ok: false, error: profileError.message };
+    return actionFailure('team.inviteTeamMember', profileError);
   }
 
   revalidatePath('/buyer/team');
@@ -101,7 +102,7 @@ export async function setTeamMemberAccess(
     p_approval_limit_kzt: approvalLimitKzt,
     p_is_active: isActive,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('team.setTeamMemberAccess', error);
 
   revalidatePath('/buyer/team');
   revalidatePath('/supplier/team');
@@ -137,7 +138,7 @@ export async function setTeamMemberPermission(
   const { error } = existing
     ? await supabase.from('permissions').update({ value }).eq('id', existing.id)
     : await supabase.from('permissions').insert({ user_id: userId, key: normalizedKey, value });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('team.setTeamMemberPermission', error);
 
   revalidatePath('/buyer/team');
   revalidatePath('/supplier/team');
