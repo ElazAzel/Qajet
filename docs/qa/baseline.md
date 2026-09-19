@@ -1,50 +1,62 @@
-# Базовая линия: доказательства и их границы
+# Базовая линия и итоги: доказательства и их границы
 
-Документ фиксирует, что проверено и чем. Локальные тесты никогда не доказывают
-поведение провайдера, деплоя, CI или продакшена.
+Локальные тесты никогда не доказывают поведение провайдера, деплоя, CI или
+продакшена. Ниже — что проверено, чем и что остаётся вне ветки.
 
 ## Словарь
 
 - `CONFIRMED` — проверено по названному артефакту или выводу команды.
-- `REPRODUCED` — исполняемый сценарий запущен в этой работе и показал поведение.
+- `REPRODUCED` — исполняемый сценарий запущен и показал поведение.
 - `NOT REPRODUCED` — релевантный сценарий запущен и поведение не подтвердил.
 - `NOT RUN` — проверка сознательно не выполнялась; это не доказательство.
 - `ASSUMPTION` — вход для планирования, никогда не доказательство.
 
-## Исходная точка: `22a5a88`
+## Исходная точка `22a5a88` (до работ)
 
-Прогон на Windows 11, Node v24.19 (CI использует Node 22 — это отдельный гейт).
+Windows 11, Node v24.19 (в CI — Node 22, отдельный гейт).
+
+| Проверка | Результат |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck` | PASS |
+| `pnpm test` | 239 PASS, **24 SKIPPED** — тесты с базой без `DATABASE_URL` пропускались с кодом 0 |
+| Живой E2E | не запускался: job без секретов пропускал шаги и был зелёным |
+
+## Итог ветки `refactor/ux-reliability` (локально)
+
+Стек: Supabase CLI 2.117.0 (Postgres 17, Auth, REST, Storage), production-сборка
+Next.js, Playwright/Chromium. База пересоздана с нуля (`supabase db reset`,
+миграции 0000–0049, `db:reset` с демо-данными).
 
 | Проверка | Состояние | Результат |
 | --- | --- | --- |
-| `pnpm lint` | `CONFIRMED` | PASS, 341 файл |
-| `pnpm typecheck` | `CONFIRMED` | PASS, 6 пакетов |
-| `pnpm test` | `CONFIRMED` | 239 PASS, **24 SKIPPED** |
-| Тесты с реальным Postgres | `CONFIRMED` | все 24 пропущены: `DATABASE_URL` не задан, а `--passWithNoTests` + `describe.skip` дают код 0 без сигнала |
-
-Вывод: зелёный `pnpm test` без базы ничего не говорит об изоляции арендаторов.
+| Lint (Biome) | `REPRODUCED` PASS | 366 файлов |
+| Typecheck | `REPRODUCED` PASS | 6 пакетов |
+| Юнит-тесты | `REPRODUCED` PASS | engine 137, web 92, ui 13, pd 13, db 76 (при заданном `DATABASE_URL`; ничего не пропущено) |
+| `test:rls` с реальным PostgreSQL | `REPRODUCED` PASS | db 61 тест в 17 файлах, pd 1 |
+| Production-сборка `apps/web` | `REPRODUCED` PASS | |
+| Playwright, весь набор | `REPRODUCED` PASS | **18 из 18**: путь покупателя (7), заявка → закрытие с возвратом и с доплатой (2), бюджет кадров, публичные (9) |
 
 ## Живые факты продакшена (19.09.2026)
 
-Получены только чтением через коннекторы Vercel и Supabase и публичными GET.
-В боевые системы ничего не записывалось.
+Только чтение через коннекторы Vercel и Supabase и публичные GET; в боевые
+системы ничего не записывалось.
 
 | Факт | Состояние | Источник |
 | --- | --- | --- |
-| `/api/health` = 200, commit `6eb07fb` | `CONFIRMED` | GET `qajet-seven.vercel.app/api/health` |
-| `/api/ready` = 503 | `CONFIRMED` | GET `qajet-seven.vercel.app/api/ready` |
-| В Vercel production ровно 4 переменные: `NEXT_PUBLIC_SITE_URL`, `LINK_SIGNING_SECRET`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `CONFIRMED` | Vercel env API (значения не расшифровывались) |
-| Причина 503: нет `SUPABASE_SERVICE_ROLE_KEY`, а `/api/ready` ходит через service-role клиент | `CONFIRMED` | env API + `apps/web/app/api/ready/route.ts` |
-| Нет `CRON_SECRET` → `/api/jobs/*` в production отвечает 401 → очередь уведомлений RFQ не разбирается | `CONFIRMED` | env API + `apps/web/app/api/jobs/outbox/route.ts` |
-| `22a5a88` не запушен и не деплоился; `origin/main` = `6eb07fb` | `CONFIRMED` | git + список деплоев Vercel |
-| Боевой Supabase `qajet` в `ap-southeast-1` (Сингапур) | `CONFIRMED` | Supabase API; противоречит §11.1 спецификации |
-| 37 `SECURITY DEFINER` функций исполнимы ролью `anon`, 53 — ролью `authenticated` | `CONFIRMED` | Supabase security advisor |
-| Защита от утёкших паролей (HaveIBeenPwned) выключена | `CONFIRMED` | Supabase security advisor |
+| `/api/health` = 200, commit `6eb07fb`; `/api/ready` = 503 | `CONFIRMED` | GET `qajet-seven.vercel.app` |
+| В Vercel production 4 переменные; нет `SUPABASE_SERVICE_ROLE_KEY` и `CRON_SECRET` | `CONFIRMED` | Vercel env API (значения не читались) |
+| Причина 503 — отсутствующий service-role ключ; без `CRON_SECRET` `/api/jobs/*` отвечает 401 и очередь RFQ не разбирается | `CONFIRMED` | env API + код маршрутов |
+| `22a5a88` не деплоился; `origin/main` = `6eb07fb` | `CONFIRMED` | git + деплои Vercel |
+| Боевой Supabase в `ap-southeast-1` (Сингапур) | `CONFIRMED` | Supabase API |
+| Советник Supabase: 37 функций `SECURITY DEFINER` исполнимы `anon`; защита от утёкших паролей выключена | `CONFIRMED` | advisor (до миграций 0042–0043) |
+| Строгий гейт `check-release-readiness --strict --ready-url=…` на production | `REPRODUCED` FAIL, как и должен | `/api/ready` = 503 |
 
-## Что остаётся вне этой ветки
+## Вне ветки
 
 | Проверка | Состояние | Почему |
 | --- | --- | --- |
-| Настройка секретов и деплой в production | `NOT RUN` | Требует решения владельца; ветка не деплоится |
-| Резидентность данных в КЗ | `NOT RUN` | Инфраструктурное решение вне репозитория |
-| CI на целевом SHA | `NOT RUN` | Появится после пуша ветки |
+| CI на целевом SHA | `NOT RUN` | появится после пуша |
+| Миграции 0040–0049 на боевой базе | `NOT RUN` | не применялись; требуют ревью |
+| Деплой, секреты, провайдеры | `NOT RUN` | вне объёма, боевая инфраструктура не менялась |
+| Резидентность данных в КЗ, бэкап/восстановление, реальный пилот | `NOT RUN` | внешние решения |
+| axe-проверка, `prefers-reduced-motion`, путь админа | `NOT RUN` | вне объёма |

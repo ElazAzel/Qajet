@@ -10,7 +10,7 @@
 | `packages/pd` | `CONFIRMED` | Personal-data access/masking abstraction. |
 | `packages/ui` | `CONFIRMED` | Shared UI and motion primitives. |
 | `apps/{mobile,desktop}` | `CONFIRMED` | Retained non-default clients. |
-| `.github/workflows` | `CONFIRMED` | Node 22 lint/typecheck/test/build, conditional live E2E, public smoke, Postgres RLS, and RAG freshness jobs. |
+| `.github/workflows` | `CONFIRMED` | Node 22 lint/typecheck/unit/build; live E2E on a self-started local Supabase (no secrets); public E2E; Postgres RLS suite that fails without a database; RAG freshness; a gates job that reports `PASS` / `FAIL` / `NOT RUN` per job. `release.yml` adds a manual strict deployment gate. Runtime on GitHub is `NOT RUN` until the branch is pushed. |
 
 ## `service_role` paths
 

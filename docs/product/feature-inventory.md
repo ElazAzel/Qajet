@@ -1,29 +1,31 @@
-# Feature inventory (static baseline)
+# Инвентарь возможностей: что есть и чем это подтверждено
 
-`CONFIRMED` below means the named source route/module exists. It does not prove
-that a provider, database, or user workflow works at runtime.
+`CONFIRMED` — существует названный маршрут или модуль. `REPRODUCED` — путь
+пройден живым сценарием на локальном стеке. Ни то ни другое не доказывает
+поведение боевого проекта или провайдера.
 
-| Capability | State | Primary surfaces | Important contract |
+| Возможность | Состояние | Где | Чем подтверждено / что важно |
 | --- | --- | --- | --- |
-| Authentication and recovery | `CONFIRMED` | `login`, `auth/confirm`, `auth/recover`, `auth/set-password` | Session identity is resolved server-side. |
-| Buyer intake | `CONFIRMED` | `buyer/requests/new`, intake actions | Validation and repeat-submission safety need Task 3 proof. |
-| Procurement/order review | `CONFIRMED` | `buyer/orders/[id]`, confirm and changes routes | A plan version, approval limit, and lifecycle state must remain authoritative in DB/RPC. |
-| Supplier RFQ and quote response | `CONFIRMED` | `supplier/rfq/[id]`, `rfq/respond/[token]` | A supplier must never read another supplier's RFQ, quote, plan line, or thread. |
-| Concierge workflow | `CONFIRMED` | `concierge/**`, order item/quote/message screens | Staff actions require actor, company, and lifecycle validation. |
-| Admin operations | `CONFIRMED` | `admin/**`, jobs/outbox endpoints | Admin-only access is not permission to expose secrets or telemetry payloads. |
-| Documents and attachments | `CONFIRMED` | download route handlers, Storage/attachments migrations | Object access must be proven against an authenticated cross-tenant user. |
-| Financial close | `CONFIRMED` | payment facts, payouts, settlement engine/migrations | Plans, payouts, and settlement facts are immutable/audited after approval. |
-| Learning and metrics | `CONFIRMED` | `metrics`, `admin/learning`, learning events | Metrics may use privileged access only behind narrow server authorization. |
-| Demo and public site | `CONFIRMED` | `/`, `/demo`, `/startupbattle` | Public routes do not prove deployment or production content. |
-| Desktop/mobile projects | `CONFIRMED` | `apps/desktop`, `apps/mobile` | Preserved but outside the default web release gate proposed in Task 8. |
+| Вход и восстановление | `CONFIRMED` | `login`, `auth/**` | Личность определяется на сервере; ошибки Auth — русские тексты или код обращения |
+| Заявка покупателя | `REPRODUCED` | `buyer/requests/new` | Пустой старт, ошибки у полей, идемпотентная отправка; `buyer-journey.spec.ts`, `request-idempotency.test.ts` |
+| Страница закупки | `REPRODUCED` | `buyer/requests/[id]` | Одна страница на всю жизнь закупки: стадия, чей ход, следующий шаг; `/buyer/orders/[id]` перенаправляет |
+| Утверждение плана, приёмка, закрытие | `REPRODUCED` | `buyer/orders/[id]/confirm`, страница закупки | Сквозной сценарий заявка → закрытие; см. `docs/qa/baseline.md` |
+| RFQ и КП поставщика | `REPRODUCED` | `supplier/rfq/[id]`, `rfq/respond/[token]` | Изоляция поставщиков и вложений — `attachment-isolation.test.ts`, `supplier-isolation.test.ts` |
+| Работа консьержа | `REPRODUCED` | `concierge/**` | Предоплата, план, выплаты, отгрузка, сверка — сквозной сценарий; найдены и исправлены три дефекта (предоплата, учёт времени, первое предложение плана) |
+| Админ | `CONFIRMED` | `admin/**`, `jobs/*` | Не проходились живым сценарием. Cron-маршруты fail-closed |
+| Документы и вложения | `REPRODUCED` (RLS), `NOT RUN` (файлы Storage) | `api/*/download`, миграции Storage | Доступ к строкам и `storage.objects` проверен тестом; выдача подписанных ссылок и загрузка файла в локальный Storage не проходились |
+| Финансовое закрытие | `REPRODUCED` | RPC платежей, `packages/engine/settlement` | Возврат и доплата — сквозной сценарий; неизменяемость закрытого заказа — `order-write-guard.test.ts` |
+| Обучение и метрики | `CONFIRMED` | `metrics`, `admin/learning` | Учёт активного времени починен (`time-heartbeat.test.ts`), но `/metrics` живым сценарием не проверялся. Алиасы интейка пишутся, но не читаются (`docs/qa/contradictions.md`) |
+| Демо и публичный сайт | `CONFIRMED` | `/`, `/demo`, `/startupbattle` | Публичные маршруты не доказывают содержимое production |
+| Десктоп и мобильные оболочки | `CONFIRMED` | `apps/desktop`, `apps/mobile` | Вне основного web-контура; корневой `pnpm build` их больше не собирает (`build:all`) |
 
-## Deferred evidence matrix
+## Матрица доказательств
 
-| Evidence class | State | Owner |
+| Класс доказательства | Состояние | Чем |
 | --- | --- | --- |
-| Buyer-to-close browser journey | `NOT RUN` | Task 5 |
-| Real Postgres/RLS contracts | `NOT RUN` | Task 2 |
-| Безопасное сообщение об ошибке + supportId | `NOT RUN` | этап 1, G14 |
-| CI target commit | `NOT RUN` | Task 8 |
-| Deployment/provider/production behavior | `NOT RUN` | Outside this branch unless separately authorized |
-
+| Путь покупателя в браузере | `REPRODUCED` | `e2e/buyer-journey.spec.ts` (7 сценариев) |
+| Сквозной заказ до `closed`, возврат и доплата | см. `docs/qa/baseline.md` | `e2e/order-lifecycle.spec.ts` |
+| Реальный PostgreSQL / RLS | `REPRODUCED` | `test:rls`, 58 тестов на Supabase CLI 2.117.0 |
+| Безопасное сообщение об ошибке и код обращения | `REPRODUCED` | `action-result.test.ts`; живой код `061C58CF` найден в журнале |
+| CI на целевом SHA | `NOT RUN` | Появится после пуша ветки |
+| Боевой проект, деплой, провайдеры | `NOT RUN` | Вне ветки; см. `docs/release/readiness.json` |
