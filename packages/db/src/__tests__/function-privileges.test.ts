@@ -76,6 +76,28 @@ describeIfConfigured('права на SECURITY DEFINER функции схемы
     expect(exposed).toEqual([]);
   });
 
+  it('новая функция не получает EXECUTE для anon автоматически', async () => {
+    const rollback = new Error('probe rollback');
+    const sql = postgres(databaseUrl as string, { max: 1, prepare: false });
+    let anon: boolean | undefined;
+    try {
+      await sql
+        .begin(async (tx) => {
+          await tx`create function public.zz_privilege_probe() returns int language sql as 'select 1'`;
+          const [row] = await tx<{ anon: boolean }[]>`
+            select has_function_privilege('anon', 'public.zz_privilege_probe()', 'EXECUTE') as anon`;
+          anon = row?.anon;
+          throw rollback;
+        })
+        .catch((error) => {
+          if (error !== rollback) throw error;
+        });
+    } finally {
+      await sql.end();
+    }
+    expect(anon).toBe(false);
+  });
+
   it('рабочие RPC остаются доступны вошедшему пользователю', async () => {
     const rows = await load();
     for (const name of [

@@ -302,6 +302,13 @@
       "when": 1789825594093,
       "tag": "0042_function_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1789825654343,
+      "tag": "0043_function_default_privileges",
+      "breakpoints": true
     }
   ]
 }
