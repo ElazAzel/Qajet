@@ -1,12 +1,14 @@
 'use client';
 
-import type { ParsedRequestDraft } from '@qajet/engine/intake';
 import { Reveal, Stagger } from '@qajet/ui/motion';
 import { Button, Card } from '@qajet/ui/primitives';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { parseRequestTextAction } from '../../../lib/actions/intake-actions';
+import {
+  parseRequestTextAction,
+  type RequestDraftPreview,
+} from '../../../lib/actions/intake-actions';
 import { createRequest } from '../../../lib/actions/request-actions';
 import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../lib/catalog';
 import {
@@ -104,7 +106,7 @@ export default function NewRequestPage() {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [items, setItems] = useState<ItemRow[]>([]);
   const [quickText, setQuickText] = useState('');
-  const [quickPreview, setQuickPreview] = useState<ParsedRequestDraft | null>(null);
+  const [quickPreview, setQuickPreview] = useState<RequestDraftPreview | null>(null);
   const [quickParsing, setQuickParsing] = useState(false);
   const [quickNothing, setQuickNothing] = useState(false);
 
@@ -442,6 +444,12 @@ export default function NewRequestPage() {
                               : 'количество не распознано'}{' '}
                             {item.needsClarification && (
                               <span className="text-danger">— нужно уточнение</span>
+                            )}
+                            {quickPreview.categoryHints[index] && (
+                              <span className="block text-micro">
+                                Такую фразу уже не раз относили к категории «
+                                {quickPreview.categoryHints[index]?.label}».
+                              </span>
                             )}
                           </li>
                         ))}

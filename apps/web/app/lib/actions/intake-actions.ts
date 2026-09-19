@@ -1,7 +1,9 @@
 'use server';
 
-import { type ParsedRequestDraft, parseRequestText } from '@qajet/engine/intake';
+import { type AliasEntry, type ParsedRequestDraft, parseRequestText } from '@qajet/engine/intake';
 import { z } from 'zod';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type CategoryHint, categoryHintsFor } from '../alias-hints';
 import { CATALOG } from '../catalog';
 import { requireCurrentUser } from '../current-user';
 
@@ -21,14 +23,19 @@ import { requireCurrentUser } from '../current-user';
 
 const quickTextSchema = z.string().trim().min(1).max(5000);
 
+export interface RequestDraftPreview extends ParsedRequestDraft {
+  /** Подсказка по позиции с тем же индексом: категория из накопленных правок консьержа. */
+  categoryHints: (CategoryHint | null)[];
+}
+
 /** Полный серверный preview заявки: несколько позиций и общие поля. */
-export async function parseRequestTextAction(text: string): Promise<ParsedRequestDraft> {
+export async function parseRequestTextAction(text: string): Promise<RequestDraftPreview> {
   await requireCurrentUser();
   const parsedText = quickTextSchema.safeParse(text);
   if (!parsedText.success) {
-    return parseRequestText('', [], new Date());
+    return { ...parseRequestText('', [], new Date()), categoryHints: [] };
   }
-  return parseRequestText(
+  const draft = parseRequestText(
     parsedText.data,
     CATALOG.map((item) => ({
       key: item.itemKey,
@@ -41,4 +48,14 @@ export async function parseRequestTextAction(text: string): Promise<ParsedReques
     })),
     new Date(),
   );
+
+  // Правки консьержа читаются здесь: раньше алиасы только писались (§8A).
+  const supabase = await createSupabaseServerClient();
+  const { data: aliasRows } = await supabase
+    .from('extraction_aliases')
+    .select('alias, canonical, kind, hits')
+    .eq('kind', 'category')
+    .gte('hits', 3);
+  const aliases: AliasEntry[] = aliasRows ?? [];
+  return { ...draft, categoryHints: categoryHintsFor(draft.items, aliases) };
 }
