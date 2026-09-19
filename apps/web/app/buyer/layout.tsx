@@ -1,5 +1,13 @@
 import { BuyerShell } from '@qajet/ui/shell';
-import { FilePlus, ListChecks, MessageSquare, Repeat, Settings, Users } from 'lucide-react';
+import {
+  BarChart3,
+  FilePlus,
+  ListChecks,
+  MessageSquare,
+  Repeat,
+  Settings,
+  Users,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { requireActor, shellUserFrom } from '../lib/current-user';
 
@@ -22,6 +30,12 @@ const NAV_ITEMS = [
     href: '/buyer/messages',
     label: 'Сообщения',
     icon: <MessageSquare size={18} />,
+  },
+  {
+    key: 'analytics',
+    href: '/buyer/analytics',
+    label: 'Аналитика',
+    icon: <BarChart3 size={18} />,
   },
   { key: 'team', href: '/buyer/team', label: 'Команда', icon: <Users size={18} /> },
   { key: 'settings', href: '/buyer/settings', label: 'Настройки', icon: <Settings size={18} /> },

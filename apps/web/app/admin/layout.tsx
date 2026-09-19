@@ -5,6 +5,7 @@ import {
   Landmark,
   LineChart,
   Mail,
+  Scale,
   ShieldCheck,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   },
   { key: 'metrics', href: '/metrics', label: 'Метрики', icon: <Gauge size={18} /> },
   { key: 'finance', href: '/admin/finance', label: 'Финансы', icon: <Landmark size={18} /> },
+  { key: 'disputes', href: '/admin/disputes', label: 'Споры', icon: <Scale size={18} /> },
   {
     key: 'settings',
     href: '/admin/settings',
