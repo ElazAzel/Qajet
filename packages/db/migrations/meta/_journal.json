@@ -351,6 +351,13 @@
       "when": 1789829879675,
       "tag": "0049_buyer_sees_own_refund",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789830987476,
+      "tag": "0050_change_request_integrity",
+      "breakpoints": true
     }
   ]
 }
