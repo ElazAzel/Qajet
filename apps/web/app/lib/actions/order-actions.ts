@@ -18,7 +18,7 @@ import { calculateSettlement } from '@qajet/engine/settlement';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { type ActionResult, actionFailure } from '../action-result';
+import { type ActionResult, actionFailure, failureText } from '../action-result';
 import { logAutoTimeEntry } from '../autotimer';
 import { CATALOG_BY_KEY } from '../catalog';
 import { loadRequestComparison } from '../comparison';
@@ -832,7 +832,7 @@ async function issuePrepaymentInvoiceForOrder(
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (estimateError) return estimateError.message;
+  if (estimateError) return failureText('order.issuePrepaymentInvoice', estimateError);
   const amountKzt = estimateRow?.p80_kzt;
   if (!Number.isSafeInteger(amountKzt) || amountKzt <= 0) {
     return 'Нельзя выставить счёт: P80 оценки отсутствует или равен нулю';
@@ -843,7 +843,7 @@ async function issuePrepaymentInvoiceForOrder(
     .select('id, amount_kzt, invoice_no, status')
     .eq('request_id', order.request_id)
     .maybeSingle();
-  if (existingError) return existingError.message;
+  if (existingError) return failureText('order.issuePrepaymentInvoice', existingError);
   if (existing?.status === 'paid') return null;
   if (existing && existing.amount_kzt !== amountKzt) {
     return 'Счёт уже выставлен на другую сумму — создайте новую версию условий';
@@ -859,7 +859,7 @@ async function issuePrepaymentInvoiceForOrder(
     },
     { onConflict: 'request_id' },
   );
-  if (prepaymentError) return prepaymentError.message;
+  if (prepaymentError) return failureText('order.issuePrepaymentInvoice', prepaymentError);
 
   const document = await buildPrepayInvoiceDocument(
     supabase,
@@ -873,7 +873,7 @@ async function issuePrepaymentInvoiceForOrder(
     .eq('order_id', order.id)
     .eq('type', 'prepay_invoice')
     .maybeSingle();
-  if (documentLookupError) return documentLookupError.message;
+  if (documentLookupError) return failureText('order.issuePrepaymentInvoice', documentLookupError);
   if (!existingDocument) {
     const { error: documentError } = await supabase.from('documents').insert({
       order_id: order.id,
@@ -882,7 +882,7 @@ async function issuePrepaymentInvoiceForOrder(
       url: document.url,
       meta: document.meta,
     });
-    if (documentError) return documentError.message;
+    if (documentError) return failureText('order.issuePrepaymentInvoice', documentError);
   }
   return null;
 }
@@ -1227,7 +1227,7 @@ async function prepareRfqsForOrder(
     .in('company_id', [...chosenIds])
     .in('role', ['owner', 'manager'])
     .eq('is_active', true);
-  if (recipientsError) return recipientsError.message;
+  if (recipientsError) return failureText('order.sendRfq', recipientsError);
 
   const outbox = rfqDrafts.flatMap((rfq) =>
     (recipients ?? [])

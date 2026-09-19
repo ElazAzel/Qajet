@@ -12,9 +12,15 @@
 
 ## Честный статус
 
-Веб-MVP собран и готов к контролируемому пилоту; web production развёрнут
-на Vercel. Ниже — что реально работает сейчас, без округления в большую
-сторону:
+Веб-MVP собран; путь покупателя, изоляция данных и сквозной цикл заказа
+проверены на локальном стеке (Supabase CLI + Playwright, см.
+[`docs/qa/baseline.md`](./docs/qa/baseline.md)). **Готовым к пилоту продукт
+пока считать нельзя**: production на Vercel не проходит собственный
+`/api/ready` (в окружении нет `SUPABASE_SERVICE_ROLE_KEY` и `CRON_SECRET`, из-за
+чего не работают ни проверка готовности, ни рассылка уведомлений по RFQ), а
+локальный коммит с последними изменениями ещё не разворачивался. Список
+внешних блокеров — в [`docs/release/readiness.json`](./docs/release/readiness.json).
+Ниже — что реально работает сейчас, без округления в большую сторону:
 
 - Production: [qajet-seven.vercel.app](https://qajet-seven.vercel.app/).
   Текущий `main` автоматически собирается и публикуется Vercel; production
@@ -81,7 +87,17 @@
 
 ```bash
 pnpm install
-pnpm dev            # apps/web на localhost:3000
+pnpm dev            # apps/web на localhost:3000 (только веб; Tauri и Capacitor — `pnpm dev:all`)
+```
+
+Полностью локальный стек с демо-данными (нужен Docker и Supabase CLI):
+
+```bash
+supabase start
+pnpm dev:local-env                  # пишет .env.local из `supabase status`, боевые проекты недостижимы
+pnpm --filter @qajet/db db:migrate
+pnpm --filter @qajet/db db:reset    # демо-данные: buyer/supplier/concierge/admin@demo.qajet.kz, пароль qajet2026
+pnpm dev
 ```
 
 ```bash
@@ -89,7 +105,18 @@ pnpm lint           # Biome
 pnpm typecheck      # tsc по всем пакетам монорепо (Turborepo)
 pnpm test           # Vitest
 pnpm --filter @qajet/web build   # production-сборка Next.js
+pnpm e2e            # сборка + Playwright; идёт только против локальной базы
 ```
+
+Тесты с реальным PostgreSQL (изоляция арендаторов, защита записи, права на
+функции) запускаются отдельно и **падают без базы**, а не пропускаются:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres pnpm --filter @qajet/db test:rls
+```
+
+Корневой `pnpm test` эти тесты пропускает (Turborepo не передаёт `DATABASE_URL`),
+поэтому зелёный `pnpm test` ничего не говорит об RLS.
 
 ```bash
 pnpm rag:sync              # перегенерировать docs/state/ и переиндексировать корпус

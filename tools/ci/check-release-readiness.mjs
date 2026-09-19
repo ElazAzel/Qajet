@@ -4,6 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const strict = process.argv.includes('--strict');
+// --ready-url=https://host: в строгом режиме проверяет, что развёрнутое приложение
+// действительно готово. Локальный успех lint/build не доказывает поведение
+// продакшена — раньше именно так «готовый» статус жил рядом с /api/ready = 503.
+const readyUrlArg = process.argv.find((arg) => arg.startsWith('--ready-url='));
+const readyUrl = readyUrlArg?.slice('--ready-url='.length);
 const requiredFiles = [
   'apps/web/app/api/health/route.ts',
   'apps/web/app/api/ready/route.ts',
@@ -49,20 +54,44 @@ if (featureLlmEnabled) {
   );
 }
 
+// Битый или неизвестный readiness.json — жёсткий отказ: по нему принимают решение о пилоте.
+let readinessProblems = 0;
 const readinessFile = resolve(root, 'docs/release/readiness.json');
 if (existsSync(readinessFile)) {
   try {
     const readiness = JSON.parse(readFileSync(readinessFile, 'utf8'));
     if (readiness.schemaVersion !== 1) {
       console.error('Release gate: docs/release/readiness.json имеет неизвестную schemaVersion.');
+      readinessProblems++;
     }
   } catch {
     console.error('Release gate: docs/release/readiness.json не является корректным JSON.');
+    readinessProblems++;
   }
 }
 
-const hardFailures = missingFiles.length + (featureLlmEnabled ? 1 : 0);
-const strictFailures = strict ? missingEnv.length : 0;
+let readyProblems = 0;
+if (readyUrl) {
+  try {
+    const response = await fetch(new URL('/api/ready', readyUrl), { signal: AbortSignal.timeout(15000) });
+    const body = await response.text();
+    if (response.status !== 200) {
+      console.error(`Release gate: ${readyUrl}/api/ready ответил ${response.status}: ${body.slice(0, 300)}`);
+      readyProblems++;
+    } else {
+      console.log(`Release gate: ${readyUrl}/api/ready = 200.`);
+    }
+  } catch (error) {
+    console.error(`Release gate: не удалось запросить /api/ready: ${error instanceof Error ? error.message : error}`);
+    readyProblems++;
+  }
+} else if (strict) {
+  console.error('Release gate: в строгом режиме нужен --ready-url=<адрес развёртывания>.');
+  readyProblems++;
+}
+
+const hardFailures = missingFiles.length + (featureLlmEnabled ? 1 : 0) + readinessProblems;
+const strictFailures = strict ? missingEnv.length + readyProblems : readyProblems;
 if (hardFailures + strictFailures > 0) process.exit(2);
 
 console.log(

@@ -142,3 +142,32 @@ export function actionFailure(operation: string, err: unknown, fallback?: string
     supportId,
   };
 }
+
+/**
+ * Для вспомогательных функций, которые возвращают текст ошибки строкой
+ * (`string | null`), а не `ActionResult`: тот же безопасный путь с кодом
+ * обращения, но без обёртки. Сырой текст базы наружу не уходит.
+ */
+export function failureText(operation: string, err: unknown, fallback?: string): string {
+  return actionFailure(operation, err, fallback).error ?? GENERIC_FAILURE;
+}
+
+/**
+ * Ошибки Supabase Auth. Часть из них человек должен увидеть, чтобы исправить
+ * ввод («пароль совпадает со старым»), — их GoTrue отдаёт кодом. Известные коды
+ * получают русский текст, остальное идёт безопасным путём.
+ */
+const AUTH_MESSAGE: Record<string, string> = {
+  same_password: 'Новый пароль должен отличаться от прежнего.',
+  weak_password: 'Пароль слишком простой. Используйте не менее 8 символов, буквы и цифры.',
+  over_email_send_rate_limit: 'Слишком много писем за короткое время. Повторите через минуту.',
+  over_request_rate_limit: 'Слишком много попыток. Повторите через минуту.',
+  email_address_invalid: 'Проверьте адрес электронной почты.',
+  validation_failed: 'Проверьте введённые данные.',
+};
+
+export function authErrorText(operation: string, err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && AUTH_MESSAGE[code]) return AUTH_MESSAGE[code];
+  return failureText(operation, err);
+}

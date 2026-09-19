@@ -992,7 +992,10 @@ export const paymentFacts = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.direction} = 'inbound' and ${t.orderId} in (select o.id from ${orders} o join ${requests} r on r.id = o.request_id where r.buyer_company_id = ${currentCompanyIdSubquery})`,
+      // Покупатель видит свои входящие платежи и возврат ему же. Выплаты поставщикам
+      // скрыты (ADR-0009). Без возврата закрытие со сверкой невозможно: приложение считает
+      // сверку по видимым покупателю платежам и не находит возвращённое.
+      using: sql`(${t.direction} = 'inbound' or (${t.direction} = 'outbound' and ${t.kind} = 'refund')) and ${t.orderId} in (select o.id from ${orders} o join ${requests} r on r.id = o.request_id where r.buyer_company_id = ${currentCompanyIdSubquery})`,
     }),
     pgPolicy('payment_facts_select_supplier_own', {
       as: 'permissive',

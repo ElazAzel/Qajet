@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createQuotesReceivedOrder, hasSupabaseEnv, loginAs } from './fixtures';
+import { canRunLive, createQuotesReceivedOrder, loginAs, skipLiveReason } from './fixtures';
 
 /**
  * Бюджет анимаций на экране сравнения — agents.md фаза 7 чек-лист и
@@ -17,7 +17,7 @@ import { createQuotesReceivedOrder, hasSupabaseEnv, loginAs } from './fixtures';
  * поток, а не что видеокарта медленная.
  */
 
-test.skip(!hasSupabaseEnv, 'NEXT_PUBLIC_SUPABASE_URL не задан — нет живой Supabase-сессии для e2e');
+test.skip(!canRunLive, skipLiveReason);
 
 const ANIMATION_WINDOW_MS = 2000;
 // Стагг-хореография (packages/ui/motion/tokens.ts): шаг 60мс, самая долгая

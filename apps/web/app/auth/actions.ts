@@ -3,6 +3,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { authErrorText } from '../lib/action-result';
 import { safeAuthPath } from '../lib/safe-auth-path';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -36,7 +37,7 @@ export async function requestPasswordReset(
 
   // Не раскрываем существование аккаунта. Ошибка инфраструктуры всё равно
   // показывается человеку, чтобы команда могла исправить SMTP/allow-list.
-  if (error) return error.message;
+  if (error) return authErrorText('auth.requestPasswordReset', error);
   return null;
 }
 
@@ -56,7 +57,7 @@ export async function setPassword(
   if (!user) return 'Ссылка устарела. Запросите новое приглашение или восстановление пароля.';
 
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) return error.message;
+  if (error) return authErrorText('auth.setPassword', error);
 
   redirect(safeAuthPath(formData.get('next'), '/'));
 }

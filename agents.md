@@ -29,12 +29,17 @@ a documentation claim. Use only `CONFIRMED`, `REPRODUCED`, `NOT REPRODUCED`,
 - Typecheck: `pnpm typecheck`.
 - Unit tests: `pnpm test`.
 - Web build: `pnpm --filter @qajet/web build`.
-- Web E2E: `pnpm --filter @qajet/web e2e` only with an authorized
-  non-production test environment.
+- Web E2E: `pnpm e2e` (build + Playwright). It refuses to run against a
+  non-local Supabase unless `E2E_ALLOW_REMOTE=1` names a dedicated test
+  environment. Start the local stack with `supabase start` and
+  `pnpm dev:local-env`.
+- `pnpm dev`, `pnpm build` and `pnpm e2e` are web-only; `dev:all`, `build:all`
+  and `e2e:all` run every workspace (`build:all` needs Rust for Tauri).
 - Migrations: `pnpm --filter @qajet/db db:migrate` only against an explicitly
   named local/test database.
 - RLS contracts: `pnpm --filter @qajet/db test:rls` only against an explicitly
-  named local/test database.
+  named local/test database. It fails without `DATABASE_URL`; root `pnpm test`
+  skips these tests, so a green `pnpm test` says nothing about RLS.
 - Generated state: `pnpm rag:sync`, then review and commit resulting
   `docs/state/` changes when appropriate.
 
