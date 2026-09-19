@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import type { ActionResult } from './request-actions';
 
@@ -42,7 +43,7 @@ export async function updateSupplierProfile(rawInput: SupplierProfileInput): Pro
       updated_at: new Date().toISOString(),
     })
     .eq('company_id', user.companyId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('supplier-profile.updateSupplierProfile', error);
 
   revalidatePath('/supplier/profile');
   revalidatePath('/supplier');

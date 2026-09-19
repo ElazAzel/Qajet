@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { requireCurrentUser } from '../current-user';
 import type { ActionResult } from './request-actions';
 
@@ -38,7 +39,7 @@ export async function sendMessage(threadId: string, body: string): Promise<Actio
   const { error } = await supabase
     .from('messages')
     .insert({ thread_id: threadId, author_user_id: user.id, body: text });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('message.sendMessage', error);
 
   revalidatePath('/buyer/messages');
   revalidatePath('/supplier/messages');
@@ -59,7 +60,7 @@ export async function markThreadRead(threadId: string): Promise<ActionResult> {
     },
     { onConflict: 'thread_id,user_id' },
   );
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('message.markThreadRead', error);
   return { ok: true };
 }
 
@@ -82,7 +83,7 @@ export async function editMessage(
     .eq('author_user_id', user.id)
     .select('id')
     .maybeSingle();
-  if (error || !data) return { ok: false, error: error?.message ?? 'Сообщение не найдено' };
+  if (error || !data) return actionFailure('message.editMessage', error, 'Сообщение не найдено');
 
   revalidatePath('/buyer/messages');
   revalidatePath('/supplier/messages');

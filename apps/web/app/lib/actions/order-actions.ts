@@ -18,6 +18,7 @@ import { calculateSettlement } from '@qajet/engine/settlement';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type ActionResult, actionFailure } from '../action-result';
 import { logAutoTimeEntry } from '../autotimer';
 import { CATALOG_BY_KEY } from '../catalog';
 import { loadRequestComparison } from '../comparison';
@@ -48,10 +49,7 @@ const FALLBACK_RFQ_EXPLORATION_EVERY_N = 4;
  * барьеры на случай прямого обращения мимо этого файла.
  */
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+export type { ActionResult } from '../action-result';
 
 export interface SupplierRatingInput {
   buyerScore1To5: number;
@@ -175,7 +173,7 @@ export async function rateSupplier(
     p_had_dispute: input.hadDispute,
     p_comment: comment,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('order.rateSupplier', error);
 
   revalidateOrder(orderId);
   return { ok: true };
@@ -263,7 +261,7 @@ export async function intakeRequest(
     p_request_id: requestId,
   });
   if (orderError || !orderId) {
-    return { ok: false, error: orderError?.message ?? 'Не удалось создать заказ' };
+    return actionFailure('order.intakeRequest', orderError, 'Не удалось создать заказ');
   }
 
   revalidatePath('/concierge');
@@ -337,7 +335,7 @@ export async function proposePlan(requestId: string, kind: PlanKind): Promise<Ac
     })),
     p_selected_kind: kind,
   });
-  if (planError) return { ok: false, error: planError.message };
+  if (planError) return actionFailure('order.proposePlan', planError);
   await logStageWork(supabase, order.id, order.state, user.id, actor, stageStartedAt);
 
   revalidateOrder(order.id);
@@ -373,7 +371,7 @@ export async function approvePlan(
     p_expected_plan_id: expectedPlanId,
     p_expected_plan_version: expectedPlanVersion,
   });
-  if (planError) return { ok: false, error: planError.message };
+  if (planError) return actionFailure('order.approvePlan', planError);
   // RPC commits plan + order + history together and routes managers above
   // their limit to awaiting_internal_approval. Do not overwrite its state.
 
@@ -400,7 +398,7 @@ export async function selectPlan(
     p_expected_plan_id: expectedPlanId,
     p_plan_id: planId,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('order.selectPlan', error);
   revalidateOrder(orderId);
   return { ok: true };
 }
@@ -461,7 +459,7 @@ export async function confirmPrepayment(
     p_proof_url: parsed.data.proofUrl ?? null,
     p_idempotency_key: `prepayment:${order.id}:${parsed.data.reference}`,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('order.confirmPrepayment', error);
   revalidateOrder(order.id);
   return { ok: true };
 }
@@ -493,7 +491,7 @@ export async function confirmSupplierPayout(
     p_proof_url: parsed.data.proofUrl ?? null,
     p_idempotency_key: `supplier-payout:${orderId}:${supplierCompanyId}:${parsed.data.reference}`,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('order.confirmSupplierPayout', error);
   revalidateOrder(orderId);
   return { ok: true };
 }
@@ -526,7 +524,7 @@ export async function confirmSettlementPayment(
     p_proof_url: parsed.data.proofUrl ?? null,
     p_idempotency_key: `settlement:${orderId}:${kind}:${parsed.data.reference}`,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('order.confirmSettlementPayment', error);
   revalidateOrder(orderId);
   return { ok: true };
 }
@@ -596,7 +594,7 @@ export async function advanceOrderStage(
       p_to_state: toState,
       p_reason: parsedOptions.data.reason,
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return actionFailure('order.advanceOrderStage', error);
     await logStageWork(supabase, order.id, order.state, user.id, actor, stageStartedAt);
     revalidateOrder(order.id);
     return { ok: true };
@@ -661,7 +659,7 @@ export async function advanceOrderStage(
       .eq('order_id', order.id)
       .eq('status', 'confirmed')
       .in('kind', ['prepayment', 'surcharge', 'refund']);
-    if (paymentError) return { ok: false, error: paymentError.message };
+    if (paymentError) return actionFailure('order.advanceOrderStage', paymentError);
 
     let receivedKzt = 0;
     let refundedKzt = 0;
@@ -731,7 +729,7 @@ export async function advanceOrderStage(
     p_payload: payload,
     p_close_document: closeDocument,
   });
-  if (orderError) return { ok: false, error: orderError.message };
+  if (orderError) return actionFailure('order.advanceOrderStage', orderError);
   // Timestamp захвачен до RPC: audit event создаётся триггером внутри той же
   // транзакции, что и все зависимые записи стадии.
   await logStageWork(supabase, order.id, order.state, user.id, actor, stageStartedAt);
@@ -1276,7 +1274,7 @@ export async function addInternalNote(orderId: string, body: string): Promise<Ac
       .select('id')
       .single();
     if (threadError || !created) {
-      return { ok: false, error: threadError?.message ?? 'Не удалось создать заметку' };
+      return actionFailure('order.addInternalNote', threadError, 'Не удалось создать заметку');
     }
     thread = created;
   }
@@ -1286,7 +1284,7 @@ export async function addInternalNote(orderId: string, body: string): Promise<Ac
     author_user_id: user.id,
     body: trimmed,
   });
-  if (messageError) return { ok: false, error: messageError.message };
+  if (messageError) return actionFailure('order.addInternalNote', messageError);
 
   revalidatePath(`/concierge/orders/${orderId}`);
   return { ok: true };

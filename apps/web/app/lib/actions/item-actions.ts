@@ -4,6 +4,7 @@ import { normalizeText } from '@qajet/engine/intake';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type ActionResult, actionFailure } from '../action-result';
 import { CATALOG_BY_KEY } from '../catalog';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import { ITEMS_EDITABLE_STATES } from '../order-state';
@@ -19,10 +20,7 @@ import { loadOrder } from './order-actions';
  * правды в apps/web/app/lib/order-state.ts).
  */
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+export type { ActionResult } from '../action-result';
 
 const itemClassificationSchema = z.object({ itemKey: z.string().trim().min(1).max(120) }).strict();
 const splitPartSchema = z
@@ -107,7 +105,7 @@ export async function correctItemClassification(
       clarification_reason: null,
     })
     .eq('id', itemId);
-  if (updateError) return { ok: false, error: updateError.message };
+  if (updateError) return actionFailure('item.correctItemClassification', updateError);
 
   if (classificationChanged) {
     const sourceText = (item.specs as { sourceText?: string } | null)?.sourceText;
@@ -208,7 +206,7 @@ export async function splitRequestItem(itemId: string, parts: SplitPart[]): Prom
     p_item_id: itemId,
     p_parts: parsedParts.data,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('item.splitRequestItem', error);
 
   revalidatePath('/concierge');
   return { ok: true };
@@ -248,7 +246,7 @@ export async function mergeRequestItems(
     p_name: parsedOverrides.data.name ?? null,
     p_category: parsedOverrides.data.category ?? null,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('item.mergeRequestItems', error);
 
   revalidatePath('/concierge');
   return { ok: true };

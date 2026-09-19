@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import { TIME_ENTRY_STAGE_LABEL } from '../order-time';
 import type { ActionResult } from './request-actions';
@@ -66,7 +67,7 @@ export async function addManualTimeEntry(
     source: 'manual',
     correction_reason: correctionReason,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('time.addManualTimeEntry', error);
 
   revalidatePath(`/concierge/orders/${orderId}`);
   revalidatePath('/metrics');
@@ -107,6 +108,6 @@ export async function heartbeatActiveTime(
     p_interval_id: intervalId,
     p_started_at: parsedStartedAt.toISOString(),
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('time.heartbeatActiveTime', error);
   return { ok: true };
 }

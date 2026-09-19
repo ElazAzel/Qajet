@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import type { ActionResult } from './request-actions';
 
@@ -30,13 +31,14 @@ export async function requestQuoteRevision(rfqId: string, note: string): Promise
     .select('id, request_id')
     .eq('id', rfqId)
     .maybeSingle();
-  if (rfqError || !rfq) return { ok: false, error: rfqError?.message ?? 'RFQ не найден' };
+  if (rfqError || !rfq)
+    return actionFailure('quote.requestQuoteRevision', rfqError, 'RFQ не найден');
 
   const { error } = await supabase.rpc('request_supplier_quote_revision', {
     p_rfq_id: rfq.id,
     p_note: parsedNote.data,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('quote.requestQuoteRevision', error);
 
   const { data: order } = await supabase
     .from('orders')

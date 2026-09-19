@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { requireCurrentUser } from '../current-user';
 import { EDITABLE_SETTINGS } from '../settings-catalog';
 import type { ActionResult } from './request-actions';
@@ -41,7 +42,7 @@ export async function updateSetting(key: string, value: number): Promise<ActionR
     .from('settings')
     .update({ value, updated_at: new Date().toISOString() })
     .eq('key', key);
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('settings.updateSetting', error);
 
   // Параметры влияют на подбор, сравнение и юнит-экономику — пересчитать
   // надо все экраны, которые их читают, а не только сам экран настроек.

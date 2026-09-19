@@ -4,6 +4,7 @@ import { findRestrictedCategory, restrictedCategoryMessage } from '@qajet/engine
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type ActionResult, actionFailure } from '../action-result';
 import { CATALOG_BY_KEY, type CatalogItem } from '../catalog';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 
@@ -20,10 +21,7 @@ import { orderActorFor, requireCurrentUser } from '../current-user';
  * явного подтверждения покупателя.
  */
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+export type { ActionResult } from '../action-result';
 
 export interface CreateRequestItemInput {
   itemKey: string;
@@ -136,7 +134,7 @@ export async function createRequest(
     })),
   });
   if (requestError || !requestId) {
-    return { ok: false, error: requestError?.message ?? 'Не удалось создать заявку' };
+    return actionFailure('request.createRequest', requestError, 'Не удалось создать заявку');
   }
 
   revalidatePath('/buyer');

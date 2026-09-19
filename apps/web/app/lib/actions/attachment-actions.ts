@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import {
   ALLOWED_ATTACHMENT_TYPES,
@@ -167,10 +168,7 @@ export async function uploadAttachment(
   try {
     await storage.put(objectKey, file, file.type);
   } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : 'Не удалось загрузить файл',
-    };
+    return actionFailure('attachment.upload', error, 'Не удалось загрузить файл');
   }
 
   const { data, error } = await supabase
@@ -193,7 +191,7 @@ export async function uploadAttachment(
     .single();
   if (error || !data) {
     await storage.delete(objectKey).catch(() => undefined);
-    return { ok: false, error: error?.message ?? 'Не удалось сохранить файл' };
+    return actionFailure('attachment.uploadAttachment', error, 'Не удалось сохранить файл');
   }
 
   revalidatePath('/buyer/messages');

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { type ActionResult, actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import { verifyRfqResponseToken } from '../rfq-response';
 
@@ -11,10 +12,7 @@ import { verifyRfqResponseToken } from '../rfq-response';
  * через доверенный UI-параметр.
  */
 
-export interface ActionResult {
-  ok: boolean;
-  error?: string;
-}
+export type { ActionResult } from '../action-result';
 
 export interface QuoteLineInput {
   requestItemId: string;
@@ -88,7 +86,7 @@ export async function submitQuote(rfqId: string, lines: QuoteLineInput[]): Promi
     p_rfq_id: rfqId,
     p_lines: lines,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('supplier.submitQuote', error);
 
   revalidatePath('/supplier');
   revalidatePath(`/supplier/rfq/${rfqId}`);
@@ -106,7 +104,7 @@ export async function declineRfq(rfqId: string): Promise<ActionResult> {
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('decline_supplier_rfq', { p_rfq_id: rfqId });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('supplier.declineRfq', error);
 
   revalidatePath('/supplier');
   revalidatePath(`/supplier/rfq/${rfqId}`);
@@ -129,7 +127,7 @@ export async function confirmSupplierDelivery(
   const { data, error } = await supabase.rpc('confirm_supplier_delivery', {
     p_order_id: orderId,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('supplier.confirmSupplierDelivery', error);
 
   revalidatePath('/supplier');
   revalidatePath(`/supplier/orders/${orderId}`);
@@ -148,7 +146,7 @@ export async function quickRespondRfqByLink(token: string): Promise<ActionResult
     p_rfq_id: payload.rfqId,
     p_token: payload.nonce,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('supplier.quickRespondRfqByLink', error);
 
   revalidatePath(`/rfq/respond/${token}`);
   return { ok: true };
@@ -164,7 +162,7 @@ export async function declineRfqByLink(token: string): Promise<ActionResult> {
     p_rfq_id: payload.rfqId,
     p_token: payload.nonce,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('supplier.declineRfqByLink', error);
 
   revalidatePath('/supplier');
   revalidatePath(`/rfq/respond/${token}`);
@@ -187,7 +185,7 @@ export async function submitQuoteByLink(
     p_token: payload.nonce,
     p_lines: lines,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('supplier.submitQuoteByLink', error);
 
   revalidatePath('/supplier');
   revalidatePath(`/rfq/respond/${token}`);

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
 import type { ActionResult } from './request-actions';
 
@@ -39,7 +40,7 @@ export async function createCompanyWithOwner(rawInput: CompanyInput): Promise<Ac
   try {
     service = createSupabaseAdminClient();
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Admin API недоступен' };
+    return actionFailure('company.createCompanyWithOwner', error, 'Admin API недоступен');
   }
 
   const input = parsed.data;
@@ -55,7 +56,11 @@ export async function createCompanyWithOwner(rawInput: CompanyInput): Promise<Ac
     .select('id')
     .single();
   if (companyError || !company) {
-    return { ok: false, error: companyError?.message ?? 'Не удалось создать компанию' };
+    return actionFailure(
+      'company.createCompanyWithOwner',
+      companyError,
+      'Не удалось создать компанию',
+    );
   }
 
   const { data: invited, error: inviteError } = await service.auth.admin.inviteUserByEmail(
@@ -71,7 +76,11 @@ export async function createCompanyWithOwner(rawInput: CompanyInput): Promise<Ac
   );
   if (inviteError || !invited.user) {
     await service.from('companies').delete().eq('id', company.id);
-    return { ok: false, error: inviteError?.message ?? 'Не удалось отправить приглашение owner-у' };
+    return actionFailure(
+      'company.createCompanyWithOwner',
+      inviteError,
+      'Не удалось отправить приглашение owner-у',
+    );
   }
 
   const { error: profileError } = await service.from('users').insert({
@@ -85,7 +94,7 @@ export async function createCompanyWithOwner(rawInput: CompanyInput): Promise<Ac
   if (profileError) {
     await service.auth.admin.deleteUser(invited.user.id);
     await service.from('companies').delete().eq('id', company.id);
-    return { ok: false, error: profileError.message };
+    return actionFailure('company.createCompanyWithOwner', profileError);
   }
 
   if (input.type === 'supplier') {
@@ -99,7 +108,7 @@ export async function createCompanyWithOwner(rawInput: CompanyInput): Promise<Ac
       await service.auth.admin.deleteUser(invited.user.id);
       await service.from('users').delete().eq('id', invited.user.id);
       await service.from('companies').delete().eq('id', company.id);
-      return { ok: false, error: profileError.message };
+      return actionFailure('company.createCompanyWithOwner', profileError);
     }
   }
 
@@ -125,7 +134,7 @@ export async function verifySupplierCompany(
   try {
     service = createSupabaseAdminClient();
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Admin API недоступен' };
+    return actionFailure('company.verifySupplierCompany', error, 'Admin API недоступен');
   }
   const { error } = await service
     .from('companies')
@@ -135,7 +144,7 @@ export async function verifySupplierCompany(
     })
     .eq('id', companyId)
     .eq('type', 'supplier');
-  if (error) return { ok: false, error: error.message };
+  if (error) return actionFailure('company.verifySupplierCompany', error);
 
   revalidatePath('/admin');
   revalidatePath('/admin/companies');
@@ -153,7 +162,7 @@ export async function resendOwnerInvite(userId: string): Promise<ActionResult> {
   try {
     service = createSupabaseAdminClient();
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Admin API недоступен' };
+    return actionFailure('company.resendOwnerInvite', error, 'Admin API недоступен');
   }
   const { data: owner, error: ownerError } = await service
     .from('users')
@@ -161,7 +170,8 @@ export async function resendOwnerInvite(userId: string): Promise<ActionResult> {
     .eq('id', userId)
     .eq('role', 'owner')
     .maybeSingle();
-  if (ownerError || !owner) return { ok: false, error: ownerError?.message ?? 'Owner не найден' };
+  if (ownerError || !owner)
+    return actionFailure('company.resendOwnerInvite', ownerError, 'Owner не найден');
   const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? 'http://localhost:3000';
   const { data: link, error: linkError } = await service.auth.admin.generateLink({
     type: 'invite',
@@ -171,7 +181,11 @@ export async function resendOwnerInvite(userId: string): Promise<ActionResult> {
     },
   });
   if (linkError || !link.properties?.action_link) {
-    return { ok: false, error: linkError?.message ?? 'Не удалось создать ссылку приглашения' };
+    return actionFailure(
+      'company.resendOwnerInvite',
+      linkError,
+      'Не удалось создать ссылку приглашения',
+    );
   }
   const company = Array.isArray(owner.companies) ? owner.companies[0] : owner.companies;
   const { error: outboxError } = await service.from('outbox').insert({
@@ -182,6 +196,6 @@ export async function resendOwnerInvite(userId: string): Promise<ActionResult> {
     payload: { userId: owner.id, actionLink: link.properties.action_link },
     status: 'pending',
   });
-  if (outboxError) return { ok: false, error: outboxError.message };
+  if (outboxError) return actionFailure('company.resendOwnerInvite', outboxError);
   return { ok: true };
 }
