@@ -105,3 +105,14 @@ export const ORDER_STATE_PRIORITY: Record<OrderState, number> = {
   closed: 15,
   cancelled: 16,
 };
+
+/**
+ * Подписи видов плана — qajet-master-spec.md §8D. Общий источник для
+ * карточки заказа покупателя и выбора альтернатив: раньше та же таблица
+ * была продублирована дословно в двух компонентах.
+ */
+export const PLAN_LABEL: Record<string, string> = {
+  recommended: 'Рекомендованный',
+  cheaper: 'Дешевле',
+  more_slack: 'С запасом по сроку',
+};

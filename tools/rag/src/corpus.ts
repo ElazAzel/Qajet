@@ -6,7 +6,7 @@ import { AGENTS_MD_PATH, DECISIONS_DIR, JOURNAL_DIR, STATE_DIR } from './paths.j
 /**
  * Один документ индекса. `source` определяет, как документ был получен —
  * это то, что показывается в результатах поиска, чтобы «нашлось в §8D
- * agents.md» и «нашлось в ADR-0003» читались по-разному.
+ * полной спеки и «нашлось в ADR-0003» читались по-разному.
  */
 export interface CorpusDoc {
   id: string;
@@ -19,7 +19,7 @@ export interface CorpusDoc {
 }
 
 /**
- * Нарезка agents.md по заголовкам ## и ###. Верхнеуровневые заголовки #
+ * Нарезка полной спеки по заголовкам ## и ###. Верхнеуровневые заголовки #
  * не режут корпус отдельно — это заголовок всего документа, а не раздел.
  * Каждая секция включает вложенный текст до следующего заголовка того же
  * уровня или выше — так §8A…§8G не растворяются в одном гигантском §8.
@@ -52,7 +52,7 @@ export function sliceAgentsMd(markdown: string): CorpusDoc[] {
       id: `spec:${slug}`,
       source: 'spec',
       title: current.title,
-      path: 'agents.md',
+      path: 'docs/product/qajet-master-spec.md',
       content: body,
       updatedAt: new Date(0).toISOString(), // перезаписывается mtime файла в syncCorpus
     });
@@ -94,7 +94,7 @@ async function readMarkdownDir(dir: string, source: CorpusDoc['source']): Promis
   return docs;
 }
 
-/** Весь корпус: agents.md по секциям + ADR + журнал + сгенерированное состояние. */
+/** Весь корпус: полная спека по секциям + ADR + журнал + сгенерированное состояние. */
 export async function loadCorpus(): Promise<CorpusDoc[]> {
   const agentsMd = await readFile(AGENTS_MD_PATH, 'utf8');
   const agentsMdStat = await stat(AGENTS_MD_PATH);

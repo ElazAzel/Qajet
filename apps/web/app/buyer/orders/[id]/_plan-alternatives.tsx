@@ -5,12 +5,7 @@ import { Button, Card, formatKzt } from '@qajet/ui/primitives';
 import { useRouter } from 'next/navigation';
 import { selectPlan } from '../../../lib/actions/order-actions';
 import type { BuyerOrderPlan } from '../../../lib/buyer-order';
-
-const PLAN_LABEL: Record<string, string> = {
-  recommended: 'Рекомендованный',
-  cheaper: 'Дешевле',
-  more_slack: 'С запасом по сроку',
-};
+import { PLAN_LABEL } from '../../../lib/order-state';
 
 export function PlanAlternativeSelector({
   orderId,

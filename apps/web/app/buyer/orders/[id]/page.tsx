@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerOrder } from '../../../lib/buyer-order';
 import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
-import { ORDER_STATE_LABEL, ORDER_STATE_TONE } from '../../../lib/order-state';
+import { ORDER_STATE_LABEL, ORDER_STATE_TONE, PLAN_LABEL } from '../../../lib/order-state';
 import { supplierCountLabel } from '../../../lib/pluralize';
 import { AttachmentForm } from '../../messages/_attachment-form';
 import { BuyerIssueActions } from './_issue-actions';
@@ -19,12 +19,6 @@ import {
 import { PlanAlternativeSelector } from './_plan-alternatives';
 import { PlanChangeForm } from './_plan-change-form';
 import { ShareOrderButton } from './_share-order-button';
-
-const PLAN_LABEL: Record<string, string> = {
-  recommended: 'Рекомендованный',
-  cheaper: 'Дешевле',
-  more_slack: 'С запасом по сроку',
-};
 
 const DOCUMENT_LABEL: Record<string, string> = {
   prepay_invoice: 'Счёт на предоплату',
