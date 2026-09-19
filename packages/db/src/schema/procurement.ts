@@ -81,12 +81,17 @@ export const requests = pgTable(
     city: text('city'),
     status: requestStatusEnum('status').notNull().default('draft'),
     extractionConfidence: real('extraction_confidence'),
+    /** Ключ идемпотентности отправки формы: повторная отправка возвращает уже созданную заявку. */
+    submissionKey: uuid('submission_key'),
     ...timestamps,
   },
   (t) => [
     check('requests_budget_nonnegative', sql`${t.budgetKzt} is null or ${t.budgetKzt} >= 0`),
     index('requests_buyer_company_id_idx').on(t.buyerCompanyId),
     index('requests_created_by_idx').on(t.createdBy),
+    uniqueIndex('requests_created_by_submission_key_unique')
+      .on(t.createdBy, t.submissionKey)
+      .where(sql`${t.submissionKey} is not null`),
     pgPolicy('requests_select_own_company', {
       as: 'permissive',
       for: 'select',
