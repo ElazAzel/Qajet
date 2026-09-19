@@ -25,6 +25,11 @@
   scheduler или `pg_cron`, вызывающий `/api/jobs/outbox` и `/api/jobs/learning`
   с `Authorization: Bearer $CRON_SECRET`; до этого очередь обслуживается
   оператором из `/admin/outbox`.
+- Сейчас эту роль выполняет `.github/workflows/jobs.yml` (каждые 15 минут,
+  только для `main`). Секрет `CRON_SECRET` должен совпадать в Vercel
+  production и в секретах репозитория; при ротации меняйте оба. Пока
+  `/api/ready` не отвечает 200, workflow пропускает запуск с предупреждением
+  `NOT RUN`, а не сообщает об успехе.
 
 ## Оплата, возврат и доплата
 
