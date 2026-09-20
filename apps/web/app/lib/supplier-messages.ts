@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BuyerThreadPreview } from './buyer-messages';
+import { threadTitle } from './thread-title';
 
 type Nested<T> = T | T[] | null | undefined;
 
@@ -62,7 +63,13 @@ export async function loadSupplierThreads(
   }
   return rows
     .map((row) => {
-      const title = unwrap(unwrap(row.orders)?.requests)?.title ?? 'Заказ';
+      // Треды поставщика всегда создаются с order_id, поэтому запасной вариант
+      // здесь почти недостижим — но слово «Заказ» как название делает строки
+      // неразличимыми, а «Без названия» честно говорит, что названия нет.
+      const title = threadTitle({
+        orderRequestTitle: unwrap(unwrap(row.orders)?.requests)?.title,
+        ownRequestTitle: null,
+      });
       const last = lastByThread.get(row.id);
       return {
         id: row.id,

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { threadTitle } from './thread-title';
 
 /**
  * Переписка покупателя с QAJET по заказам — `threads`/`messages`
@@ -51,6 +52,7 @@ interface ThreadRow {
   id: string;
   order_id: string | null;
   orders: Nested<{ requests: Nested<{ title: string }> }>;
+  requests: Nested<{ title: string }>;
 }
 
 function unwrap<T>(value: Nested<T>): T | undefined {
@@ -58,7 +60,13 @@ function unwrap<T>(value: Nested<T>): T | undefined {
 }
 
 function titleOf(row: ThreadRow): string {
-  return unwrap(unwrap(row.orders)?.requests)?.title ?? 'Заказ';
+  // Беседа начинается по заявке и продолжается по заказу. Пока заказа нет,
+  // связь через orders пуста — и раньше строка называлась просто «Заказ»,
+  // из-за чего весь список выглядел одинаково (аудит F5).
+  return threadTitle({
+    orderRequestTitle: unwrap(unwrap(row.orders)?.requests)?.title,
+    ownRequestTitle: unwrap(row.requests)?.title,
+  });
 }
 
 export async function loadBuyerThreads(
@@ -67,7 +75,7 @@ export async function loadBuyerThreads(
 ): Promise<BuyerThreadPreview[]> {
   const { data: threadRows } = await supabase
     .from('threads')
-    .select('id, order_id, orders(requests(title))')
+    .select('id, order_id, orders(requests(title)), requests(title)')
     .eq('kind', 'buyer');
 
   const threads = (threadRows ?? []) as ThreadRow[];
