@@ -2,7 +2,7 @@
 
 # Инвентарь маршрутов apps/web
 
-Найдено файлов маршрутизации: 58. Сегментов: 49.
+Найдено файлов маршрутизации: 59. Сегментов: 50.
 
 | Маршрут | Файлы |
 | --- | --- |
@@ -14,6 +14,7 @@
 | `/admin/learning` | `page` |
 | `/admin/outbox` | `page` |
 | `/admin/settings` | `page` |
+| `/admin/users` | `page` |
 | `/api/attachments/[id]/download` | `route` |
 | `/api/documents/[id]/download` | `route` |
 | `/api/health` | `route` |

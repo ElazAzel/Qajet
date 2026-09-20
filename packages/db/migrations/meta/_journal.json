@@ -393,6 +393,13 @@
       "when": 1789886180477,
       "tag": "0055_rating_targets_item_names",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1789887180477,
+      "tag": "0056_admin_user_management",
+      "breakpoints": true
     }
   ]
 }
