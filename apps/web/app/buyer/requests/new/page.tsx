@@ -264,9 +264,119 @@ export default function NewRequestPage() {
             <form onSubmit={handleSubmit} noValidate>
               <h3 className="text-lg font-bold">Расскажите о задаче</h3>
               <p className="mt-1.5 mb-5 text-fine text-muted">
-                Название, город и хотя бы одна позиция обязательны, остальное поможет точнее оценить
-                сроки.
+                Начните с описания своими словами. Название, город и хотя бы одна позиция
+                обязательны — остальное поможет точнее оценить сроки.
               </p>
+
+              <div className="mb-3 rounded-control border border-rule bg-page p-3">
+                <label htmlFor="request-quick-text" className="mb-1 block text-sm font-bold">
+                  Что нужно закупить?
+                </label>
+                <p className="mb-2 text-fine text-muted">
+                  Напишите своими словами — что, сколько и к какому сроку. Поля ниже заполнятся
+                  сами, и их можно поправить.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    id="request-quick-text"
+                    rows={3}
+                    value={quickText}
+                    onChange={(e) => {
+                      setQuickText(e.target.value);
+                      setQuickNothing(false);
+                    }}
+                    onKeyDown={(e) => {
+                      // Разбор по Ctrl+Enter. Обычный Enter переносит строку: заявку
+                      // на несколько позиций пишут в столбик, и разбор по Enter
+                      // обрывал бы её на первой.
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        handleQuickParse();
+                      }
+                    }}
+                    placeholder="300 welcome-наборов до 20 октября, бюджет 3 млн ₸"
+                    className={`${inputClass} resize-none bg-surface`}
+                  />
+                  <div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      loading={quickParsing}
+                      onClick={handleQuickParse}
+                    >
+                      Разобрать
+                    </Button>
+                  </div>
+                </div>
+                {quickNothing && (
+                  <p className="mt-2 text-fine text-muted">
+                    Не нашли позиций в этом тексте. Попробуйте указать товар и количество или
+                    добавьте позицию вручную из каталога.
+                  </p>
+                )}
+                {quickPreview && !quickNothing && (
+                  <div className="mt-2 rounded-control border border-purple/40 bg-purple-10 p-3 text-fine">
+                    <p className="font-semibold text-ink">Что мы поняли</p>
+                    <ul className="mt-2 flex flex-col gap-1 text-muted">
+                      {quickPreview.items.map((item, index) => (
+                        <li key={`${item.sourceText}-${index}`}>
+                          {item.itemLabel ? `«${item.itemLabel}»` : 'Позиция не распознана'} ·{' '}
+                          {item.quantity.value
+                            ? `${item.quantity.value.qty} ${item.unit ?? ''}`
+                            : 'количество не распознано'}{' '}
+                          {item.needsClarification && (
+                            <span className="text-danger">— нужно уточнение</span>
+                          )}
+                          {quickPreview.categoryHints[index] && (
+                            <span className="block text-micro">
+                              Такую фразу уже не раз относили к категории «
+                              {quickPreview.categoryHints[index]?.label}».
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-muted">
+                      Срок: {quickPreview.deadline.value ?? 'не распознан'} · Бюджет:{' '}
+                      {quickPreview.budget.value
+                        ? `${quickPreview.budget.value.toLocaleString('ru-RU')} ₸`
+                        : 'не распознан'}
+                      {quickPreview.deliveryAddress.value
+                        ? ` · ${quickPreview.deliveryAddress.value}`
+                        : ''}
+                    </p>
+                    {quickPreview.needsClarification && (
+                      <p className="mt-2 text-danger">
+                        {quickPreview.clarificationReasons[0] ??
+                          'Часть полей нужно уточнить вручную. Неполные строки не будут добавлены.'}
+                      </p>
+                    )}
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        onClick={acceptQuickPreview}
+                        disabled={quickPreview.items.every(
+                          (item) =>
+                            item.needsClarification || !item.itemKey || !item.quantity.value,
+                        )}
+                      >
+                        Добавить в заявку
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={dismissQuickPreview}
+                      >
+                        Не добавлять
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field
@@ -389,111 +499,6 @@ export default function NewRequestPage() {
                 <legend className="mb-2 p-0 text-fine font-semibold">
                   Позиции <span className="text-muted">*</span>
                 </legend>
-
-                <div className="mb-3 rounded-control border border-rule bg-page p-3">
-                  <label
-                    htmlFor="request-quick-text"
-                    className="mb-2 block text-fine font-semibold"
-                  >
-                    Вставьте текст заявки — мы разберём его на позиции
-                  </label>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <input
-                      id="request-quick-text"
-                      type="text"
-                      value={quickText}
-                      onChange={(e) => {
-                        setQuickText(e.target.value);
-                        setQuickNothing(false);
-                      }}
-                      onKeyDown={(e) => {
-                        // Enter здесь разбирает текст, а не отправляет всю заявку.
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleQuickParse();
-                        }
-                      }}
-                      placeholder="Например: 100 футболок с логотипом до 15 октября"
-                      className={`${inputClass} bg-surface sm:flex-1`}
-                    />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      loading={quickParsing}
-                      onClick={handleQuickParse}
-                    >
-                      Разобрать
-                    </Button>
-                  </div>
-                  {quickNothing && (
-                    <p className="mt-2 text-fine text-muted">
-                      Не нашли позиций в этом тексте. Попробуйте указать товар и количество или
-                      добавьте позицию вручную из каталога.
-                    </p>
-                  )}
-                  {quickPreview && !quickNothing && (
-                    <div className="mt-2 rounded-control border border-purple/40 bg-purple-10 p-3 text-fine">
-                      <p className="font-semibold text-ink">Что мы поняли</p>
-                      <ul className="mt-2 flex flex-col gap-1 text-muted">
-                        {quickPreview.items.map((item, index) => (
-                          <li key={`${item.sourceText}-${index}`}>
-                            {item.itemLabel ? `«${item.itemLabel}»` : 'Позиция не распознана'} ·{' '}
-                            {item.quantity.value
-                              ? `${item.quantity.value.qty} ${item.unit ?? ''}`
-                              : 'количество не распознано'}{' '}
-                            {item.needsClarification && (
-                              <span className="text-danger">— нужно уточнение</span>
-                            )}
-                            {quickPreview.categoryHints[index] && (
-                              <span className="block text-micro">
-                                Такую фразу уже не раз относили к категории «
-                                {quickPreview.categoryHints[index]?.label}».
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="mt-2 text-muted">
-                        Срок: {quickPreview.deadline.value ?? 'не распознан'} · Бюджет:{' '}
-                        {quickPreview.budget.value
-                          ? `${quickPreview.budget.value.toLocaleString('ru-RU')} ₸`
-                          : 'не распознан'}
-                        {quickPreview.deliveryAddress.value
-                          ? ` · ${quickPreview.deliveryAddress.value}`
-                          : ''}
-                      </p>
-                      {quickPreview.needsClarification && (
-                        <p className="mt-2 text-danger">
-                          {quickPreview.clarificationReasons[0] ??
-                            'Часть полей нужно уточнить вручную. Неполные строки не будут добавлены.'}
-                        </p>
-                      )}
-                      <div className="mt-2 flex gap-2">
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          onClick={acceptQuickPreview}
-                          disabled={quickPreview.items.every(
-                            (item) =>
-                              item.needsClarification || !item.itemKey || !item.quantity.value,
-                          )}
-                        >
-                          Добавить в заявку
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={dismissQuickPreview}
-                        >
-                          Не добавлять
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
 
                 {hasItems ? (
                   <div className="flex flex-col gap-3">
