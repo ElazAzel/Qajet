@@ -20,6 +20,13 @@ const nextConfig: NextConfig = {
 
   typedRoutes: true,
 
+  // Загрузка вложения — Server Action, а по умолчанию он принимает тело до 1 МБ.
+  // Приложение разрешает файлы до 10 МБ (MAX_ATTACHMENT_BYTES), поэтому обычный
+  // PDF или фото свыше 1 МБ получал 413 и пропадал молча: ни вложения, ни ошибки.
+  // Лимит чуть выше файла, чтобы запас на поля формы не резал файл ровно в 10 МБ и
+  // чтобы сообщение «Файл больше 10 МБ» приходило с сервера, а не обрывалось.
+  experimental: { serverActions: { bodySizeLimit: '11mb' } },
+
   // View Transitions в Next 16 работают без флага конфигурации — через
   // компонент `<ViewTransition>` из 'react' (App Router на React canary
   // включает его по умолчанию). Флаг experimental.viewTransition существовал

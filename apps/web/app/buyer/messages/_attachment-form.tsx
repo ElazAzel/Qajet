@@ -1,7 +1,10 @@
 'use client';
 
-import { useActionState, useEffect, useRef } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { uploadAttachmentFormAction } from '../../lib/actions/attachment-actions';
+
+/** Как MAX_ATTACHMENT_BYTES на сервере (app/lib/storage/adapter.ts). */
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export function AttachmentForm({
   threadId,
@@ -24,6 +27,7 @@ export function AttachmentForm({
 }) {
   const [state, formAction, pending] = useActionState(uploadAttachmentFormAction, { ok: true });
   const formRef = useRef<HTMLFormElement>(null);
+  const [sizeError, setSizeError] = useState<string | null>(null);
   const contextCount = [threadId, requestId, orderId].filter(Boolean).length;
   const fallbackPath = threadId ? `/buyer/messages?thread=${threadId}` : '/buyer';
 
@@ -45,6 +49,17 @@ export function AttachmentForm({
             type="file"
             name="file"
             required
+            onChange={(event) => {
+              // Сервер принимает тело до ~11 МБ; файл больше терялся бы молча.
+              // Лимит совпадает с MAX_ATTACHMENT_BYTES (server-only, сюда не импортируется).
+              const file = event.currentTarget.files?.[0];
+              if (file && file.size > MAX_ATTACHMENT_BYTES) {
+                setSizeError('Файл больше 10 МБ');
+                event.currentTarget.value = '';
+              } else {
+                setSizeError(null);
+              }
+            }}
             accept="application/pdf,image/jpeg,image/png,image/webp,text/plain,.docx,.xlsx"
             className="block w-full text-micro text-muted file:mr-2 file:rounded-control file:border-0 file:bg-page file:px-3 file:py-2 file:text-micro file:font-semibold file:text-ink"
           />
@@ -60,7 +75,11 @@ export function AttachmentForm({
       {contextCount !== 1 && (
         <p className="mt-1 text-fine text-danger">Не удалось определить объект для вложения</p>
       )}
-      {state.error && <p className="mt-1 text-fine text-danger">{state.error}</p>}
+      {(sizeError ?? state.error) && (
+        <p role="alert" className="mt-1 text-fine text-danger">
+          {sizeError ?? state.error}
+        </p>
+      )}
     </form>
   );
 }

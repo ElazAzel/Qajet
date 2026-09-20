@@ -18,7 +18,11 @@ export const ALLOWED_ATTACHMENT_TYPES = new Set([
 
 export interface StorageAdapter {
   put(objectKey: string, file: Blob, contentType: string): Promise<void>;
-  getDownloadUrl(objectKey: string, expiresInSeconds?: number): Promise<string>;
+  getDownloadUrl(
+    objectKey: string,
+    expiresInSeconds?: number,
+    downloadName?: string,
+  ): Promise<string>;
   delete(objectKey: string): Promise<void>;
 }
 
@@ -37,12 +41,28 @@ export class SupabaseStorageAdapter implements StorageAdapter {
     if (error) throw new Error(error.message);
   }
 
-  async getDownloadUrl(objectKey: string, expiresInSeconds = 60): Promise<string> {
+  /**
+   * `downloadName` — исходное имя файла пользователя: ключ объекта только ASCII, и
+   * без этого скачанный файл назывался бы `file.pdf`, а не «Договор.pdf».
+   *
+   * Параметр `download` дописываем сами, а не через опцию createSignedUrl:
+   * supabase-js кодирует его дважды, и заголовок Content-Disposition получается
+   * `%25D0%2594…`, то есть браузер показывает «%D0%94…» вместо имени. Проверено на
+   * локальном Storage; подпись токена от этого параметра не зависит.
+   */
+  async getDownloadUrl(
+    objectKey: string,
+    expiresInSeconds = 60,
+    downloadName?: string,
+  ): Promise<string> {
     const { data, error } = await this.client.storage
       .from(this.bucket)
       .createSignedUrl(objectKey, expiresInSeconds);
     if (error || !data?.signedUrl) throw new Error(error?.message ?? 'Не удалось выдать ссылку');
-    return data.signedUrl;
+    if (!downloadName) return data.signedUrl;
+    const url = new URL(data.signedUrl);
+    url.searchParams.set('download', downloadName);
+    return url.toString();
   }
 
   async delete(objectKey: string): Promise<void> {
@@ -51,10 +71,26 @@ export class SupabaseStorageAdapter implements StorageAdapter {
   }
 }
 
+/**
+ * Часть ключа объекта из имени файла. Только ASCII: Storage отвечает `Invalid key`
+ * на кириллицу и многие символы, и раньше вложение с русским именем не
+ * загружалось вовсе. Отображаемое имя хранится отдельно (`attachments.file_name`);
+ * здесь важны безопасность и расширение, чтобы файл открывался нужной программой.
+ * Имя целиком из не-ASCII символов превращается в `file` с прежним расширением.
+ */
 export function safeStorageName(fileName: string): string {
   const basename = fileName.split(/[\\/]/).at(-1) ?? 'file';
-  const normalized = basename.normalize('NFKC').replace(/[^\p{L}\p{N}._-]+/gu, '-');
-  return normalized.slice(0, 120) || 'file';
+  const dot = basename.lastIndexOf('.');
+  const rawExtension = dot > 0 ? basename.slice(dot + 1) : '';
+  const extension = /^[A-Za-z0-9]{1,10}$/.test(rawExtension) ? rawExtension.toLowerCase() : '';
+  const rawBase = extension ? basename.slice(0, dot) : basename;
+  const base = rawBase
+    .normalize('NFKC')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 100);
+  return `${base || 'file'}${extension ? `.${extension}` : ''}`;
 }
 
 export function createAttachmentObjectKey(userId: string, fileName: string): string {
