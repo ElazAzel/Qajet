@@ -24,7 +24,7 @@
     "liveSupabase": "not-run: no dedicated test project; a local stack was used and the production project was never written to",
     "productionDeployment": "passed-production: dpl_Fxpetfn22QEwMRoEjmMC86SUTBgt READY from ad872b1; /api/health=200 reporting commit ad872b1 (observed 2026-09-20T03:58Z)",
     "productionReady": "failed-production: /api/ready=503 {\"dependency\":\"env\",\"missing\":[\"SUPABASE_SERVICE_ROLE_KEY\"]}. Vercel production holds only NEXT_PUBLIC_SITE_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY and LINK_SIGNING_SECRET; hiddenProductionEnvCount=0",
-    "productionMigrations": "passed: migrations 0040-0050 applied to production Supabase eoqcktgvnzayyinulbch; anon EXECUTE on SECURITY DEFINER functions = the 4 token-gated public RFQ functions only",
+    "productionMigrations": "passed-through-0050: migrations 0040-0050 applied to production Supabase eoqcktgvnzayyinulbch; anon EXECUTE on SECURITY DEFINER functions = the 4 token-gated public RFQ functions only. 0051_buyer_plan_repoint is written and tested locally but NOT applied to production: NOT RUN, owner action required (see externalRequirements).",
     "scheduledJobs": "failed-production: the Scheduled jobs workflow fails every 15 minutes at its first guard because CRON_SECRET is absent. The repository has zero Actions secrets and zero variables. Last observed failure: run 35480533716 at 2026-09-20T01:06:43Z, 7s. The job endpoints themselves fail closed correctly (401 unauthenticated)",
     "mailDelivery": "code-fixed-not-deployed: createEmailAdapter() now throws in production when RESEND_API_KEY is absent, and dispatchOutbox builds the adapter before claim_outbox_batch so attempts are not burned and rows stay pending. Covered by email-adapter.test.ts and dispatcher.test.ts (RED then GREEN). Actual delivery to a real recipient is NOT RUN: it needs RESEND_API_KEY in Vercel and a deployment of this commit.",
     "strictReleaseGate": "not-run: blocked by productionReady",
@@ -32,7 +32,7 @@
     "authHardening": "external-blocker: leaked-password protection is disabled in production Supabase Auth (advisor auth_leaked_password_protection)",
     "pdResidency": "external-infrastructure-decision-required: production Supabase is in ap-southeast-1 (Singapore); the specification section 11.1 requires a data centre in Kazakhstan",
     "pilot": "external-real-order-required",
-    "rlsSuiteLocal": "passed-local: pnpm --filter @qajet/db test:rls against the local Supabase stack (127.0.0.1:54322, 51 migrations applied) on 2026-09-20: 19 files, 91 tests. Local only: this is not CI evidence for this branch."
+    "rlsSuiteLocal": "passed-local: pnpm --filter @qajet/db test:rls against the local Supabase stack (127.0.0.1:54322, 52 migrations incl. 0051) on 2026-09-20: 20 files, 139 tests. Local only: this is not CI evidence for this branch."
   },
   "securityPosture": {
     "note": "Re-derived from the migrations on 2026-09-19..20, not from the advisor summary alone. Design is sound; the gap is test coverage.",
@@ -43,14 +43,31 @@
     "serviceRoleOnly": 7,
     "advisorDiscrepancy": "The Supabase advisor reports 24 authenticated SECURITY DEFINER functions. The true figure is 23; the advisor counts the 4 anon RFQ functions, which are granted to both anon and authenticated, against a set that also includes them.",
     "openFindings": [
-      "P1: no negative test for select_order_plan, assign_order_concierge, assign_supplier_rfq, request_supplier_quote_revision, decline_supplier_rfq, or the 6 service_role-only queue RPCs.",
+      "P2: no behavioural test for the 6 service_role-only queue RPCs (claim_outbox_batch, complete_outbox, fail_outbox, claim_learning_events, complete_learning_event, fail_learning_event). Each checks current_setting(role) = service_role in its body, but nothing asserts that an authenticated caller is refused.",
+      "P2 (needs an owner decision): a buyer can now re-point orders.approved_plan_id between the proposed variants of their own request (migration 0051). ensure_order_supplier_threads_on_plan_change inserts supplier threads on every pointer change and never removes them, and threads_select_own_supplier lets a supplier owner read a thread without the plan-membership predicate. Sequence A -> B -> A therefore leaves supplier B a permanent thread on an order it is not on. The reachable set is only supplier companies staff already placed on a plan of that buyer's own request, and the accumulate-never-remove behaviour is pre-existing (propose_order_plans and resolve_plan_change also move the pointer); 0051 lets a buyer drive it at will. Options: accept and document, or gate thread creation on plan approval. Mechanism CONFIRMED from the trigger and policy bodies; NOT REPRODUCED.",
+      "P3: variant switching leaves no audit row. audit_order_stage_transition returns early when OLD.state = NEW.state and select_order_plan writes to no history table, so \"which variant did the buyer pick, and when\" has no row of its own. Fix belongs in a new additive migration on the RPC.",
+      "P3 (hypothesis): the guard reads plans.status without a lock on the direct-PATCH path. If staff supersede the target plan concurrently, the order can end up pointing at a superseded plan and approve_plan then refuses it. The RPC path is safe (orders FOR UPDATE, then plans FOR UPDATE, same order as approve_plan). Not reproduced; not a privilege escalation.",
       "P2: the 0042 privilege sweep and its regression test both filter on prosecdef, so SECURITY INVOKER trigger functions are never swept and retain create-time grants. 0043 grants EXECUTE to authenticated by default, so each new trigger function needs an explicit REVOKE that nothing enforces.",
       "P2: createJuryMetricsClient() bypasses RLS and is guarded only by call-site discipline in apps/web/app/metrics/page.tsx; isValidJuryToken() is not enforced inside the factory.",
       "P3: the comment in apps/web/lib/supabase/admin.ts claims service-role is isolated to one owner-only invitation action; there are 8 call sites."
     ],
-    "anonRfqEndpoints": "CONFIRMED by test (public-rfq-access.test.ts, 26 tests): wrong token, another RFQ's token, expired respond_by, deactivated supplier, terminal statuses and cross-request items are all rejected for the stated reason and leave no partial quote. No defect found. Mutation-checked: removing the token, deadline, is_active, request-binding or status check each turns tests red (1-5 failures each); originals restored byte-for-byte on the local DB."
+    "anonRfqEndpoints": "CONFIRMED by test (public-rfq-access.test.ts, 26 tests): wrong token, another RFQ's token, expired respond_by, deactivated supplier, terminal statuses and cross-request items are all rejected for the stated reason and leave no partial quote. No defect found. Mutation-checked: removing the token, deadline, is_active, request-binding or status check each turns tests red (1-5 failures each); originals restored byte-for-byte on the local DB.",
+    "defectsFixed": [
+      {
+        "id": "select_order_plan-never-worked",
+        "severity": "P1 broken core workflow",
+        "status": "FIXED in migration 0051 (local only); NOT applied to production",
+        "summary": "The buyer button \"choose another variant\" (apps/web/app/buyer/orders/[id]/_plan-alternatives.tsx -> selectPlan -> select_order_plan) always failed with a generic error and a supportId.",
+        "cause": "select_order_plan (0037) updates orders.approved_plan_id for the buyer, but guard_order_actor allowed a buyer to change only state and closing fields in every version from 0020 to 0041. Inside a SECURITY DEFINER function current_setting(role) is still authenticated, so the guard saw a direct buyer edit and raised \"Покупатель не может менять внутренние поля заказа\". Only the EXECUTE grant was ever tested, never a buyer actually calling it.",
+        "evidence": "REPRODUCED by privileged-rpc-authorization.test.ts against real PostgreSQL: RED (2 of 42 failed) before the migration, GREEN after. Five of six guard conditions are mutation-checked; the sixth (v_buyer inside v_repoint) is an equivalent mutant.",
+        "fix": "The invariant now lives in guard_order_actor: a buyer may change approved_plan_id only before approval, to a proposed plan of the same request, in the same stage, with no other column changed. A session-flag design (like qajet.stage_reason) was rejected because it would be a forgeable privilege.",
+        "review": "Independent read-only Opus review (database-reviewer): SAFE WITH CHANGES. Delta confirmed exact, no accidental edits, ACL preserved (anon and authenticated still cannot execute the trigger function), no reachable escalation found. Its required changes were to the tests and are done: fixture now has real plan lines, the concierge case and the supplier visibility flip are pinned, branch tests added, exception swallowing removed, a dead NOT NULL condition dropped."
+      }
+    ],
+    "authenticatedRpcCoverage": "CONFIRMED by test (privileged-rpc-authorization.test.ts, 48 tests): select_order_plan, assign_order_concierge, assign_supplier_rfq, request_supplier_quote_revision and decline_supplier_rfq each refuse every wrong role, another company, deactivated users and anon, for the specific stated reason, and leave state unchanged. Supplier visibility of an order and of plan lines follows the selected plan and never exposes another supplier's line."
   },
   "externalRequirements": [
+    "Apply migration 0051_buyer_plan_repoint to production Supabase (eoqcktgvnzayyinulbch) after this branch is merged. It is additive (one CREATE OR REPLACE of guard_order_actor), compatible with the deployed app in either order, and only loosens a path that currently always errors. Nothing in this branch has touched production.",
     "Set SUPABASE_SERVICE_ROLE_KEY in Vercel production. /api/ready checks exactly three variables and the database is ACTIVE_HEALTHY, so this alone should return it to 200.",
     "Set CRON_SECRET in both Vercel production and GitHub Actions repository secrets, with the same value in both, or the workflow bearer token will not match.",
     "Set RESEND_API_KEY and RESEND_FROM_EMAIL in Vercel production, and fix the silent local-sink fallback so a missing key can never report delivery.",
