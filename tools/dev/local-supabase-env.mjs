@@ -4,6 +4,11 @@
  *
  *   node tools/dev/local-supabase-env.mjs                 # пишет .env.local (корень и apps/web)
  *   node tools/dev/local-supabase-env.mjs --github-env    # добавляет переменные в $GITHUB_ENV
+ *   node tools/dev/local-supabase-env.mjs --print         # JSON в stdout, на диск НИЧЕГО не пишет
+ *
+ * `--print` нужен там, где переменные передаются дочернему процессу в памяти
+ * (`pnpm ci:local`): запись .env.local затёрла бы то, что человек держит в этом
+ * файле сам — например VERCEL_OIDC_TOKEN.
  *
  * Значения берутся из `supabase status -o env`. Секреты подписи ссылок и cron —
  * константы для локальной работы, не секреты: в общем окружении они другие.
@@ -16,18 +21,30 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const toGithubEnv = process.argv.includes('--github-env');
-const bin = process.env.SUPABASE_BIN ?? 'supabase';
+const toStdout = process.argv.includes('--print');
+// CLI бывает и глобальным, и только как зависимость npm — тогда его находит npx.
+// SUPABASE_BIN, если задан, используется без запасных вариантов.
+const candidates = process.env.SUPABASE_BIN
+  ? [[process.env.SUPABASE_BIN, []]]
+  : [
+      ['supabase', []],
+      ['npx', ['--no-install', 'supabase']],
+    ];
 
-const status = spawnSync(bin, ['status', '-o', 'env'], {
-  cwd: root,
-  encoding: 'utf8',
-  shell: process.platform === 'win32',
-});
-if (status.status !== 0) {
+let status = null;
+for (const [command, prefix] of candidates) {
+  status = spawnSync(command, [...prefix, 'status', '-o', 'env'], {
+    cwd: root,
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+  if (status.status === 0) break;
+}
+if (!status || status.status !== 0) {
   console.error(
     'local-supabase-env: `supabase status` не вернул параметры. Запустите `supabase start`.',
   );
-  console.error(status.stderr?.trim() ?? '');
+  console.error(status?.stderr?.trim() ?? '');
   process.exit(1);
 }
 
@@ -61,7 +78,11 @@ if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
   process.exit(1);
 }
 
-if (toGithubEnv) {
+if (toStdout) {
+  // Единственный вывод в stdout — JSON: всё диагностическое идёт в stderr выше,
+  // чтобы вызывающий мог разобрать результат без фильтрации.
+  process.stdout.write(`${JSON.stringify(values)}\n`);
+} else if (toGithubEnv) {
   const target = process.env.GITHUB_ENV;
   if (!target) {
     console.error('local-supabase-env: --github-env вне GitHub Actions ($GITHUB_ENV не задан).');

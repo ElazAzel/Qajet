@@ -53,3 +53,9 @@ supabase/.temp/
 
 # Local superpowers execution ledger and review packages
 .superpowers/
+
+# Локальная сводка ворот (pnpm ci:local) — не коммитится: это не доказательство CI.
+gates.local.json
+
+# Резервные копии базы (tools/ops/backup-database.mjs): содержат персональные данные.
+backups/

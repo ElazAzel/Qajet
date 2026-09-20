@@ -22,6 +22,7 @@
     "db:reset": "pnpm --filter @qajet/db db:reset",
     "db:seed": "pnpm --filter @qajet/db db:seed",
     "release:check": "node tools/ci/check-release-readiness.mjs",
+    "ci:local": "node tools/ci/run-local.mjs",
     "rag:sync": "tsx tools/rag/src/cli.ts sync",
     "rag:search": "tsx tools/rag/src/cli.ts search",
     "rag:check": "tsx tools/rag/src/cli.ts check",
