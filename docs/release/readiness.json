@@ -15,7 +15,7 @@
     "rlsSuite": "passed-ci: real PostgreSQL RLS suite in CI 35462481886; 18 test files under packages/db/src/__tests__",
     "e2eBuyerJourney": "passed-ci: apps/web/e2e/buyer-journey.spec.ts against the production build and a local Supabase",
     "e2eOrderLifecycle": "passed-ci: request to closed, refund and surcharge",
-    "e2eSupplierJourney": "partial-exploratory: a manual browser walk (not an automated spec) covered supplier home, growth, messages, profile, team and the RFQ form up to a dead end (docs/qa/post-hardening-ux-audit.md, F1). Order, messaging and delivery stages were NOT RUN. No supplier-journey.spec.ts exists yet.",
+    "e2eSupplierJourney": "passed-local: apps/web/e2e/supplier-journey.spec.ts, 3 consecutive local runs (2026-09-20, 43-50 s each): new RFQ with visible deadline, empty-form error, corrected quote, RFQ shows as answered, order on the supplier home, message visible in the thread, delivery confirmation available after shipment and gone after. The capability checkbox is ticked in the test, so F1 is bypassed, not covered; three fixme cases record F1-F3. Local only: not CI, and not yet in the CI e2e job list beyond the existing playwright run.",
     "e2eConciergeJourney": "not-run: no spec; a read-only manual walk exists (audit F6).",
     "e2eAdminJourney": "not-run: no spec; a read-only manual walk of all 8 sections exists (audit F8-F11). No mutation was exercised.",
     "accessibility": "not-run: @axe-core/playwright is not a dependency anywhere in the workspace",
