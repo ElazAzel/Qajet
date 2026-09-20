@@ -31,7 +31,8 @@
     "backupRestore": "external-environment-required: a backup that has never been restored is not verified",
     "authHardening": "external-blocker: leaked-password protection is disabled in production Supabase Auth (advisor auth_leaked_password_protection)",
     "pdResidency": "external-infrastructure-decision-required: production Supabase is in ap-southeast-1 (Singapore); the specification section 11.1 requires a data centre in Kazakhstan",
-    "pilot": "external-real-order-required"
+    "pilot": "external-real-order-required",
+    "rlsSuiteLocal": "passed-local: pnpm --filter @qajet/db test:rls against the local Supabase stack (127.0.0.1:54322, 51 migrations applied) on 2026-09-20: 19 files, 91 tests. Local only: this is not CI evidence for this branch."
   },
   "securityPosture": {
     "note": "Re-derived from the migrations on 2026-09-19..20, not from the advisor summary alone. Design is sound; the gap is test coverage.",
@@ -42,12 +43,12 @@
     "serviceRoleOnly": 7,
     "advisorDiscrepancy": "The Supabase advisor reports 24 authenticated SECURITY DEFINER functions. The true figure is 23; the advisor counts the 4 anon RFQ functions, which are granted to both anon and authenticated, against a set that also includes them.",
     "openFindings": [
-      "P1: no behavioural test for any of the 4 anon RFQ endpoints. Wrong token, expired respond_by, deactivated supplier company and cross-request requestItemId are all unasserted. Only grant presence is tested.",
       "P1: no negative test for select_order_plan, assign_order_concierge, assign_supplier_rfq, request_supplier_quote_revision, decline_supplier_rfq, or the 6 service_role-only queue RPCs.",
       "P2: the 0042 privilege sweep and its regression test both filter on prosecdef, so SECURITY INVOKER trigger functions are never swept and retain create-time grants. 0043 grants EXECUTE to authenticated by default, so each new trigger function needs an explicit REVOKE that nothing enforces.",
       "P2: createJuryMetricsClient() bypasses RLS and is guarded only by call-site discipline in apps/web/app/metrics/page.tsx; isValidJuryToken() is not enforced inside the factory.",
       "P3: the comment in apps/web/lib/supabase/admin.ts claims service-role is isolated to one owner-only invitation action; there are 8 call sites."
-    ]
+    ],
+    "anonRfqEndpoints": "CONFIRMED by test (public-rfq-access.test.ts, 26 tests): wrong token, another RFQ's token, expired respond_by, deactivated supplier, terminal statuses and cross-request items are all rejected for the stated reason and leave no partial quote. No defect found. Mutation-checked: removing the token, deadline, is_active, request-binding or status check each turns tests red (1-5 failures each); originals restored byte-for-byte on the local DB."
   },
   "externalRequirements": [
     "Set SUPABASE_SERVICE_ROLE_KEY in Vercel production. /api/ready checks exactly three variables and the database is ACTIVE_HEALTHY, so this alone should return it to 200.",
