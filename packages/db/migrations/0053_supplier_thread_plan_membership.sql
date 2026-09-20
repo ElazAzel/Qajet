@@ -1,0 +1,22 @@
+-- Тред поставщика виден только пока его компания есть в ВЫБРАННОМ плане заказа.
+-- Ревью Codex к PR #15 (P1), воспроизведено privileged-rpc-authorization.test.ts
+-- («треды поставщиков после смены плана»: 3 из 3 падали).
+--
+-- Проблема. Политика threads_select_own_supplier пропускала роль owner без проверки
+-- плана: `role = 'owner' OR supplier_can_access_order(order_id)`. Триггер
+-- ensure_order_supplier_threads_on_plan_change (0035) при смене плана только ДОБАВЛЯЕТ
+-- треды новых поставщиков и никогда не удаляет прежние. После миграции 0051 покупатель
+-- может менять выбранный план (A -> B -> A), и владелец поставщика, выпавшего из плана,
+-- продолжал читать и писать в беседу заказа: messages_select_via_thread и
+-- messages_insert_via_thread опираются на видимость треда.
+--
+-- Исправление: без обхода для owner. supplier_can_access_order уже допускает owner и
+-- manager, требует активного пользователя, компанию-поставщика и строку выбранного
+-- плана этой компании; для manager добавлена привязка к RFQ. Владелец, состоящий в плане,
+-- доступа не теряет; выпавший из плана теряет его до тех пор, пока план не вернётся.
+-- Сами строки тредов и сообщений сохраняются: история не переписывается, скрывается
+-- только доступ (staff и покупатель видят всё как раньше).
+--
+-- Затронуты только политики SELECT на threads; тредов поставщика без заказа не бывает
+-- (все вставки в 0031/0035 идут с order_id).
+ALTER POLICY "threads_select_own_supplier" ON "threads" TO authenticated USING ("threads"."kind" = 'supplier' and "threads"."supplier_company_id" = (select public.current_company_id()) and public.supplier_can_access_order("threads"."order_id"));

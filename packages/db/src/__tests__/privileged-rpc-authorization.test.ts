@@ -658,4 +658,62 @@ describeIfConfigured('SECURITY DEFINER RPC: граница актёра внут
       });
     });
   });
+
+  describe('треды поставщиков после смены плана (ревью Codex к PR #15)', () => {
+    type Tx = postgres.TransactionSql;
+    const threadsSeenBy = async (tx: Tx, actor: string, orderId: string) => {
+      await asUser(tx, actor);
+      const rows =
+        await tx`select id from threads where order_id = ${orderId} and kind = 'supplier'`;
+      return rows.length;
+    };
+
+    it('поставщик, выпавший из выбранного плана, теряет тред заказа — в том числе владелец компании', async () => {
+      await scenario(async (tx, w) => {
+        // Контроль: пока план S1 выбран, владелец S1 свой тред видит, а S2 — нет.
+        expect(await threadsSeenBy(tx, w.supplierS1.owner, w.buyerA.order)).toBe(1);
+        expect(await threadsSeenBy(tx, w.supplierS2.owner, w.buyerA.order)).toBe(0);
+
+        await asUser(tx, w.buyerA.owner);
+        await tx`select public.select_order_plan(${w.buyerA.order}, ${w.buyerA.planA}, ${w.buyerA.planB})`;
+
+        // План B выбран: S1 в нём нет — доступа к беседе быть не должно.
+        expect(await threadsSeenBy(tx, w.supplierS1.owner, w.buyerA.order)).toBe(0);
+        expect(await threadsSeenBy(tx, w.supplierS2.owner, w.buyerA.order)).toBe(1);
+      });
+    });
+
+    it('возврат A → B → A возвращает доступ S1 и снова закрывает S2', async () => {
+      await scenario(async (tx, w) => {
+        await asUser(tx, w.buyerA.owner);
+        await tx`select public.select_order_plan(${w.buyerA.order}, ${w.buyerA.planA}, ${w.buyerA.planB})`;
+        await tx`select public.select_order_plan(${w.buyerA.order}, ${w.buyerA.planB}, ${w.buyerA.planA})`;
+
+        expect(await threadsSeenBy(tx, w.supplierS1.owner, w.buyerA.order)).toBe(1);
+        expect(await threadsSeenBy(tx, w.supplierS2.owner, w.buyerA.order)).toBe(0);
+      });
+    });
+
+    it('выпавший поставщик не может писать в свой прежний тред', async () => {
+      await scenario(async (tx, w) => {
+        await asOwner(tx);
+        const [thread] =
+          await tx`select id from threads where order_id = ${w.buyerA.order} and supplier_company_id = ${w.supplierS1.company}`;
+        expect(thread, 'тред S1 создан вместе с заказом').toBeTruthy();
+
+        await asUser(tx, w.buyerA.owner);
+        await tx`select public.select_order_plan(${w.buyerA.order}, ${w.buyerA.planA}, ${w.buyerA.planB})`;
+
+        await asUser(tx, w.supplierS1.owner);
+        await expectRejected(
+          tx,
+          /row-level security/,
+          () =>
+            tx`insert into messages (thread_id, author_user_id, body) values (${thread?.id}, ${w.supplierS1.owner}, 'ещё здесь?')`,
+        );
+        const seen = await tx`select id from messages where thread_id = ${thread?.id}`;
+        expect(seen).toHaveLength(0);
+      });
+    });
+  });
 });
