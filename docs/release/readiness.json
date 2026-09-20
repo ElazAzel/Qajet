@@ -16,8 +16,8 @@
     "e2eBuyerJourney": "passed-ci: apps/web/e2e/buyer-journey.spec.ts against the production build and a local Supabase",
     "e2eOrderLifecycle": "passed-ci: request to closed, refund and surcharge",
     "e2eSupplierJourney": "partial-exploratory: a manual browser walk (not an automated spec) covered supplier home, growth, messages, profile, team and the RFQ form up to a dead end (docs/qa/post-hardening-ux-audit.md, F1). Order, messaging and delivery stages were NOT RUN. No supplier-journey.spec.ts exists yet.",
-    "e2eConciergeJourney": "not-run: no dedicated spec; only the animation-budget probe on one comparison screen",
-    "e2eAdminJourney": "not-run: zero coverage. No spec visits /admin or any of its eight sections, nor /metrics",
+    "e2eConciergeJourney": "not-run: no spec; a read-only manual walk exists (audit F6).",
+    "e2eAdminJourney": "not-run: no spec; a read-only manual walk of all 8 sections exists (audit F8-F11). No mutation was exercised.",
     "accessibility": "not-run: @axe-core/playwright is not a dependency anywhere in the workspace",
     "storageFlow": "not-run: attachment isolation is tested at the public.attachments row level; real Storage objects and signed download routes are not exercised",
     "ciOnTargetCommit": "passed: CI 35462481886 and Release gate 35462481921, both green on main@ad872b1 (2026-09-19T18:50Z)",
@@ -34,7 +34,7 @@
     "pilot": "external-real-order-required",
     "rlsSuiteLocal": "passed-local: pnpm --filter @qajet/db test:rls against the local Supabase stack (127.0.0.1:54322, 53 migrations incl. 0051 and 0052) on 2026-09-20: 21 files, 166 tests. Local only: this is not CI evidence for this branch.",
     "e2eBaselineLocal": "passed-local: pnpm e2e on 2026-09-20 against a production build of branch refactor/pilot-readiness at 074165b and the local Supabase stack with migrations through 0052: 18 of 18 passed in 3.2 minutes (buyer journey incl. mobile width and keyboard, request-to-closed for both the refund and the surcharge variant, animation budget, public smoke, RFQ link failing closed, StartupBattle page). Local evidence only: not CI, and no supplier, concierge or admin journey spec exists.",
-    "uxAudit": "partial: docs/qa/post-hardening-ux-audit.md covers the supplier only. Concierge and admin walks are NOT RUN, and no feature disposition table exists yet."
+    "uxAudit": "partial: docs/qa/post-hardening-ux-audit.md covers the supplier (to a dead end), and the concierge and admin as read-only walks. Concierge actions and admin mutations are NOT RUN, and no feature disposition table has been accepted yet; the admin table is hypotheses."
   },
   "securityPosture": {
     "note": "Re-derived from the migrations on 2026-09-19..20, not from the advisor summary alone. Design is sound; the gap is test coverage.",
