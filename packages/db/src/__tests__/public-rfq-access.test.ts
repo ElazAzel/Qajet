@@ -117,7 +117,8 @@ describeIfConfigured('публичные RFQ-функции: ссылка авт
   describe('get_rfq_quick_response', () => {
     it('с верным токеном отдаёт позиции своего RFQ и ничего чужого', async () => {
       await scenario({}, async (tx, f) => {
-        const [{ r }] = await tx`select public.get_rfq_quick_response(${f.rfq}, ${f.token}) as r`;
+        const [row] = await tx`select public.get_rfq_quick_response(${f.rfq}, ${f.token}) as r`;
+        const r = row?.r;
         expect(r.rfqId).toBe(f.rfq);
         expect(r.items.map((i: { id: string }) => i.id)).toEqual([f.item]);
       });
@@ -222,8 +223,9 @@ describeIfConfigured('публичные RFQ-функции: ссылка авт
     it('с верным токеном создаёт КП только по своей заявке и закрывает RFQ', async () => {
       await scenario({}, async (tx, f) => {
         const lines = JSON.stringify([validLine(f)]);
-        const [{ id }] =
+        const [created] =
           await tx`select public.submit_rfq_public(${f.rfq}, ${f.token}, ${lines}::text::jsonb) as id`;
+        const id = created?.id;
         expect(id).toBeTruthy();
         expect(await statusOf(tx, f.rfq)).toBe('quoted');
         await tx`reset role`;
@@ -244,7 +246,8 @@ describeIfConfigured('публичные RFQ-функции: ссылка авт
           () => tx`select public.submit_rfq_public(${f.rfq}, ${f.token}, ${lines}::text::jsonb)`,
         );
         await tx`reset role`;
-        const [{ n }] = await tx`select count(*)::int as n from quotes where rfq_id = ${f.rfq}`;
+        const [counted] = await tx`select count(*)::int as n from quotes where rfq_id = ${f.rfq}`;
+        const n = counted?.n;
         expect(n).toBe(1);
       });
     });
@@ -262,7 +265,8 @@ describeIfConfigured('публичные RFQ-функции: ссылка авт
             tx`select public.submit_rfq_public(${f.rfq}, ${f.otherToken}, ${lines(f)}::text::jsonb)`,
         );
         await tx`reset role`;
-        const [{ n }] = await tx`select count(*)::int as n from quotes where rfq_id = ${f.rfq}`;
+        const [counted] = await tx`select count(*)::int as n from quotes where rfq_id = ${f.rfq}`;
+        const n = counted?.n;
         expect(n).toBe(0);
       });
       await scenario({ respondBy: '2020-01-01T00:00:00Z' }, async (tx, f) => {
@@ -324,7 +328,8 @@ describeIfConfigured('публичные RFQ-функции: ссылка авт
             reason,
           );
           await tx`reset role`;
-          const [{ n }] = await tx`select count(*)::int as n from quotes where rfq_id = ${f.rfq}`;
+          const [counted] = await tx`select count(*)::int as n from quotes where rfq_id = ${f.rfq}`;
+          const n = counted?.n;
           expect(n).toBe(0);
           expect(await statusOf(tx, f.rfq)).toBe('sent');
         });
