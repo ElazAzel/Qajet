@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { pickLatestQuoteByRfq } from './latest-quote';
 
 /**
  * Дашборд поставщика — agents.md §10. RLS уже сужает выборки до своей
@@ -34,9 +35,21 @@ export interface SupplierOrderRow {
   etaDate: string | null;
 }
 
+/**
+ * Отправленное КП, в котором остались позиции без отметки «могу исполнить».
+ * Такие позиции не идут в сравнение, поэтому поставщик должен видеть их у себя,
+ * а не узнавать о последствии из письма (аудит F1).
+ */
+export interface SupplierAwaitingConfirmationRow {
+  rfqId: string;
+  requestTitle: string;
+  unconfirmedCount: number;
+}
+
 export interface SupplierHomeData {
   pendingRfqs: SupplierRfqRow[];
   activeOrders: SupplierOrderRow[];
+  awaitingConfirmation: SupplierAwaitingConfirmationRow[];
   totalPayoutsKzt: number;
   avgBuyerScore: number | null;
   supplierMembers: SupplierTeamMemberOption[];
@@ -52,6 +65,7 @@ export async function loadSupplierHome(
     { data: payoutRows },
     statsResult,
     { data: supplierMembers },
+    { data: quotedRfqRows },
   ] = await Promise.all([
     supabase
       .from('rfqs')
@@ -81,7 +95,35 @@ export async function loadSupplierHome(
           .in('role', ['owner', 'manager'])
           .order('created_at', { ascending: true })
       : Promise.resolve({ data: [] as { id: string; full_name: string; role: string }[] }),
+    // RLS ограничивает выборку своей компанией, поэтому отдельной проверки здесь нет.
+    supabase
+      .from('rfqs')
+      .select(
+        'id, requests(title), quotes(id, version, submitted_at, quote_lines(capability_confirmed))',
+      )
+      .eq('status', 'quoted'),
   ]);
+
+  const awaitingConfirmation: SupplierAwaitingConfirmationRow[] = [];
+  for (const row of quotedRfqRows ?? []) {
+    const quotes = (Array.isArray(row.quotes) ? row.quotes : []) as {
+      id: string;
+      version: number;
+      submitted_at: string;
+      quote_lines: { capability_confirmed: boolean }[] | null;
+    }[];
+    const latest = pickLatestQuoteByRfq(quotes.map((q) => ({ ...q, rfq_id: row.id }))).get(row.id);
+    const unconfirmedCount = (latest?.quote_lines ?? []).filter(
+      (line) => line.capability_confirmed === false,
+    ).length;
+    if (unconfirmedCount === 0) continue;
+    const request = Array.isArray(row.requests) ? row.requests[0] : row.requests;
+    awaitingConfirmation.push({
+      rfqId: row.id,
+      requestTitle: request?.title ?? '—',
+      unconfirmedCount,
+    });
+  }
 
   const memberNameById = new Map(
     (supplierMembers ?? []).map((member) => [member.id, member.full_name]),
@@ -138,6 +180,7 @@ export async function loadSupplierHome(
   return {
     pendingRfqs,
     activeOrders,
+    awaitingConfirmation,
     totalPayoutsKzt,
     avgBuyerScore: statsResult.data?.avg_buyer_score ?? null,
     supplierMembers: (supplierMembers ?? []).map((member) => ({

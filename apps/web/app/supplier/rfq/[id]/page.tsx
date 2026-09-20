@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../../../lib/current-user';
+import { pickLatestQuoteByRfq } from '../../../lib/latest-quote';
 import { QuoteForm } from './_quote-form';
 
 /**
@@ -19,12 +20,20 @@ interface RequestItemRow {
   category: string;
 }
 
+interface QuoteRow {
+  id: string;
+  version: number;
+  submitted_at: string;
+  quote_lines: { request_item_id: string; capability_confirmed: boolean }[] | null;
+}
+
 interface RfqDetailRow {
   id: string;
   status: string;
   respond_by: string | null;
   revision_requested: boolean;
   revision_note: string | null;
+  quotes: QuoteRow[] | null;
   requests: {
     id: string;
     title: string;
@@ -42,7 +51,7 @@ export default async function SupplierRfqPage({ params }: { params: Promise<{ id
   const { data } = await supabase
     .from('rfqs')
     .select(
-      'id, status, respond_by, revision_requested, revision_note, requests(id, title, deadline_date, companies(name), request_items(id, name, qty, unit, category))',
+      'id, status, respond_by, revision_requested, revision_note, quotes(id, version, submitted_at, quote_lines(request_item_id, capability_confirmed)), requests(id, title, deadline_date, companies(name), request_items(id, name, qty, unit, category))',
     )
     .eq('id', id)
     .maybeSingle<RfqDetailRow>();
@@ -54,6 +63,16 @@ export default async function SupplierRfqPage({ params }: { params: Promise<{ id
   const items = request.request_items ?? [];
   const revisionRequested = data.status === 'quoted' && data.revision_requested;
   const alreadyAnswered = !['sent', 'quick_responded'].includes(data.status) && !revisionRequested;
+
+  // Сколько позиций в АКТУАЛЬНОЙ версии КП осталось без подтверждения возможности.
+  // Такие позиции не участвуют в сравнении, и раньше поставщик об этом не узнавал
+  // ниоткуда (аудит F1).
+  const latestQuote = pickLatestQuoteByRfq(
+    (data.quotes ?? []).map((quote) => ({ ...quote, rfq_id: data.id })),
+  ).get(data.id);
+  const unconfirmedCount = (latestQuote?.quote_lines ?? []).filter(
+    (line) => line.capability_confirmed === false,
+  ).length;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
@@ -73,9 +92,27 @@ export default async function SupplierRfqPage({ params }: { params: Promise<{ id
       </p>
 
       {alreadyAnswered ? (
-        <div className="mt-6 rounded-card border border-rule bg-surface p-6 text-fine text-muted">
-          На этот запрос уже дан ответ ({data.status === 'quoted' ? 'КП отправлено' : 'отказ'}).
-        </div>
+        <>
+          <div className="mt-6 rounded-card border border-rule bg-surface p-6 text-fine text-muted">
+            На этот запрос уже дан ответ ({data.status === 'quoted' ? 'КП отправлено' : 'отказ'}).
+          </div>
+          {unconfirmedCount > 0 && (
+            <div className="mt-3 rounded-card border border-signal/40 bg-signal/10 p-4 text-fine text-ink">
+              <p className="font-semibold">Ждёт вашего подтверждения</p>
+              <p className="mt-1 text-muted">
+                По {unconfirmedCount} {unconfirmedCount === 1 ? 'позиции' : 'позициям'} не отмечено
+                «могу исполнить» — они не участвуют в сравнении.
+              </p>
+              {/* Честно о том, чего поставщик сделать НЕ может: повторная отправка
+                  открывается только запросом исправления от QAJET
+                  (submit_supplier_quote принимает КП при revision_requested). */}
+              <p className="mt-2 text-muted">
+                Отправить новую версию можно после того, как QAJET запросит исправление — тогда эта
+                страница снова откроется для заполнения.
+              </p>
+            </div>
+          )}
+        </>
       ) : (
         <>
           {revisionRequested && (

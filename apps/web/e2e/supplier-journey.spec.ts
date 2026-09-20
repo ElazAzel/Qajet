@@ -144,16 +144,71 @@ test('поставщик: от нового RFQ до подтверждения 
 });
 
 /**
- * Найдено ручным проходом (docs/qa/post-hardening-ux-audit.md, F1-F3). Сценарии
- * записаны заранее и пропущены: продуктовое решение по F1 ещё не принято, а
- * ассерт на нынешнее молчаливое поведение закрепил бы дефект как норму.
+ * F1 (docs/qa/post-hardening-ux-audit.md). Решение владельца: галочку НЕ делаем
+ * обязательной, но убираем молчание. Поставщик вправе ответить «цена такая, но
+ * исполнить не берусь» — он просто обязан узнать о последствии до отправки, а не
+ * из письма через день.
+ */
+test('поставщик: КП без подтверждения предупреждает до отправки и виден как ждущее (F1)', async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const { title } = await createRfqSentOrder(browser, { name: 'supplier-capability' });
+
+  const supplierCtx = await browser.newContext();
+  const supplier = await supplierCtx.newPage();
+  try {
+    await loginAs(supplier, 'supplier@demo.qajet.kz');
+    await supplier.goto('/supplier');
+    await rowContaining(supplier, title, 'li')
+      .getByRole('link', { name: 'Берусь, цена и срок' })
+      .click();
+    await supplier.waitForURL(/\/supplier\/rfq\//);
+    const rfqUrl = supplier.url();
+
+    // Условия заполнены, подтверждение — нет. Раньше отправка проходила молча.
+    await supplier.getByLabel('Цена за ед., ₸').first().fill('4500');
+    await supplier.getByLabel('Срок, дней').first().fill('10');
+    await supplier.getByLabel('Setup fee, ₸').first().fill('0');
+    await supplier.getByLabel('Мин. партия, шт.').first().fill('1');
+    await expect(supplier.getByRole('checkbox', { name: CAPABILITY }).first()).not.toBeChecked();
+
+    await supplier.getByRole('button', { name: 'Отправить КП' }).click();
+
+    // Первое нажатие предупреждает и НЕ отправляет: человек остаётся на форме.
+    await expect(
+      supplier.getByText('не попадёт в сравнение').locator('visible=true').first(),
+    ).toBeVisible();
+    await expect(supplier, 'предупреждение не должно отправлять форму').toHaveURL(rfqUrl);
+
+    // Отметка снимает предупреждение — это и есть путь «я передумал».
+    await supplier.getByRole('checkbox', { name: CAPABILITY }).first().check();
+    await expect(supplier.getByText('не попадёт в сравнение')).toHaveCount(0);
+    await supplier.getByRole('checkbox', { name: CAPABILITY }).first().uncheck();
+
+    // Второе нажатие отправляет: политика не изменилась, изменилось молчание.
+    await supplier.getByRole('button', { name: 'Всё равно отправить без подтверждения' }).click();
+    await supplier.waitForURL('**/supplier');
+
+    // Поставщик видит, что ответ ждёт его подтверждения, — и на главной, и в самом RFQ.
+    await expect(
+      supplier.getByText('Ждут вашего подтверждения').locator('visible=true').first(),
+    ).toBeVisible();
+    await supplier.goto(rfqUrl);
+    await expect(
+      supplier.getByText('Ждёт вашего подтверждения').locator('visible=true').first(),
+    ).toBeVisible();
+  } finally {
+    await supplierCtx.close();
+  }
+});
+
+/**
+ * Найдено ручным проходом (docs/qa/post-hardening-ux-audit.md, F2-F3). Сценарии
+ * записаны заранее и пропущены: ассерт на нынешнее поведение закрепил бы дефект
+ * как норму.
  */
 test.describe('известные дефекты формы КП', () => {
-  test.fixme('КП без подтверждения «могу исполнить» предупреждает поставщика ДО отправки (F1)', async () => {
-    // Ожидание после решения: неотмеченная галочка даёт понятное предупреждение,
-    // а после отправки виден статус «ждёт вашего подтверждения».
-  });
-
   test.fixme('ошибка формы объявляется экранному читателю и не остаётся после исправления (F2)', async () => {
     // Ожидание: у сообщения role="alert"; после корректного ввода оно исчезает.
   });

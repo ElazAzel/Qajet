@@ -51,7 +51,11 @@ test('консьерж: заказ с отбракованными КП → за
     await supplier.getByLabel('Срок, дней').first().fill('10');
     await supplier.getByLabel('Setup fee, ₸').first().fill('0');
     await supplier.getByLabel('Мин. партия, шт.').first().fill('1');
+    // Отправка без подтверждения теперь двухшаговая: первое нажатие предупреждает
+    // (аудит F1), второе отправляет. Политика отбраковки при этом не изменилась,
+    // поэтому дальше сценарий тот же — КП принято и будет отбраковано.
     await supplier.getByRole('button', { name: 'Отправить КП' }).click();
+    await supplier.getByRole('button', { name: 'Всё равно отправить без подтверждения' }).click();
     await supplier.waitForURL('**/supplier');
 
     // Консьерж видит причину тупика и не может предложить план.

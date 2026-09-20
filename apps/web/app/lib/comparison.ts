@@ -2,6 +2,7 @@ import { type CombineResult, combine, type QuoteOffer } from '@qajet/engine/comb
 import { applyReliability } from '@qajet/engine/leadtime';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { deliveryRoute } from './delivery-route';
+import { pickLatestQuoteByRfq } from './latest-quote';
 import { loadSupplierReliabilityMap } from './recalibration';
 
 /**
@@ -93,29 +94,18 @@ export async function loadRequestComparison(
         .select('id, rfq_id, version, submitted_at, valid_until')
         .in('rfq_id', rfqIds)
     : { data: [] };
-  const latestQuoteByRfqId = new Map<
-    string,
-    {
-      id: string;
-      rfq_id: string;
-      version: number;
-      submitted_at: string;
-      valid_until: string | null;
-    }
-  >();
-  for (const quote of quotes ?? []) {
-    const current = latestQuoteByRfqId.get(quote.rfq_id);
-    if (
-      !current ||
-      quote.version > current.version ||
-      (quote.version === current.version && quote.submitted_at > current.submitted_at) ||
-      (quote.version === current.version &&
-        quote.submitted_at === current.submitted_at &&
-        quote.id > current.id)
-    ) {
-      latestQuoteByRfqId.set(quote.rfq_id, quote);
-    }
-  }
+  // Правило выбора версии общее с доской консьержа и страницей RFQ: см. latest-quote.ts.
+  const latestQuoteByRfqId = pickLatestQuoteByRfq(
+    quotes as
+      | {
+          id: string;
+          rfq_id: string;
+          version: number;
+          submitted_at: string;
+          valid_until: string | null;
+        }[]
+      | null,
+  );
   const quoteList = [...latestQuoteByRfqId.values()];
   const rfqIdByQuoteId = new Map(quoteList.map((q) => [q.id, q.rfq_id]));
   const validUntilByQuoteId = new Map(quoteList.map((q) => [q.id, q.valid_until as string | null]));
