@@ -121,8 +121,11 @@ RFQ appears, to everyone looking at the system, to have been notified.
 Setting `RESEND_API_KEY` hides the defect without fixing it. Production must
 refuse to sink silently — either fail closed when the key is absent in a
 production environment, or persist `transport` and surface `local-sink` as a
-distinct not-delivered state. This is tracked as a code change, TDD, failing
-test first.
+distinct not-delivered state. Fixed on branch `refactor/pilot-readiness`: the adapter now throws in
+production when the key is absent, and the dispatcher builds it before claiming
+rows, so a missing key leaves the queue `pending` (no attempts burned) and the
+scheduled job returns 503 instead of reporting success. This takes effect only
+once that commit is deployed.
 
 ---
 
