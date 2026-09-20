@@ -57,7 +57,7 @@ if [ -f docs/release/readiness.json ] && command -v node >/dev/null 2>&1; then
       const r = require("./docs/release/readiness.json");
       console.log("Готовность: " + r.status + " (проверено " + r.verifiedAt + ", sha " + (r.sourceSha || r.baseSha || "?").slice(0,7) + ")");
       const bad = Object.entries(r.gates || {}).filter(([, v]) =>
-        /^(fail|not-run|pending|external|skipped)/i.test(String(v)));
+        /^(fail|not-run|pending|external|skipped|partial|code-fixed)/i.test(String(v)));
       if (bad.length) {
         console.log("Незакрытые гейты:");
         for (const [k, v] of bad) console.log("  - " + k + ": " + String(v).split(":")[0]);

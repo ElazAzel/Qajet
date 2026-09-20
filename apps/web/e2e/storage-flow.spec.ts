@@ -262,7 +262,9 @@ test('платёжка покупателя скрыта от поставщик
   const planIds = (lines.data ?? []).map((l) => l.plan_id);
   const orders = await db.from('orders').select('id').in('approved_plan_id', planIds).limit(1);
   const orderId = orders.data?.[0]?.id;
-  test.skip(!orderId, 'нет заказа, доступного демо-поставщику');
+  // Не skip: если демо-данные перестанут давать такой заказ, проверка изоляции платёжки
+  // молча пропадала бы, а CI оставался зелёным. Лучше упасть и потребовать фикстуру.
+  expect(orderId, 'нужен заказ, к которому у демо-поставщика есть доступ').toBeTruthy();
 
   const buyerUser = (
     await db.from('users').select('id').eq('email', 'buyer@demo.qajet.kz').single()
@@ -339,7 +341,7 @@ test.describe('загрузка: недопустимое отбраковыва
     }
   });
 
-  test('файл сверх лимита сервера отклоняется сообщением на странице, а не молча', async ({
+  test('файл 12 МБ отклоняется сообщением на странице, а не молча (проверка в форме)', async ({
     browser,
   }) => {
     const { page, context } = await uploadWith(browser, {

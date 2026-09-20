@@ -170,5 +170,5 @@ lines.push('');
 const out = fileURLToPath(
   new URL('../../../../docs/security/security-definer-inventory.md', import.meta.url),
 );
-writeFileSync(out, `${lines.join('\n')}\n`, 'utf8');
+writeFileSync(out, `${lines.join('\n').trimEnd()}\n`, 'utf8');
 console.log(`Записано ${out}: ${rows.length} функций.`);

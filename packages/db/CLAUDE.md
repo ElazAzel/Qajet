@@ -48,10 +48,11 @@ Four are intentionally executable by `anon` — the token-gated public RFQ endpo
 **Do not blanket-revoke to silence the Supabase advisor.** An advisor warning is a
 finding to investigate, not an automatic defect. Prove the authorization instead.
 
-Note the known blind spot: the `0042` privilege sweep and its regression test both
-filter on `prosecdef`, so `SECURITY INVOKER` trigger functions are not swept, and
-`0043` grants `EXECUTE` to `authenticated` by default for new functions. A new
-trigger function needs an explicit `REVOKE`.
+Trigger functions: migration `0052` revokes API access from **every** trigger
+function and `function-privileges.test.ts` checks all of them, not only
+`SECURITY DEFINER` ones. `0043` still grants `EXECUTE` to `authenticated` by default
+for new functions, so a new trigger function needs an explicit `REVOKE`, and that
+test fails if it is forgotten.
 
 ## Transactions and concurrency
 
