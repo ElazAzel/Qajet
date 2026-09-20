@@ -657,6 +657,60 @@ describeIfConfigured('SECURITY DEFINER RPC: граница актёра внут
         expect(await visible(w.supplierS2.owner)).toEqual({ sawOrder: true, lines: [w.lineB] });
       });
     });
+
+    describe('смена варианта попадает в аудит (находка P3)', () => {
+      /**
+       * Внутри одной транзакции now() одинаков у всех строк, поэтому сортировать
+       * события по времени бессмысленно: записи ищутся по содержимому заметки.
+       */
+      const repointEvents = async (tx: Tx, orderId: string) => {
+        await asOwner(tx);
+        return tx`select from_state, to_state, actor_user_id, note
+          from order_stage_events
+          where order_id = ${orderId} and note like 'Выбран другой вариант%'`;
+      };
+
+      it('выбор другого варианта оставляет запись с обоими вариантами и автором', async () => {
+        await scenario(async (tx, w) => {
+          expect(await repointEvents(tx, w.buyerA.order)).toHaveLength(0);
+
+          await asUser(tx, w.buyerA.owner);
+          await tx`select public.select_order_plan(${w.buyerA.order}, ${w.buyerA.planA}, ${w.buyerA.planB})`;
+
+          const events = await repointEvents(tx, w.buyerA.order);
+          expect(events, 'ровно одна запись на одно переключение').toHaveLength(1);
+
+          const row = events[0];
+          expect(row?.actor_user_id, 'автор — покупатель, а не служебная роль').toBe(
+            w.buyerA.owner,
+          );
+          // Без обоих вариантов по журналу не восстановить, с чего на что перешли.
+          expect(String(row?.note)).toContain('recommended');
+          expect(String(row?.note)).toContain('cheaper');
+          // Это решение внутри стадии, а не переход между стадиями.
+          expect(row?.from_state).toBe(row?.to_state);
+        });
+      });
+
+      it('прямая правка указателя покупателем тоже записывается', async () => {
+        await scenario(async (tx, w) => {
+          await asUser(tx, w.buyerA.owner);
+          await repoint(tx, w.buyerA.planB, w.buyerA.order);
+          expect(await repointEvents(tx, w.buyerA.order)).toHaveLength(1);
+        });
+      });
+
+      it('запись того же варианта поверх себя не создаёт события', async () => {
+        await scenario(async (tx, w) => {
+          await asUser(tx, w.buyerA.owner);
+          await repoint(tx, w.buyerA.planA, w.buyerA.order);
+          expect(
+            await repointEvents(tx, w.buyerA.order),
+            'указатель не изменился — записывать нечего',
+          ).toHaveLength(0);
+        });
+      });
+    });
   });
 
   describe('треды поставщиков после смены плана (ревью Codex к PR #15)', () => {
