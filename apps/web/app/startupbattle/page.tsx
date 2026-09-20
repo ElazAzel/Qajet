@@ -39,7 +39,16 @@ export const metadata: Metadata = {
 const contact = 'https://www.instagram.com/qajet.io/';
 const whatsapp = 'https://wa.me/77000204791';
 const linkedin = 'https://www.linkedin.com/in/elazart?utm_source=vizitkastartup';
-const pitch = '/startupbattle/QAJET-pitch.pdf';
+/**
+ * Презентация больше не лежит в репозитории. 24 МБ составляли 98,6% всего
+ * public/, Next копировал их в standalone при КАЖДОЙ сборке, и на Windows это
+ * приводило к `EBUSY`: антивирус держал свежую копию, и сборка падала.
+ *
+ * Адрес задаётся NEXT_PUBLIC_PITCH_PDF_URL. Пока переменная не задана, кнопки
+ * скачивания нет — вместо неё честная строка. Битая ссылка хуже отсутствующей:
+ * по ней человек уходит на 404 и считает, что сломан весь сайт.
+ */
+const pitch = process.env.NEXT_PUBLIC_PITCH_PDF_URL ?? null;
 
 export default function StartupBattlePage() {
   return (
@@ -71,10 +80,12 @@ export default function StartupBattlePage() {
               <a href="#product" className={`${styles.button} ${styles.limeButton}`}>
                 Посмотреть продукт <ArrowDown size={17} aria-hidden="true" />
               </a>
-              <a href={pitch} target="_blank" rel="noreferrer" className={styles.deckLink}>
-                Питч-дек <ArrowUpRight size={16} aria-hidden="true" />
-                <span className={styles.srOnly}> (PDF, новая вкладка)</span>
-              </a>
+              {pitch && (
+                <a href={pitch} target="_blank" rel="noreferrer" className={styles.deckLink}>
+                  Питч-дек <ArrowUpRight size={16} aria-hidden="true" />
+                  <span className={styles.srOnly}> (PDF, новая вкладка)</span>
+                </a>
+              )}
             </Reveal>
             <Reveal>
               <p className={styles.heroFoot}>
@@ -393,9 +404,13 @@ export default function StartupBattlePage() {
                   <span className={styles.srOnly}> (новая вкладка)</span>
                 </a>
               </div>
-              <a className={styles.download} href={pitch} download="QAJET-pitch.pdf">
-                <ArrowDownToLine size={17} aria-hidden="true" /> Скачать презентацию · PDF
-              </a>
+              {pitch ? (
+                <a className={styles.download} href={pitch} download="QAJET-pitch.pdf">
+                  <ArrowDownToLine size={17} aria-hidden="true" /> Скачать презентацию · PDF
+                </a>
+              ) : (
+                <p className={styles.download}>Презентацию пришлём по запросу — напишите нам.</p>
+              )}
             </ScrollReveal>
           </div>
         </section>
