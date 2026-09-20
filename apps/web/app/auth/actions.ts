@@ -4,17 +4,8 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { authErrorText } from '../lib/action-result';
+import { validatePasswordPolicy } from '../lib/auth/password-policy';
 import { safeAuthPath } from '../lib/safe-auth-path';
-
-const MIN_PASSWORD_LENGTH = 8;
-
-function validatePassword(password: string, confirmation: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `Пароль должен содержать минимум ${MIN_PASSWORD_LENGTH} символов.`;
-  }
-  if (password !== confirmation) return 'Пароли не совпадают.';
-  return null;
-}
 
 export async function requestPasswordReset(
   _previous: string | null,
@@ -47,7 +38,7 @@ export async function setPassword(
 ): Promise<string | null> {
   const password = String(formData.get('password') ?? '');
   const confirmation = String(formData.get('confirmation') ?? '');
-  const validationError = validatePassword(password, confirmation);
+  const validationError = await validatePasswordPolicy(password, confirmation);
   if (validationError) return validationError;
 
   const supabase = await createSupabaseServerClient();
