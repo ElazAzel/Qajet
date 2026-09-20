@@ -45,6 +45,37 @@ export const ORDER_STATE_LABEL: Record<OrderState, string> = {
   disputed: 'Спор',
 };
 
+/**
+ * Чей сейчас ход — для строки доски консьержа (аудит F6).
+ *
+ * ВАЖНО: это «кого мы ЖДЁМ», а не «кто совершает переход». На `estimated`
+ * переход в базе делает сотрудник, но ждём мы оплату клиента; на `rfq_sent`
+ * ждём поставщиков, хотя следующий переход тоже за сотрудником. Не приводите
+ * это к ORDER_TRANSITION_GRAPH — там другой вопрос.
+ */
+export const ORDER_TURN: Record<
+  OrderState,
+  { side: 'qajet' | 'buyer' | 'supplier'; label: string }
+> = {
+  draft: { side: 'qajet', label: 'QAJET · оценить' },
+  estimated: { side: 'buyer', label: 'Клиент · оплатить счёт' },
+  prepaid: { side: 'qajet', label: 'QAJET · разослать RFQ' },
+  rfq_sent: { side: 'supplier', label: 'Поставщики · ждём КП' },
+  quotes_received: { side: 'qajet', label: 'QAJET · собрать план' },
+  plan_proposed: { side: 'buyer', label: 'Клиент · утвердить план' },
+  awaiting_internal_approval: { side: 'buyer', label: 'Клиент · внутреннее согласование' },
+  plan_approved: { side: 'qajet', label: 'QAJET · оплатить поставщиков' },
+  suppliers_paid: { side: 'qajet', label: 'QAJET · запустить производство' },
+  in_production: { side: 'supplier', label: 'Поставщики · производство' },
+  shipped: { side: 'supplier', label: 'Поставщик · подтвердить доставку' },
+  delivered: { side: 'buyer', label: 'Клиент · принять заказ' },
+  accepted: { side: 'buyer', label: 'Клиент · закрыть заказ' },
+  closed: { side: 'qajet', label: 'Закрыт' },
+  cancelled: { side: 'qajet', label: 'Отменён' },
+  on_hold: { side: 'qajet', label: 'QAJET · снять паузу' },
+  disputed: { side: 'qajet', label: 'QAJET · разрешить спор' },
+};
+
 export const ORDER_STATE_TONE: Record<OrderState, StampTone> = {
   draft: 'neutral',
   estimated: 'progress',

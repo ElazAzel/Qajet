@@ -4,11 +4,14 @@ import { AlertCircle, LayoutList } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { formatBoardDeadline } from '../lib/board-row';
+import { loadBlockedOrders } from '../lib/concierge-blocked';
 import { requireActor, shellUserFrom } from '../lib/current-user';
 import {
   ORDER_STATE_LABEL,
   ORDER_STATE_PRIORITY,
   ORDER_STATE_TONE,
+  ORDER_TURN,
   type OrderState,
 } from '../lib/order-state';
 import { IntakeButton } from './_intake-button';
@@ -29,15 +32,18 @@ interface BoardRow {
   state: OrderState;
   title: string;
   buyerCompany: string;
+  deadlineDate: string | null;
+  blocked: boolean;
 }
 
 async function loadBoard(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
+  // deadline_date берётся из уже существующего вложения requests — без лишнего запроса.
   const { data } = await supabase
     .from('orders')
-    .select('id, state, requests(title, companies(name))')
+    .select('id, request_id, state, requests(title, deadline_date, companies(name))')
     .not('state', 'in', '(closed,cancelled)');
 
-  const rows: BoardRow[] = (data ?? []).map((row) => {
+  const rows = (data ?? []).map((row) => {
     const request = Array.isArray(row.requests) ? row.requests[0] : row.requests;
     const company = request
       ? Array.isArray(request.companies)
@@ -46,13 +52,33 @@ async function loadBoard(supabase: Awaited<ReturnType<typeof createSupabaseServe
       : null;
     return {
       id: row.id,
+      requestId: row.request_id as string,
       state: row.state as OrderState,
       title: request?.title ?? '—',
       buyerCompany: company?.name ?? '—',
+      deadlineDate: (request?.deadline_date as string | null) ?? null,
     };
   });
 
-  return rows.sort((a, b) => ORDER_STATE_PRIORITY[a.state] - ORDER_STATE_PRIORITY[b.state]);
+  // Тупик возможен только там, где консьерж собирает план, поэтому кандидаты —
+  // одна стадия. Пустой список кандидатов не стоит ни одного запроса.
+  const blocked = await loadBlockedOrders(
+    supabase,
+    rows
+      .filter((row) => row.state === 'quotes_received')
+      .map((row) => ({ orderId: row.id, requestId: row.requestId })),
+  );
+
+  const board: BoardRow[] = rows.map((row) => ({
+    id: row.id,
+    state: row.state,
+    title: row.title,
+    buyerCompany: row.buyerCompany,
+    deadlineDate: row.deadlineDate,
+    blocked: blocked.has(row.id),
+  }));
+
+  return board.sort((a, b) => ORDER_STATE_PRIORITY[a.state] - ORDER_STATE_PRIORITY[b.state]);
 }
 
 interface PendingRequestRow {
@@ -93,6 +119,7 @@ export default async function ConciergeLayout({ children }: { children: ReactNod
     loadBoard(supabase),
     loadPendingRequests(supabase),
   ]);
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <ConciergeShell
@@ -137,20 +164,38 @@ export default async function ConciergeLayout({ children }: { children: ReactNod
           ) : (
             <KeyboardListNav>
               <div className="flex flex-col">
-                {board.map((row) => (
-                  <Link
-                    key={row.id}
-                    href={`/concierge/orders/${row.id}`}
-                    data-kbd-row
-                    className="flex flex-col gap-1.5 border-b border-rule px-4 py-3 hover:bg-page"
-                  >
-                    <span className="text-sm font-semibold text-ink">{row.title}</span>
-                    <span className="text-fine text-muted">{row.buyerCompany}</span>
-                    <Stamp tone={ORDER_STATE_TONE[row.state]} className="mt-1 w-fit">
-                      {ORDER_STATE_LABEL[row.state]}
-                    </Stamp>
-                  </Link>
-                ))}
+                {board.map((row) => {
+                  const deadline = formatBoardDeadline(row.deadlineDate, today);
+                  return (
+                    <Link
+                      key={row.id}
+                      href={`/concierge/orders/${row.id}`}
+                      data-kbd-row
+                      className="flex flex-col gap-1.5 border-b border-rule px-4 py-3 hover:bg-page"
+                    >
+                      <span className="text-sm font-semibold text-ink">{row.title}</span>
+                      <span className="text-fine text-muted">{row.buyerCompany}</span>
+                      {/* Ответ на утренний вопрос: у кого мяч и что горит (F6).
+                          Просрочка несётся словом, а не только цветом. */}
+                      <span className="text-micro text-muted">
+                        {ORDER_TURN[row.state].label}
+                        <span className={deadline.overdue ? 'text-signal' : undefined}>
+                          {' · '}
+                          {deadline.text}
+                        </span>
+                      </span>
+                      <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Stamp tone={ORDER_STATE_TONE[row.state]}>
+                          {ORDER_STATE_LABEL[row.state]}
+                        </Stamp>
+                        {/* Формулировка намеренно отличается от фразы на экране
+                            заказа: getByText ищет подстроку, и совпадение сделало
+                            бы проверки сценариев неоднозначными. */}
+                        {row.blocked && <Stamp tone="signal">Заблокирован</Stamp>}
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             </KeyboardListNav>
           )}

@@ -169,12 +169,71 @@ test('консьерж: «Исключения» показывает заказ
   }
 });
 
-test.describe('известные дефекты доски консьержа', () => {
-  test.fixme('заказ с отбракованными КП попадает в «Исключения» и помечен на доске (F1, F6)', async () => {
-    // Ожидание после решения: заблокированный заказ виден в очереди действий.
-  });
+test('консьерж: заказ с отбракованными КП виден в «Исключениях» и помечен на доске (F1, F6)', async ({
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  const { title, orderUrl } = await createRfqSentOrder(browser, { name: 'concierge-blocked' });
 
-  test.fixme('строка доски показывает срок и «чей ход» (F6)', async () => {
-    // Ожидание: по строке можно понять, что просрочено и у кого мяч.
-  });
+  const supplierCtx = await browser.newContext();
+  const conciergeCtx = await browser.newContext();
+  const supplier = await supplierCtx.newPage();
+  const concierge = await conciergeCtx.newPage();
+
+  try {
+    // КП без подтверждения возможности: принимается, но будет отбраковано.
+    await loginAs(supplier, 'supplier@demo.qajet.kz');
+    await supplier.goto('/supplier');
+    await rowContaining(supplier, title, 'li')
+      .getByRole('link', { name: 'Берусь, цена и срок' })
+      .click();
+    await supplier.waitForURL(/\/supplier\/rfq\//);
+    await supplier.getByLabel('Цена за ед., ₸').first().fill('4500');
+    await supplier.getByLabel('Срок, дней').first().fill('10');
+    await supplier.getByLabel('Setup fee, ₸').first().fill('0');
+    await supplier.getByLabel('Мин. партия, шт.').first().fill('1');
+    await supplier.getByRole('button', { name: 'Отправить КП' }).click();
+    await supplier.getByRole('button', { name: 'Всё равно отправить без подтверждения' }).click();
+    await supplier.waitForURL('**/supplier');
+
+    await loginAs(concierge, 'concierge@demo.qajet.kz');
+    await advanceStage(concierge, orderUrl, '→ КП получены');
+
+    // На доске (левая колонка) строка этого заказа помечена, а не выглядит здоровой.
+    // Строка доски — это ссылка, поэтому ищем по роли, а не по вёрстке.
+    await concierge.goto('/concierge/exceptions');
+    const boardRow = concierge
+      .getByTestId('list')
+      .getByRole('link')
+      .filter({ hasText: title })
+      .first();
+    await expect(boardRow.getByText('Заблокирован')).toBeVisible();
+
+    // И тот же заказ попал в очередь действий справа, а не потерялся.
+    const queue = concierge.getByTestId('detail');
+    await expect(queue.getByText(title)).toBeVisible();
+    await expect(queue.getByText('Все КП отбракованы')).toBeVisible();
+  } finally {
+    await supplierCtx.close();
+    await conciergeCtx.close();
+  }
+});
+
+test('консьерж: строка доски показывает срок и «чей ход» (F6)', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const { title } = await createRfqSentOrder(browser, { name: 'concierge-board-row' });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await loginAs(page, 'concierge@demo.qajet.kz');
+    await page.goto('/concierge');
+    const row = page.getByTestId('list').getByRole('link').filter({ hasText: title }).first();
+    // Заказ ждёт КП от поставщиков — по строке это должно читаться без открытия.
+    await expect(row.getByText(/Поставщики/)).toBeVisible();
+    // И срок: фикстура ставит его в будущем, поэтому просрочки быть не должно.
+    await expect(row.getByText(/к \d|срок сегодня|срок не указан/)).toBeVisible();
+  } finally {
+    await context.close();
+  }
 });
