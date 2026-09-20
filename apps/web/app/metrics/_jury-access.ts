@@ -26,11 +26,18 @@ export function isValidJuryToken(token: string | undefined): boolean {
  * параметры запроса. Анонимная политика вида `to: anon, using: true` на
  * таблицах, которые читает `loadMetrics()`, открыла бы эти данные ЛЮБОМУ
  * держателю публичного anon-ключа, а не только тому, у кого есть валидный
- * подписанный токен. Авторизация здесь — `isValidJuryToken()` ДО вызова
- * этой функции, а не RLS; вызывать без предварительной проверки токена
- * нельзя.
+ * подписанный токен.
+ *
+ * Авторизация — здесь, а не у вызывающего: функция принимает токен и сама
+ * отказывает, если он не валиден. Раньше защитой было лишь то, что страница
+ * не забыла вызвать `isValidJuryToken()` перед ней; забытая проверка отдала бы
+ * клиент в обход RLS кому угодно. Теперь получить клиент без токена нельзя.
  */
-export function createJuryMetricsClient(): SupabaseClient {
+export function createJuryMetricsClient(token: string | undefined): SupabaseClient {
+  if (!isValidJuryToken(token)) {
+    // Ни токен, ни причина отказа в сообщение не попадают.
+    throw new Error('Ссылка для жюри недействительна или истекла.');
+  }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) {

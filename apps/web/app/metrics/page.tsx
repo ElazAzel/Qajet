@@ -25,7 +25,7 @@ export default async function MetricsPage({
   const { jury } = await searchParams;
   const isJuryAccess = isValidJuryToken(jury);
 
-  const supabase = isJuryAccess ? createJuryMetricsClient() : await requireAdminSession();
+  const supabase = isJuryAccess ? createJuryMetricsClient(jury) : await requireAdminSession();
   const metrics = await loadMetrics(supabase);
 
   const conversionPct =
