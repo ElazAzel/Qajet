@@ -179,13 +179,17 @@ export async function createQuotesReceivedOrder(
     const orderUrl = concierge.url();
     const orderId = orderUrl.split('/').filter(Boolean).pop() as string;
 
+    // Каждый шаг ждёт СЛЕДУЮЩЕЕ действие этого заказа, а не «исчезновения кнопки»:
+    // пока server action выполняется, кнопка тоже исчезает, и уход со страницы в этот
+    // момент обрывает действие (на холодном сервере CI RFQ так и не рассылался).
     await press(concierge, concierge.getByRole('button', { name: '→ Оценён' }));
-    await expect(concierge.getByRole('button', { name: '→ Оценён' })).toHaveCount(0);
+    const invoice = concierge.getByRole('button', { name: 'Выставить счёт на P80' });
+    await expect(invoice).toBeVisible();
 
     // Оценка создаёт только счёт на P80. Факт банковского перевода
     // подтверждается отдельным staff-действием; тест заполняет все поля
     // формы, чтобы не обходить completeness/RLS-путь.
-    await press(concierge, concierge.getByRole('button', { name: 'Выставить счёт на P80' }));
+    await press(concierge, invoice);
     await concierge
       .getByLabel('Фактически поступило, ₸')
       .locator('visible=true')
@@ -198,11 +202,11 @@ export async function createQuotesReceivedOrder(
       concierge,
       concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }),
     );
-    await expect(
-      concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }),
-    ).toHaveCount(0);
-    await press(concierge, concierge.getByRole('button', { name: '→ RFQ отправлен' }));
-    await expect(concierge.getByRole('button', { name: '→ RFQ отправлен' })).toHaveCount(0);
+    const sendRfq = concierge.getByRole('button', { name: '→ RFQ отправлен' });
+    await expect(sendRfq).toBeVisible();
+    await press(concierge, sendRfq);
+    // Рассылка завершена, когда у ЭТОГО заказа появилось следующее действие.
+    await expect(concierge.getByRole('button', { name: '→ КП получены' })).toBeVisible();
 
     await loginAs(supplier, 'supplier@demo.qajet.kz');
     await supplier.goto('/supplier');

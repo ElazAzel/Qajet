@@ -72,8 +72,11 @@ test('консьерж: заказ с отбракованными КП → за
     await note.fill('Подтвердите, что можете исполнить позицию');
     await expect(send).toBeEnabled();
     await send.click();
-    // Поле очищается только после успешного запроса.
-    await expect(note).toHaveValue('');
+    // Признак успеха — строка о том, что запрос отправлен, а не очистка поля: в 1 из 12
+    // локальных прогонов запрос принимался сервером, а текст в поле оставался.
+    await expect(
+      concierge.getByText('Запрос исправления уже отправлен').locator('visible=true'),
+    ).toBeVisible();
 
     // Поставщик видит запрос и исправляет КП.
     await supplier.goto(rfqUrl);
