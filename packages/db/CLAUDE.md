@@ -1,6 +1,6 @@
 # packages/db — database rules
 
-@AGENTS.md
+@../../AGENTS.md
 
 Schema, migrations, RLS policies and PostgreSQL-backed tests. Root `CLAUDE.md` and
 `agents.md` still apply; this file adds what is specific to the database.
