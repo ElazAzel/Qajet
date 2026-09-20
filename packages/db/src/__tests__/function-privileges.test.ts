@@ -76,6 +76,28 @@ describeIfConfigured('права на SECURITY DEFINER функции схемы
     expect(exposed).toEqual([]);
   });
 
+  it('НИ ОДНА триггерная функция схемы public недоступна anon и authenticated, включая SECURITY INVOKER', async () => {
+    // load() выше фильтрует по prosecdef, поэтому INVOKER-триггеры он не видел:
+    // 0042 обходил только SECURITY DEFINER, а 0043 выдаёт EXECUTE authenticated
+    // каждой новой функции по умолчанию. Здесь смотрим на все триггерные функции.
+    const sql = postgres(databaseUrl as string, { max: 1, prepare: false });
+    try {
+      const rows = await sql<{ name: string; anon: boolean; authenticated: boolean }[]>`
+        select p.proname as name,
+               has_function_privilege('anon', p.oid, 'EXECUTE') as anon,
+               has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated
+        from pg_proc p
+        where p.pronamespace = 'public'::regnamespace
+          and p.prorettype = 'trigger'::regtype and p.prokind = 'f'
+        order by p.proname`;
+      expect(rows.length).toBeGreaterThan(30);
+      const exposed = rows.filter((r) => r.anon || r.authenticated).map((r) => r.name);
+      expect(exposed).toEqual([]);
+    } finally {
+      await sql.end();
+    }
+  });
+
   it('новая функция не получает EXECUTE для anon автоматически', async () => {
     const rollback = new Error('probe rollback');
     const sql = postgres(databaseUrl as string, { max: 1, prepare: false });
