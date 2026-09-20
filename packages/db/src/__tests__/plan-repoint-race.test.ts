@@ -100,58 +100,59 @@ describeIfConfigured('смена варианта плана и одноврем
         where id = ${pointer} and request_id = ${request}`;
       expect(sameRequest?.n, 'указатель ведёт на план той же заявки').toBe(1);
 
-      // И главное: заказ с заменённым планом нельзя утвердить. Отказ должен
-      // быть внятным правилом, а не случайностью.
-      if (pointer === planB && planStatus === 'superseded') {
-        const attempt = await db`select 1`.then(async () => {
-          const c = await db.reserve();
-          try {
-            await c`begin`;
-            await c`set local role authenticated`;
-            await c`select set_config('request.jwt.claims', ${JSON.stringify({ sub: buyer, role: 'authenticated' })}, true)`;
-            await c`update orders set state = 'plan_approved' where id = ${order}`;
-            await c`commit`;
-            return 'разрешено';
-          } catch (error) {
-            await c`rollback`.catch(() => {});
-            return (error as Error).message;
-          } finally {
-            await c.release();
-          }
-        });
-        expect(attempt, 'утверждение заменённого плана должно быть запрещено').toMatch(
-          /Сначала утвердите актуальный план|Покупатель не может/,
-        );
+      // Исход утверждается, а не печатается: гонка воспроизводится
+      // детерминированно, и если она когда-нибудь перестанет воспроизводиться,
+      // тест обязан об этом сказать, а не молча продолжить.
+      expect(pointer, 'гонка воспроизводится: указатель остаётся на заменённом плане').toBe(planB);
+      expect(planStatus, 'план успели заменить').toBe('superseded');
 
-        // Главное: отказ — это не тупик. Покупатель должен мочь выбрать другой
-        // предложенный вариант той же заявки. Если бы не мог, вот ЭТО и было бы
-        // дефектом — а не сам факт, что план заменили после его выбора.
-        const escape = await (async () => {
-          const d = await db.reserve();
-          try {
-            await d`begin`;
-            await d`set local role authenticated`;
-            await d`select set_config('request.jwt.claims', ${JSON.stringify({ sub: buyer, role: 'authenticated' })}, true)`;
-            await d`update orders set approved_plan_id = ${planA} where id = ${order}`;
-            await d`commit`;
-            return 'выход есть';
-          } catch (error) {
-            await d`rollback`.catch(() => {});
-            return (error as Error).message;
-          } finally {
-            await d.release();
-          }
-        })();
-        expect(escape, 'покупатель должен мочь переключиться на годный вариант').toBe('выход есть');
-
-        const [after] = await db`select approved_plan_id from orders where id = ${order}`;
-        expect(after?.approved_plan_id).toBe(planA);
-      }
-
-      // Итог печатается, чтобы вывод теста сам был доказательством.
-      console.log(
-        `исход гонки: указатель=${pointer === planB ? 'planB' : 'planA'}, статус плана=${planStatus}`,
+      // Заказ с заменённым планом утвердить нельзя. Отказ — внятное правило,
+      // а не случайность.
+      const approveAttempt = await (async () => {
+        const c = await db.reserve();
+        try {
+          await c`begin`;
+          await c`set local role authenticated`;
+          await c`select set_config('request.jwt.claims', ${JSON.stringify({ sub: buyer, role: 'authenticated' })}, true)`;
+          await c`update orders set state = 'plan_approved' where id = ${order}`;
+          await c`commit`;
+          return 'разрешено';
+        } catch (error) {
+          await c`rollback`.catch(() => {});
+          return (error as Error).message;
+        } finally {
+          await c.release();
+        }
+      })();
+      expect(approveAttempt, 'утверждение заменённого плана должно быть запрещено').toMatch(
+        /Сначала утвердите актуальный план|Покупатель не может/,
       );
+
+      // Главное: отказ — это не тупик. Покупатель должен мочь выбрать другой
+      // предложенный вариант той же заявки. Если бы не мог, вот ЭТО и было бы
+      // дефектом — а не сам факт, что план заменили после его выбора.
+      const switchBack = await (async () => {
+        const d = await db.reserve();
+        try {
+          await d`begin`;
+          await d`set local role authenticated`;
+          await d`select set_config('request.jwt.claims', ${JSON.stringify({ sub: buyer, role: 'authenticated' })}, true)`;
+          await d`update orders set approved_plan_id = ${planA} where id = ${order}`;
+          await d`commit`;
+          return 'выход есть';
+        } catch (error) {
+          await d`rollback`.catch(() => {});
+          return (error as Error).message;
+        } finally {
+          await d.release();
+        }
+      })();
+      expect(switchBack, 'покупатель должен мочь переключиться на годный вариант').toBe(
+        'выход есть',
+      );
+
+      const [after] = await db`select approved_plan_id from orders where id = ${order}`;
+      expect(after?.approved_plan_id).toBe(planA);
     } finally {
       await db`delete from order_stage_events where order_id = ${order}`.catch(() => {});
       await db`delete from orders where id = ${order}`.catch(() => {});

@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
   // Переносимость: образ должен запускаться на собственных серверах
   // без единой рантайм-зависимости от платформы деплоя (ADR-0002).
   output: 'standalone',
+
+  // Каталог сборки можно увести в сторону. Нужно, когда прежний `.next` занят
+  // и его нельзя ни удалить, ни переименовать: на Windows антивирус и
+  // индексатор держат свежезаписанные файлы, и `next build` падает с
+  // `EBUSY ... unlink`, не дойдя до компиляции. Пустая переменная — обычный
+  // `.next`, поэтому CI и деплой ведут себя как раньше.
+  // Ту же переменную читают scripts/prepare-standalone.mjs и playwright.config.ts.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   poweredByHeader: false,
 

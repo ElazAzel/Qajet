@@ -59,3 +59,6 @@ gates.local.json
 
 # Резервные копии базы (tools/ops/backup-database.mjs): содержат персональные данные.
 backups/
+
+# Запасной каталог сборки (NEXT_DIST_DIR), когда обычный .next занят.
+.next-*/

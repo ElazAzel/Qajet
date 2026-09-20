@@ -210,9 +210,12 @@ test('консьерж: заказ с отбракованными КП виде
     await expect(boardRow.getByText('Заблокирован')).toBeVisible();
 
     // И тот же заказ попал в очередь действий справа, а не потерялся.
-    const queue = concierge.getByTestId('detail');
-    await expect(queue.getByText(title)).toBeVisible();
-    await expect(queue.getByText('Все КП отбракованы')).toBeVisible();
+    // Проверка привязана к СВОЕЙ строке: заблокированных заказов в очереди
+    // закономерно несколько — их создают и другие сценарии, а данные e2e не
+    // чистятся. Общая проверка по всей очереди ловила бы чужую строку.
+    const queueRow = concierge.getByTestId('detail').getByRole('link').filter({ hasText: title });
+    await expect(queueRow, 'заказ ровно один раз в очереди').toHaveCount(1);
+    await expect(queueRow.getByText('Все КП отбракованы')).toBeVisible();
   } finally {
     await supplierCtx.close();
     await conciergeCtx.close();
