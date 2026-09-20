@@ -129,7 +129,7 @@ export async function advanceStage(page: Page, orderUrl: string, label: string):
 
 /**
  * Доводит новый заказ живым UI-путём до `quotes_received` — общая для
- * order-lifecycle.spec.ts (продолжает до closed) и animation-budget.spec.ts
+ * order-lifecycle.spec.ts (продолжает до closed) и 00-animation-budget.spec.ts
  * (которому для экрана сравнения нужна только эта стадия). Каждый вызов
  * создаёт настоящую заявку в реальной БД под уникальным заголовком
  * (`E2E fixture <ts>`) — не удаляется автоматически, см. предупреждение
