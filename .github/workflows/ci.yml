@@ -1,8 +1,19 @@
 name: CI
 
+# Один прогон на одно изменение. Раньше стояли голые `push` и `pull_request`,
+# и каждый пуш в ветку с открытым PR запускал весь набор ДВАЖДЫ: у события push
+# ref — refs/heads/<ветка>, у pull_request — refs/pull/<n>/merge, группы
+# concurrency разные, и ни один из прогонов не отменял другой. Минуты GitHub
+# платные сверх бесплатных 2 000 в месяц, а каждая задача округляется вверх до
+# целой минуты, так что дубль стоил полного второго прогона.
+#
+# Теперь ветки проверяются через pull_request, а main — через push после слияния.
+# Ветка без PR проверяется вручную (workflow_dispatch) или локально: pnpm ci:local.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
