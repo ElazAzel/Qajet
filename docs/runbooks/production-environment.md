@@ -57,13 +57,15 @@ an existing deployment will not pick it up on its own.
 
 ## 2. `CRON_SECRET` — unblocks the job queue
 
-`.github/workflows/jobs.yml` runs every 15 minutes and exits at its first guard
-without this. It has failed on every run since the workflow was added; the most
-recent was run `35480533716` at 2026-09-20T01:06:43Z, lasting 7 seconds.
+**Changed with migration `0057`:** the scheduler no longer runs in GitHub
+Actions. It runs inside Supabase via `pg_cron` — see the section «Планировщик
+фоновых задач — теперь в базе» at the end of this file. The GitHub schedule
+burned roughly 2 880 billed minutes a month (96 runs a day, each rounded up to a
+full minute) against 2 000 free ones, which is what blocked CI.
 
 The job endpoints themselves are correct — `/api/jobs/outbox` and
-`/api/jobs/learning` both return 401 unauthenticated. The scheduler simply has no
-credential to present.
+`/api/jobs/learning` both return 401 unauthenticated. The scheduler simply needs
+the credential.
 
 **Generate a value** (do this yourself, in your own terminal):
 
@@ -76,10 +78,13 @@ match and the jobs will return 401 instead of running.
 
 - Vercel → project `qajet` → *Settings* → *Environment Variables*
   → name `CRON_SECRET`, environment **Production**, sensitive.
-- GitHub → repository `ElazAzel/Qajet` → *Settings* → *Secrets and variables*
-  → *Actions* → *New repository secret* → name `CRON_SECRET`.
+- Supabase → project `qajet` → *Project Settings* → *Vault* → secret named
+  **`qajet_cron_secret`**. Also add `qajet_app_url`. Details at the end of this file.
 
-On rotation, change both together.
+GitHub → *Secrets* → `CRON_SECRET` is now optional: it is used only when you run
+the «Scheduled jobs» workflow by hand.
+
+On rotation, change Vercel and Vault together.
 
 ---
 
@@ -225,3 +230,47 @@ git show d0a529a^:apps/web/public/startupbattle/QAJET-pitch.pdf > QAJET-pitch.pd
 
 Загрузить файл вместо вас я не могу: для production Supabase нужен сервисный
 ключ, а с секретами я не работаю.
+
+## Планировщик фоновых задач — теперь в базе
+
+С миграции `0057` очередь уведомлений (в том числе рассылку RFQ поставщикам)
+и очередь обучения разбирает **сама база** через `pg_cron`, каждые 15 минут.
+Расписание из GitHub Actions убрано.
+
+**Почему.** Запуск в GitHub каждые 15 минут оплачивался как полная минута на
+каждый из 96 запусков в сутки — около 2 880 минут в месяц при бесплатных
+2 000. Одно это расписание исчерпывало лимит, после чего GitHub блокировал и
+его, и проверки кода. Vercel Cron на бесплатном тарифе запускается не чаще раза
+в сутки. `pg_cron` работает внутри Supabase и не тарифицируется поминутно.
+
+### Что положить в Supabase Vault
+
+Supabase → проект `qajet` → *Project Settings* → *Vault* → *Add new secret*.
+Два секрета, имена — строго такие:
+
+| Имя | Значение |
+| --- | --- |
+| `qajet_cron_secret` | **то же значение**, что `CRON_SECRET` в Vercel |
+| `qajet_app_url` | `https://qajet-seven.vercel.app` (без слэша в конце — не страшно, но лишнее) |
+
+Если значения `qajet_cron_secret` и `CRON_SECRET` в Vercel разойдутся,
+задачи будут получать 401 и не выполнятся.
+
+Пока секретов нет, планировщик **ничего не делает** — это не ошибка. Функция
+`run_scheduled_jobs()` проверяет их наличие и тихо выходит, чтобы не засорять
+очередь запросами, заведомо обречёнными на 401.
+
+### Проверить, что работает
+
+```sql
+-- задание на месте
+select jobname, schedule, active from cron.job where jobname = 'qajet-drain-queues';
+-- последние срабатывания и их исход
+select status, return_message, start_time
+from cron.job_run_details order by start_time desc limit 5;
+-- ответы приложения на запросы
+select status_code, created from net._http_response order by created desc limit 5;
+```
+
+`CRON_SECRET` в секретах GitHub теперь нужен только для ручного запуска
+workflow «Scheduled jobs».
