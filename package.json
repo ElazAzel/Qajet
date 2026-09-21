@@ -7,6 +7,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "prepare": "node tools/dev/install-hooks.mjs",
     "dev": "pnpm --filter @qajet/web dev",
     "dev:bootstrap": "node tools/dev/bootstrap.mjs",
     "build": "pnpm --filter @qajet/web build",
