@@ -1,13 +1,13 @@
 import { AdminShell } from '@qajet/ui/shell';
 import {
   Building2,
-  Gauge,
   Landmark,
   LineChart,
   Mail,
   Scale,
   ShieldCheck,
   SlidersHorizontal,
+  Users,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { requireActor, shellUserFrom } from '../lib/current-user';
@@ -30,7 +30,12 @@ const NAV_ITEMS = [
     label: 'Как система учится',
     icon: <LineChart size={18} />,
   },
-  { key: 'metrics', href: '/metrics', label: 'Метрики', icon: <Gauge size={18} /> },
+  // «Метрики» убраны из меню: страница живёт вне оболочки админа и не имеет ни
+  // одной ссылки назад — путь в один конец (аудит F8). Открыть её по-прежнему
+  // можно прямым адресом /metrics. Место заняли «Учётные записи»: девятый пункт
+  // вытолкнул бы за экран третью подпись на 375px, что закреплено тестом
+  // доступности как известная граница.
+  { key: 'users', href: '/admin/users', label: 'Учётные записи', icon: <Users size={18} /> },
   { key: 'finance', href: '/admin/finance', label: 'Финансы', icon: <Landmark size={18} /> },
   { key: 'disputes', href: '/admin/disputes', label: 'Споры', icon: <Scale size={18} /> },
   {

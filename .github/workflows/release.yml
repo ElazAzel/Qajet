@@ -1,8 +1,11 @@
 name: Release gate
 
+# Только вручную — по той же причине, что и CI (см. ci.yml): автоматический
+# запуск на каждое слияние в main тратит платные минуты GitHub. Проверить
+# готовность выкладки можно и без GitHub:
+#
+#     pnpm release:check:strict -- --ready-url=https://qajet-seven.vercel.app
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       strict:

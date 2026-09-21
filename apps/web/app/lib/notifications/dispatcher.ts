@@ -21,6 +21,10 @@ export interface DispatchResult {
 
 /** One leased batch per invocation; retries reuse the provider idempotency key. */
 export async function dispatchOutbox(limit = 20): Promise<DispatchResult> {
+  // Адаптер создаётся ДО claim: claim_outbox_batch увеличивает attempts, и при
+  // ненастроенной почте каждый запуск сжигал бы попытки у всех строк очереди.
+  // Так строки остаются pending, а задача падает с 503 и это видно в workflow.
+  const adapter = createEmailAdapter();
   const supabase = createSupabaseAdminClient();
   const leaseId = randomUUID();
   const { data, error } = await supabase.rpc('claim_outbox_batch', {
@@ -30,7 +34,6 @@ export async function dispatchOutbox(limit = 20): Promise<DispatchResult> {
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as OutboxRow[];
-  const adapter = createEmailAdapter();
   const result: DispatchResult = { claimed: rows.length, sent: 0, failed: 0, errors: [] };
 
   for (const row of rows) {

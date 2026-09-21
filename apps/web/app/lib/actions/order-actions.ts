@@ -5,7 +5,6 @@ import { checkRequestCompleteness } from '@qajet/engine/completeness';
 import { allocateCommission } from '@qajet/engine/costing';
 import { estimate as engineEstimate } from '@qajet/engine/estimate';
 import {
-  DEFAULT_WEIGHTS,
   isExplorationSlot,
   type MatchWeights,
   passesHardFilters,
@@ -24,6 +23,7 @@ import { CATALOG_BY_KEY } from '../catalog';
 import { loadRequestComparison } from '../comparison';
 import { type OrderActor, orderActorFor, requireCurrentUser } from '../current-user';
 import { buildActDocument, buildPrepayInvoiceDocument } from '../documents';
+import { weightsForDispatch } from '../match-weights';
 import type { OrderState } from '../order-state';
 import { buildRfqNotification, type OutboxMessageInput } from '../outbox';
 import { matcherFeatures } from '../supplier-matcher';
@@ -1093,16 +1093,28 @@ async function prepareRfqsForOrder(
   // снапшот 'matcher', который order-actions.ts/recalibration.ts пишет
   // при закрытии заказа; без истории — DEFAULT_WEIGHTS, то же поведение,
   // что было до подключения контура обучения.
-  const { data: latestMatcherSnapshot } = await supabase
-    .from('model_snapshots')
-    .select('params')
-    .eq('model', 'matcher')
-    .order('trained_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const matchWeights: MatchWeights =
-    (latestMatcherSnapshot?.params as { weights?: MatchWeights } | null)?.weights ??
-    DEFAULT_WEIGHTS;
+  const [{ data: latestMatcherSnapshot }, { count: matcherSnapshotCount }] = await Promise.all([
+    supabase
+      .from('model_snapshots')
+      .select('params')
+      .eq('model', 'matcher')
+      .order('trained_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    // Снапшот пишется один раз на закрытый заказ, поэтому их число и есть
+    // число заказов, на которых училась модель.
+    supabase
+      .from('model_snapshots')
+      .select('id', { count: 'exact', head: true })
+      .eq('model', 'matcher'),
+  ]);
+  // Обученные веса применяются только после накопления заказов: один заказ даёт
+  // наблюдение на каждый разосланный RFQ, и почти все они — проигрыши, поэтому
+  // ранняя модель систематически смещается вниз. Подробнее в match-weights.ts.
+  const { weights: matchWeights, learned: usedLearnedWeights } = weightsForDispatch(
+    (latestMatcherSnapshot?.params as { weights?: MatchWeights } | null)?.weights,
+    matcherSnapshotCount ?? 0,
+  );
 
   const chosenIds = new Set<string>();
   const explorationIds = new Set<string>();
@@ -1191,6 +1203,9 @@ async function prepareRfqsForOrder(
           category: item.category,
           score,
           features,
+          // Видно, по каким весам считали: обученным или стартовым. Без этого
+          // по истории нельзя понять, почему поставщик был выбран именно так.
+          usedLearnedWeights,
         });
       }
     }

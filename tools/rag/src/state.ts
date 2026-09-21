@@ -147,7 +147,11 @@ async function generatePackages(): Promise<string> {
 interface PhaseCheck {
   phase: number;
   title: string;
-  /** Хотя бы один из путей должен существовать, чтобы фаза считалась начатой. */
+  /**
+   * Пути, по наличию которых видно, что код фазы написан. Считается доля
+   * найденных: все — `IMPLEMENTATION PRESENT`, часть — `PARTIAL`, ничего —
+   * `NOT PRESENT`. Ни один из уровней не означает, что фаза проверена.
+   */
   evidencePaths: string[];
 }
 
@@ -206,20 +210,48 @@ const PHASES: PhaseCheck[] = [
   },
 ];
 
+/**
+ * Уровень доказательства. Генератор видит только файловую систему, поэтому
+ * умеет различать лишь первые два значения: наличие кода — это НЕ работающая,
+ * и тем более не проверенная функция. `VERIFIED` и `EXTERNAL BLOCKER` ставит
+ * человек в `docs/release/readiness.json` по факту запущенных проверок.
+ */
+type EvidenceLevel = 'IMPLEMENTATION PRESENT' | 'PARTIAL' | 'NOT PRESENT';
+
+function evidenceLevel(found: number, total: number): EvidenceLevel {
+  if (found === 0) return 'NOT PRESENT';
+  return found === total ? 'IMPLEMENTATION PRESENT' : 'PARTIAL';
+}
+
 async function generateLedger(): Promise<string> {
   const lines: string[] = [
     GENERATED_HEADER.trim(),
     '',
     '# Реестр состояния QAJET',
     '',
-    'Чек-лист фаз из плана реализации. Пункт отмечен, если в репозитории',
-    'есть хотя бы один из подтверждающих путей — это факт кода, не мнение чата.',
+    'Инвентаризация кода, а НЕ отчёт о готовности. Здесь видно только то, что',
+    'можно установить по файловой системе: существуют ли подтверждающие пути.',
     '',
+    'Четыре уровня доказательства — разные вещи, и один не следует из другого:',
+    '',
+    '```',
+    'ФАЙЛ СУЩЕСТВУЕТ → IMPLEMENTATION PRESENT → VERIFIED → PRODUCTION OPERATIONAL',
+    '```',
+    '',
+    'Этот файл никогда не поднимается выше `IMPLEMENTATION PRESENT`. Наличие',
+    'роута или модуля не означает, что функция работает, покрыта тестами или',
+    'доступна в production. `VERIFIED` и `EXTERNAL BLOCKER` фиксируются только',
+    'в `docs/release/readiness.json` по факту реально выполненных проверок.',
+    '',
+    '| Фаза | Что это | Найдено путей | Уровень |',
+    '| --- | --- | --- | --- |',
   ];
 
   for (const phase of PHASES) {
-    const done = phase.evidencePaths.some((p) => existsSync(path.join(REPO_ROOT, p)));
-    lines.push(`- [${done ? 'x' : ' '}] **Фаза ${phase.phase}.** ${phase.title}`);
+    const total = phase.evidencePaths.length;
+    const found = phase.evidencePaths.filter((p) => existsSync(path.join(REPO_ROOT, p))).length;
+    const level = evidenceLevel(found, total);
+    lines.push(`| ${phase.phase} | ${phase.title} | ${found}/${total} | \`${level}\` |`);
   }
 
   lines.push('', '## Открытые решения без реализации', '');

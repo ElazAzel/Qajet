@@ -52,7 +52,7 @@ test.describe('форма новой заявки', () => {
     const title = e2eTitle('double-click');
     await page.locator('#request-title').fill(title);
     await page
-      .getByLabel('Вставьте текст заявки — мы разберём его на позиции')
+      .getByLabel('Что нужно закупить?')
       .fill('100 футболок с логотипом до 30 октября 2026');
     await page.getByRole('button', { name: 'Разобрать' }).click();
     await expect(page.getByText('Что мы поняли')).toBeVisible();

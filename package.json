@@ -7,6 +7,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "prepare": "node tools/dev/install-hooks.mjs",
     "dev": "pnpm --filter @qajet/web dev",
     "dev:bootstrap": "node tools/dev/bootstrap.mjs",
     "build": "pnpm --filter @qajet/web build",
@@ -22,6 +23,7 @@
     "db:reset": "pnpm --filter @qajet/db db:reset",
     "db:seed": "pnpm --filter @qajet/db db:seed",
     "release:check": "node tools/ci/check-release-readiness.mjs",
+    "ci:local": "node tools/ci/run-local.mjs",
     "rag:sync": "tsx tools/rag/src/cli.ts sync",
     "rag:search": "tsx tools/rag/src/cli.ts search",
     "rag:check": "tsx tools/rag/src/cli.ts check",

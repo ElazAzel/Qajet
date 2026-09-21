@@ -129,7 +129,7 @@ export async function advanceStage(page: Page, orderUrl: string, label: string):
 
 /**
  * Доводит новый заказ живым UI-путём до `quotes_received` — общая для
- * order-lifecycle.spec.ts (продолжает до closed) и animation-budget.spec.ts
+ * order-lifecycle.spec.ts (продолжает до closed) и 00-animation-budget.spec.ts
  * (которому для экрана сравнения нужна только эта стадия). Каждый вызов
  * создаёт настоящую заявку в реальной БД под уникальным заголовком
  * (`E2E fixture <ts>`) — не удаляется автоматически, см. предупреждение
@@ -179,13 +179,17 @@ export async function createQuotesReceivedOrder(
     const orderUrl = concierge.url();
     const orderId = orderUrl.split('/').filter(Boolean).pop() as string;
 
+    // Каждый шаг ждёт СЛЕДУЮЩЕЕ действие этого заказа, а не «исчезновения кнопки»:
+    // пока server action выполняется, кнопка тоже исчезает, и уход со страницы в этот
+    // момент обрывает действие (на холодном сервере CI RFQ так и не рассылался).
     await press(concierge, concierge.getByRole('button', { name: '→ Оценён' }));
-    await expect(concierge.getByRole('button', { name: '→ Оценён' })).toHaveCount(0);
+    const invoice = concierge.getByRole('button', { name: 'Выставить счёт на P80' });
+    await expect(invoice).toBeVisible();
 
     // Оценка создаёт только счёт на P80. Факт банковского перевода
     // подтверждается отдельным staff-действием; тест заполняет все поля
     // формы, чтобы не обходить completeness/RLS-путь.
-    await press(concierge, concierge.getByRole('button', { name: 'Выставить счёт на P80' }));
+    await press(concierge, invoice);
     await concierge
       .getByLabel('Фактически поступило, ₸')
       .locator('visible=true')
@@ -198,11 +202,11 @@ export async function createQuotesReceivedOrder(
       concierge,
       concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }),
     );
-    await expect(
-      concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }),
-    ).toHaveCount(0);
-    await press(concierge, concierge.getByRole('button', { name: '→ RFQ отправлен' }));
-    await expect(concierge.getByRole('button', { name: '→ RFQ отправлен' })).toHaveCount(0);
+    const sendRfq = concierge.getByRole('button', { name: '→ RFQ отправлен' });
+    await expect(sendRfq).toBeVisible();
+    await press(concierge, sendRfq);
+    // Рассылка завершена, когда у ЭТОГО заказа появилось следующее действие.
+    await expect(concierge.getByRole('button', { name: '→ КП получены' })).toBeVisible();
 
     await loginAs(supplier, 'supplier@demo.qajet.kz');
     await supplier.goto('/supplier');
@@ -241,5 +245,70 @@ export async function createQuotesReceivedOrder(
     await buyerCtx.close();
     await conciergeCtx.close();
     await supplierCtx.close();
+  }
+}
+
+/**
+ * Доводит новую закупку до рассылки RFQ и останавливается: ответ поставщика —
+ * дело вызывающего теста. Каждый шаг ждёт СВОЕГО следующего действия на той же
+ * странице, а не «исчезновения кнопки»: пока server action выполняется, кнопка
+ * тоже исчезает, и уход со страницы в этот момент обрывает действие (заказ
+ * остаётся `prepaid` без RFQ).
+ */
+export async function createRfqSentOrder(
+  browser: Browser,
+  options: { name?: string } = {},
+): Promise<{ orderUrl: string; orderId: string; requestId: string; title: string }> {
+  const title = e2eTitle(options.name ?? 'rfq-sent');
+  await setSetting(browser, 'Поставщиков в рассылке RFQ', '20');
+
+  const buyerCtx = await browser.newContext();
+  const conciergeCtx = await browser.newContext();
+  const buyer = await buyerCtx.newPage();
+  const concierge = await conciergeCtx.newPage();
+  try {
+    await loginAs(buyer, 'buyer@demo.qajet.kz');
+    await buyer.goto('/buyer/requests/new');
+    await buyer.locator('#request-title').fill(title);
+    await buyer.getByRole('button', { name: 'Добавить позицию из каталога' }).click();
+    const deadline = new Date();
+    deadline.setDate(deadline.getDate() + 30);
+    await buyer.locator('#request-date').fill(deadline.toISOString().slice(0, 10));
+    await buyer.getByRole('button', { name: 'Отправить заявку' }).click();
+    await buyer.waitForURL(/\/buyer\/requests\/[0-9a-f-]{36}$/);
+    const requestId = buyer.url().split('/').pop() as string;
+
+    await loginAs(concierge, 'concierge@demo.qajet.kz');
+    await concierge.goto('/concierge');
+    await rowContaining(concierge, title).getByRole('button', { name: 'Взять в работу' }).click();
+    await concierge.waitForURL(/\/concierge\/orders\//);
+    const orderUrl = concierge.url();
+    const orderId = orderUrl.split('/').filter(Boolean).pop() as string;
+
+    await press(concierge, concierge.getByRole('button', { name: '→ Оценён' }));
+    const invoice = concierge.getByRole('button', { name: 'Выставить счёт на P80' });
+    await expect(invoice).toBeVisible();
+    await press(concierge, invoice);
+    await concierge
+      .getByLabel('Фактически поступило, ₸')
+      .locator('visible=true')
+      .fill('2000000000');
+    await concierge
+      .getByLabel('Банковский reference')
+      .locator('visible=true')
+      .fill(`E2E-PRE-${Date.now()}`);
+    await press(
+      concierge,
+      concierge.getByRole('button', { name: 'Подтвердить перевод и продолжить' }),
+    );
+    const sendRfq = concierge.getByRole('button', { name: '→ RFQ отправлен' });
+    await expect(sendRfq).toBeVisible();
+    await press(concierge, sendRfq);
+    // Следующее действие ЭТОГО заказа: текст «RFQ отправлен» есть и в чужих строках доски.
+    await expect(concierge.getByRole('button', { name: '→ КП получены' })).toBeVisible();
+    return { orderUrl, orderId, requestId, title };
+  } finally {
+    await buyerCtx.close();
+    await conciergeCtx.close();
   }
 }

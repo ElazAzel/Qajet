@@ -66,10 +66,12 @@ export function SupplierRatingForm({
   orderId,
   supplierCompanyId,
   index,
+  itemNames,
 }: {
   orderId: string;
   supplierCompanyId: string;
   index: number;
+  itemNames: string[];
 }) {
   const [score, setScore] = useState('5');
   const [wasOnTime, setWasOnTime] = useState('true');
@@ -87,7 +89,19 @@ export function SupplierRatingForm({
 
   return (
     <div className="flex flex-col gap-3 border-rule border-t pt-3 first:border-t-0 first:pt-0">
-      <p className="text-sm font-semibold text-ink">Исполнитель {index + 1}</p>
+      {/* Человек должен понимать, за что ставит балл. Название компании
+          исполнителя не раскрывается, поэтому его называет состав поставки. */}
+      <div>
+        <p className="text-sm font-semibold text-ink">
+          {itemNames.length > 0 ? itemNames.join(', ') : `Исполнитель ${index + 1}`}
+        </p>
+        {itemNames.length > 0 && (
+          <p className="mt-0.5 text-micro text-muted">
+            Исполнитель {index + 1} · {itemNames.length}{' '}
+            {itemNames.length === 1 ? 'позиция' : 'позиций'} из вашей заявки
+          </p>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1 text-fine text-muted">
           Оценка

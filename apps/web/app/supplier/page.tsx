@@ -105,6 +105,36 @@ export default async function SupplierHome() {
         )}
       </Reveal>
 
+      {/* Блок появляется, только когда есть что показать. Внутри строк СОЗНАТЕЛЬНО
+          нет ссылок и кнопок: действия у поставщика тут пока нет (новую версию КП
+          открывает запрос исправления от QAJET), а ссылка сделала бы строку
+          неотличимой от карточки нового RFQ для проверок сценариев. */}
+      {home.awaitingConfirmation.length > 0 && (
+        <Reveal delay={0.15} className="rounded-card border border-rule bg-surface p-5">
+          <h3 className="mb-1 text-base font-bold">
+            Ждут вашего подтверждения · {home.awaitingConfirmation.length}
+          </h3>
+          <p className="mb-4 text-fine text-muted">
+            КП отправлено, но по части позиций не отмечено «могу исполнить» — они не участвуют в
+            сравнении.
+          </p>
+          <ul className="flex flex-col gap-3.5">
+            {home.awaitingConfirmation.map((row) => (
+              <li key={row.rfqId} className="flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-fine font-semibold">{row.requestTitle}</p>
+                  <p className="text-micro text-muted">
+                    {row.unconfirmedCount} {row.unconfirmedCount === 1 ? 'позиция' : 'позиций'} без
+                    отметки «могу исполнить»
+                  </p>
+                </div>
+                <Stamp tone="signal">Ждёт подтверждения</Stamp>
+              </li>
+            ))}
+          </ul>
+        </Reveal>
+      )}
+
       <Reveal id="orders" delay={0.18} className="rounded-card border border-rule bg-surface p-5">
         <h3 className="mb-4 text-base font-bold">Заказы в производстве</h3>
         {home.activeOrders.length === 0 ? (

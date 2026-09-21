@@ -25,13 +25,14 @@
     "@supabase/supabase-js": "2.115.0",
     "lucide-react": "1.41.0",
     "next": "catalog:",
-    "recharts": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "recharts": "catalog:",
     "server-only": "0.0.1",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "1.63.0",
     "@serwist/next": "9.5.12",
     "@tailwindcss/postcss": "catalog:",

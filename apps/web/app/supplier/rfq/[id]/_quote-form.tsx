@@ -25,6 +25,8 @@ interface LineDraft {
 const inputClass =
   'w-full rounded-control border border-transparent bg-page px-3 py-2 text-sm text-ink placeholder:text-muted focus-visible:border-purple';
 
+const warningId = (itemId: string) => `capability-warning-${itemId}`;
+
 export function QuoteForm({
   rfqId,
   items,
@@ -36,6 +38,7 @@ export function QuoteForm({
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<Record<string, LineDraft>>({});
+  const [warned, setWarned] = useState(false);
 
   const { run, pending, error } = useAsyncAction(submitQuote, () => {
     router.push('/supplier');
@@ -56,23 +59,39 @@ export function QuoteForm({
     }));
   }
 
+  /**
+   * Одно определение «позиция заполнена» на предупреждение и на отправку: если
+   * развести их, форма предупредит об одном, а отправит другое.
+   */
+  function lineFor(item: RequestItemRow) {
+    const draft = drafts[item.id];
+    const unitPriceKzt = Number(draft?.unitPriceKzt);
+    const leadTimeDays = Number(draft?.leadTimeDays);
+    if (!draft || !unitPriceKzt || !leadTimeDays) return null;
+    return {
+      requestItemId: item.id,
+      unitPriceKzt,
+      leadTimeDays,
+      capabilityConfirmed: draft.capabilityConfirmed,
+      setupFeeKzt: draft.setupFeeKzt ? Number(draft.setupFeeKzt) : undefined,
+      minQty: draft.minQty ? Number(draft.minQty) : undefined,
+    };
+  }
+
+  const lines = items
+    .map(lineFor)
+    .filter((line): line is NonNullable<ReturnType<typeof lineFor>> => line !== null);
+  const unconfirmed = new Set(
+    lines.filter((line) => !line.capabilityConfirmed).map((line) => line.requestItemId),
+  );
+
   function handleSubmit() {
-    const lines = items
-      .map((item) => {
-        const draft = drafts[item.id];
-        const unitPriceKzt = Number(draft?.unitPriceKzt);
-        const leadTimeDays = Number(draft?.leadTimeDays);
-        if (!draft || !unitPriceKzt || !leadTimeDays) return null;
-        return {
-          requestItemId: item.id,
-          unitPriceKzt,
-          leadTimeDays,
-          capabilityConfirmed: draft.capabilityConfirmed,
-          setupFeeKzt: draft.setupFeeKzt ? Number(draft.setupFeeKzt) : undefined,
-          minQty: draft.minQty ? Number(draft.minQty) : undefined,
-        };
-      })
-      .filter((line): line is NonNullable<typeof line> => line !== null);
+    // Отправка без подтверждения разрешена (политику не меняем), но не молча:
+    // первое нажатие показывает последствие, второе — отправляет. Аудит F1.
+    if (unconfirmed.size > 0 && !warned) {
+      setWarned(true);
+      return;
+    }
     run(rfqId, lines);
   }
 
@@ -144,9 +163,20 @@ export function QuoteForm({
                 checked={draft.capabilityConfirmed}
                 onChange={(event) => patch(item.id, 'capabilityConfirmed', event.target.checked)}
                 className="mt-0.5 accent-purple"
+                aria-describedby={
+                  warned && unconfirmed.has(item.id) ? warningId(item.id) : undefined
+                }
               />
               <span>Подтверждаю, что могу исполнить эту позицию и указанные условия.</span>
             </label>
+            {/* Предупреждение выводится ВЫЧИСЛЕНИЕМ, а не хранится: отметка убирает
+                его сразу, без отдельной отправки формы (аудит F2). */}
+            {warned && unconfirmed.has(item.id) && (
+              <p id={warningId(item.id)} role="alert" className="mt-1.5 text-fine text-signal">
+                Без этой отметки позиция не попадёт в сравнение — QAJET не сможет собрать по ней
+                план и запросит у вас исправление.
+              </p>
+            )}
           </div>
         );
       })}
@@ -154,10 +184,26 @@ export function QuoteForm({
       <div className="flex items-center justify-between">
         <p className="text-fine text-muted">
           Оставьте пустыми позиции, по которым не даёте цену. Незаполненные условия сохранятся как
-          требующие уточнения.
+          требующие уточнения. Отправляя КП, вы принимаете{' '}
+          <a
+            href="/terms/suppliers"
+            target="_blank"
+            rel="noreferrer"
+            className="text-purple hover:underline"
+          >
+            условия для поставщиков
+          </a>
+          .
         </p>
         <Button variant="primary" loading={pending} onClick={handleSubmit}>
-          {pending ? 'Отправляю…' : revision ? 'Отправить исправленное КП' : 'Отправить КП'}
+          {/* Второй кнопки не появляется: меняется подпись единственной главной. */}
+          {pending
+            ? 'Отправляю…'
+            : warned && unconfirmed.size > 0
+              ? 'Всё равно отправить без подтверждения'
+              : revision
+                ? 'Отправить исправленное КП'
+                : 'Отправить КП'}
         </Button>
       </div>
       {error && <p className="text-fine text-signal">{error}</p>}

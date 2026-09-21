@@ -70,6 +70,12 @@ export interface RejectionSummary {
 export interface BuyerRatingTarget {
   supplierCompanyId: string;
   rated: boolean;
+  /**
+   * Позиции заявки, которые вёз этот исполнитель. Покупатель оценивает состав,
+   * а не «Исполнителя 1»: личности поставщиков закрыты, но понимать, за что
+   * ставишь балл, он обязан.
+   */
+  itemNames: string[];
 }
 
 export interface BuyerOrderDetail {
@@ -109,10 +115,15 @@ export async function loadBuyerOrder(
       ? await supabase.rpc('get_buyer_rating_targets', { p_order_id: orderId })
       : { data: [] };
   const ratingTargets: BuyerRatingTarget[] = (
-    (ratingTargetRows ?? []) as Array<{ supplier_company_id: string; rated: boolean }>
+    (ratingTargetRows ?? []) as Array<{
+      supplier_company_id: string;
+      rated: boolean;
+      item_names: string[] | null;
+    }>
   ).map((row) => ({
     supplierCompanyId: row.supplier_company_id,
     rated: row.rated,
+    itemNames: row.item_names ?? [],
   }));
 
   const { data: planRows } = await supabase

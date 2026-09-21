@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const supabase = await createSupabaseServerClient();
   const { data: attachment } = await supabase
     .from('attachments')
-    .select('object_key')
+    .select('object_key, file_name')
     .eq('id', id)
     .maybeSingle();
   if (!attachment) return NextResponse.json({ error: 'Файл не найден' }, { status: 404 });
@@ -24,7 +24,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
   const storage = new SupabaseStorageAdapter(storageClient, STORAGE_BUCKET);
   try {
-    const url = await storage.getDownloadUrl(attachment.object_key, 60);
+    const url = await storage.getDownloadUrl(attachment.object_key, 60, attachment.file_name);
     return NextResponse.redirect(url, { status: 302 });
   } catch {
     return NextResponse.json({ error: 'Файл временно недоступен' }, { status: 503 });

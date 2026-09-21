@@ -13,12 +13,30 @@ const nextConfig: NextConfig = {
   // Переносимость: образ должен запускаться на собственных серверах
   // без единой рантайм-зависимости от платформы деплоя (ADR-0002).
   output: 'standalone',
+
+  // Каталог сборки можно увести в сторону. Нужно, когда прежний `.next` занят
+  // и его нельзя ни удалить, ни переименовать: на Windows антивирус и
+  // индексатор держат свежезаписанные файлы, и `next build` падает с
+  // `EBUSY ... unlink`, не дойдя до компиляции. Пустая переменная — обычный
+  // `.next`, поэтому CI и деплой ведут себя как раньше.
+  // Ту же переменную читают scripts/prepare-standalone.mjs и playwright.config.ts.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   poweredByHeader: false,
 
   transpilePackages: ['@qajet/ui', '@qajet/engine', '@qajet/pd'],
 
   typedRoutes: true,
+
+  // Загрузка вложения — Server Action, а по умолчанию он принимает тело до 1 МБ.
+  // Приложение разрешает файлы до 10 МБ (MAX_ATTACHMENT_BYTES), поэтому обычный
+  // PDF или фото свыше 1 МБ получал 413 и пропадал молча: ни вложения, ни ошибки.
+  // Лимит чуть выше файла, чтобы запас на поля формы не резал файл ровно в 10 МБ.
+  // Размер сверх лимита ловит форма в браузере (_attachment-form.tsx); сервер держит
+  // тот же лимит для клиентов без JavaScript.
+  // Ограничение глобальное: у Next нет лимита на отдельное действие, поэтому он
+  // расширен для ВСЕХ Server Actions, а загрузка до 10 МБ буферизуется в памяти.
+  experimental: { serverActions: { bodySizeLimit: '11mb' } },
 
   // View Transitions в Next 16 работают без флага конфигурации — через
   // компонент `<ViewTransition>` из 'react' (App Router на React canary

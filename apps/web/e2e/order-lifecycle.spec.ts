@@ -16,7 +16,7 @@ import {
  * что и живой пользователь — ни одного прямого вызова server action или
  * SQL в обход UI. Доводит заявку до `quotes_received` через
  * `createQuotesReceivedOrder()` (e2e/fixtures.ts, общий фрагмент с
- * animation-budget.spec.ts), дальше — утверждение и закрытие сами.
+ * 00-animation-budget.spec.ts), дальше — утверждение и закрытие сами.
  *
  * Требует живую Supabase-сессию с демо-аккаунтами (см.
  * packages/db/src/seed/accounts.ts, пароль `qajet2026` для всех) —

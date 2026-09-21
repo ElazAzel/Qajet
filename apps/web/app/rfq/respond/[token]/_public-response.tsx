@@ -66,6 +66,7 @@ function QuickResponse({ token }: { token: string }) {
 function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem[] }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [warned, setWarned] = useState(false);
   const { run, pending, error } = useAsyncAction(submitQuoteByLink, () => router.refresh());
 
   function patch(itemId: string, field: string, value: string) {
@@ -75,23 +76,33 @@ function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem
     }));
   }
 
+  const lines: QuoteLineInput[] = items.flatMap((item) => {
+    const draft = drafts[item.id];
+    const unitPriceKzt = Number(draft?.unitPriceKzt);
+    const leadTimeDays = Number(draft?.leadTimeDays);
+    if (!draft || !unitPriceKzt || !leadTimeDays) return [];
+    return [
+      {
+        requestItemId: item.id,
+        unitPriceKzt,
+        leadTimeDays,
+        capabilityConfirmed: draft.capabilityConfirmed === 'true',
+        setupFeeKzt: draft.setupFeeKzt ? Number(draft.setupFeeKzt) : undefined,
+        minQty: draft.minQty ? Number(draft.minQty) : undefined,
+      },
+    ];
+  });
+  const unconfirmed = new Set(
+    lines.filter((line) => !line.capabilityConfirmed).map((line) => line.requestItemId),
+  );
+
   function submit() {
-    const lines: QuoteLineInput[] = items.flatMap((item) => {
-      const draft = drafts[item.id];
-      const unitPriceKzt = Number(draft?.unitPriceKzt);
-      const leadTimeDays = Number(draft?.leadTimeDays);
-      if (!draft || !unitPriceKzt || !leadTimeDays) return [];
-      return [
-        {
-          requestItemId: item.id,
-          unitPriceKzt,
-          leadTimeDays,
-          capabilityConfirmed: draft.capabilityConfirmed === 'true',
-          setupFeeKzt: draft.setupFeeKzt ? Number(draft.setupFeeKzt) : undefined,
-          minQty: draft.minQty ? Number(draft.minQty) : undefined,
-        },
-      ];
-    });
+    // Тот же барьер, что и в форме для вошедшего поставщика: иначе молчаливая
+    // отправка просто переехала бы на путь по подписанной ссылке (аудит F1).
+    if (unconfirmed.size > 0 && !warned) {
+      setWarned(true);
+      return;
+    }
     run(token, lines);
   }
 
@@ -141,15 +152,37 @@ function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem
               />
               <span>Подтверждаю возможность исполнить позицию и указанные условия.</span>
             </label>
+            {warned && unconfirmed.has(item.id) && (
+              <p role="alert" className="mt-1.5 text-fine text-signal">
+                Без этой отметки позиция не попадёт в сравнение — QAJET не сможет собрать по ней
+                план и запросит у вас исправление.
+              </p>
+            )}
           </div>
         );
       })}
       <div className="flex items-center justify-between gap-3">
         <p className="text-fine text-muted">
           Пустые строки не попадут в КП. Незаполненные условия сохранятся как требующие уточнения.
+          {/* По этой ссылке отвечают без учётной записи и часто ДО какого-либо договора с QAJET:
+              правила должны быть видны в момент ответа, а не спрятаны в подвале сайта. */}{' '}
+          Отправляя КП, вы принимаете{' '}
+          <a
+            href="/terms/suppliers"
+            target="_blank"
+            rel="noreferrer"
+            className="text-purple hover:underline"
+          >
+            условия для поставщиков
+          </a>
+          .
         </p>
         <Button loading={pending} onClick={submit}>
-          {pending ? 'Отправляю…' : 'Отправить КП'}
+          {pending
+            ? 'Отправляю…'
+            : warned && unconfirmed.size > 0
+              ? 'Всё равно отправить без подтверждения'
+              : 'Отправить КП'}
         </Button>
       </div>
       {error && <p className="text-fine text-signal">{error}</p>}

@@ -74,9 +74,7 @@ export const threads = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.kind} = 'supplier' and ${t.supplierCompanyId} = ${currentCompanyIdSubquery} and (
-        ${currentRoleSubquery} = 'owner' or public.supplier_can_access_order(${t.orderId})
-      )`,
+      using: sql`${t.kind} = 'supplier' and ${t.supplierCompanyId} = ${currentCompanyIdSubquery} and public.supplier_can_access_order(${t.orderId})`,
     }),
     pgPolicy('threads_insert_buyer_own', {
       as: 'permissive',

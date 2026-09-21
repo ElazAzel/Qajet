@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 // Public pitch page: deliberately needs no Supabase session or seeded database.
-test('pitch page is public and the presentation is available', async ({ page, request }) => {
+test('pitch page is public and the presentation is available', async ({ page }) => {
   const response = await page.goto('/startupbattle');
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(
@@ -12,10 +12,17 @@ test('pitch page is public and the presentation is available', async ({ page, re
     'content',
     /внешний отдел закупок/,
   );
-  const pdf = await request.get('/startupbattle/QAJET-pitch.pdf');
-  expect(pdf.status()).toBe(200);
-  expect(pdf.headers()['content-type']).toContain('application/pdf');
-  expect((await pdf.body()).subarray(0, 5).toString()).toBe('%PDF-');
+  // Презентация вынесена из репозитория и задаётся NEXT_PUBLIC_PITCH_PDF_URL.
+  // Проверяется не наличие файла, а отсутствие битой ссылки: либо кнопка ведёт
+  // на заданный адрес, либо кнопки нет и человеку сказано, что делать.
+  const pitchUrl = process.env.NEXT_PUBLIC_PITCH_PDF_URL;
+  const download = page.getByRole('link', { name: /Скачать презентацию/ });
+  if (pitchUrl) {
+    await expect(download).toHaveAttribute('href', pitchUrl);
+  } else {
+    await expect(download).toHaveCount(0);
+    await expect(page.getByText(/Презентацию пришлём по запросу/)).toBeVisible();
+  }
   await expect(page.getByRole('link', { name: /Написать @qajet.io/ })).toHaveAttribute(
     'href',
     'https://www.instagram.com/qajet.io/',

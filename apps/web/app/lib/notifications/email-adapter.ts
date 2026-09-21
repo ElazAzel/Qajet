@@ -51,7 +51,18 @@ class ResendAdapter implements EmailAdapter {
   }
 }
 
+/**
+ * В production без RESEND_API_KEY отправки не будет, и об этом надо сказать
+ * сразу. Раньше здесь возвращался LocalSinkAdapter, который отвечает успехом:
+ * очередь помечала уведомление отправленным, письмо никуда не уходило, а
+ * /admin/outbox выглядел чистым. Поставщик, не получивший RFQ, для всех
+ * выглядел уведомлённым. Локальный приёмник остаётся только вне production.
+ */
 export function createEmailAdapter(): EmailAdapter {
   const apiKey = process.env.RESEND_API_KEY?.trim();
-  return apiKey ? new ResendAdapter(apiKey) : new LocalSinkAdapter();
+  if (apiKey) return new ResendAdapter(apiKey);
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Почта не настроена: в production не задан RESEND_API_KEY');
+  }
+  return new LocalSinkAdapter();
 }

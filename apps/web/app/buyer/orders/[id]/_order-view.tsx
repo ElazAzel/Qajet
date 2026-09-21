@@ -293,6 +293,7 @@ export async function BuyerOrderView({ orderId }: { orderId: string }) {
                     orderId={order.id}
                     supplierCompanyId={target.supplierCompanyId}
                     index={index}
+                    itemNames={target.itemNames}
                   />
                 ))}
             </div>

@@ -1,13 +1,8 @@
 import { Reveal, Stamp } from '@qajet/ui/motion';
 import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { loadConciergeExceptions } from '../../lib/concierge-exceptions';
+import { EXCEPTION_LABEL, loadConciergeExceptions } from '../../lib/concierge-exceptions';
 import { requireActor } from '../../lib/current-user';
-
-const STATE_LABEL: Record<'on_hold' | 'disputed', string> = {
-  on_hold: 'На паузе',
-  disputed: 'Спор',
-};
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -50,11 +45,8 @@ export default async function ConciergeExceptionsPage() {
                     </p>
                     {row.note && <p className="mt-1 truncate text-micro text-muted">{row.note}</p>}
                   </div>
-                  <Stamp
-                    tone={row.state === 'disputed' ? 'signal' : 'neutral'}
-                    className="shrink-0"
-                  >
-                    {STATE_LABEL[row.state]}
+                  <Stamp tone={row.kind === 'on_hold' ? 'neutral' : 'signal'} className="shrink-0">
+                    {EXCEPTION_LABEL[row.kind]}
                   </Stamp>
                 </Link>
               </li>
