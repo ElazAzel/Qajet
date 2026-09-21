@@ -184,7 +184,16 @@ export function QuoteForm({
       <div className="flex items-center justify-between">
         <p className="text-fine text-muted">
           Оставьте пустыми позиции, по которым не даёте цену. Незаполненные условия сохранятся как
-          требующие уточнения.
+          требующие уточнения. Отправляя КП, вы принимаете{' '}
+          <a
+            href="/terms/suppliers"
+            target="_blank"
+            rel="noreferrer"
+            className="text-purple hover:underline"
+          >
+            условия для поставщиков
+          </a>
+          .
         </p>
         <Button variant="primary" loading={pending} onClick={handleSubmit}>
           {/* Второй кнопки не появляется: меняется подпись единственной главной. */}

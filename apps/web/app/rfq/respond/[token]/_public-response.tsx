@@ -164,6 +164,18 @@ function PublicQuoteForm({ token, items }: { token: string; items: PublicRfqItem
       <div className="flex items-center justify-between gap-3">
         <p className="text-fine text-muted">
           Пустые строки не попадут в КП. Незаполненные условия сохранятся как требующие уточнения.
+          {/* По этой ссылке отвечают без учётной записи и часто ДО какого-либо договора с QAJET:
+              правила должны быть видны в момент ответа, а не спрятаны в подвале сайта. */}{' '}
+          Отправляя КП, вы принимаете{' '}
+          <a
+            href="/terms/suppliers"
+            target="_blank"
+            rel="noreferrer"
+            className="text-purple hover:underline"
+          >
+            условия для поставщиков
+          </a>
+          .
         </p>
         <Button loading={pending} onClick={submit}>
           {pending

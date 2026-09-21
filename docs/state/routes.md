@@ -2,7 +2,7 @@
 
 # Инвентарь маршрутов apps/web
 
-Найдено файлов маршрутизации: 59. Сегментов: 50.
+Найдено файлов маршрутизации: 61. Сегментов: 52.
 
 | Маршрут | Файлы |
 | --- | --- |
@@ -46,6 +46,7 @@
 | `/icons/[size]` | `route` |
 | `/login` | `page` |
 | `/metrics` | `page` |
+| `/privacy` | `page` |
 | `/rfq/respond/[token]` | `page` |
 | `/startupbattle` | `page` |
 | `/supplier` | `layout`, `page` |
@@ -56,3 +57,4 @@
 | `/supplier/profile` | `page` |
 | `/supplier/rfq/[id]` | `page` |
 | `/supplier/team` | `page` |
+| `/terms/suppliers` | `page` |
