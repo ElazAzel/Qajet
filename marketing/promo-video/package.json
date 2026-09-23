@@ -1,0 +1,28 @@
+{
+  "name": "qajet-promo-video",
+  "version": "0.1.0",
+  "description": "QAJET: промо-ролик 15 сек (Remotion)",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "remotion studio",
+    "typecheck": "tsc",
+    "still": "remotion still QajetDemo out/still.png --frame=200",
+    "render": "remotion render QajetDemo out/qajet-demo.mp4 --codec=h264 --crf=18",
+    "build": "remotion bundle"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.527",
+    "@remotion/google-fonts": "4.0.527",
+    "@remotion/transitions": "4.0.527",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.527"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/web": "0.0.166",
+    "typescript": "5.9.3"
+  }
+}
