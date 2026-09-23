@@ -1,76 +1,71 @@
 import type React from 'react';
-import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
-import { AnimatedText } from '../components/AnimatedText';
-import { Logo } from '../components/Logo';
-import { INTRO } from '../content';
-import { CLAMP, springAt } from '../lib/motion';
+import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
+import { LANDING } from '../content';
+import { Words } from '../fx/Words';
+import { CLAMP, EASE_IN_OUT, progress } from '../lib/motion';
 import { theme } from '../theme';
 
-// Ключевые кадры интро (локальные кадры сцены, 30 fps).
+// Ключевые кадры интро (локальные кадры сцены).
 export const INTRO_KEYFRAMES = {
-  // Логотип начинает появляться.
-  logoIn: 4,
-  // Первое слово строки «Скажите, что нужно купить.»
-  headlineIn: 16,
-  // Первое слово акцентной строки «Остальное сделаем мы.»
-  headlineAccentIn: 32,
-  // Задержка между словами.
+  eyebrowIn: 4,
+  headlineIn: 12,
+  accentIn: 30,
   wordStagger: 4,
+  // Заголовок «пролетает» в камеру перед входом окна.
+  exitStart: 74,
 } as const;
 
-// Зум камеры внутри сцены: из ТЗ, 1 → 1.04.
-const CAMERA_ZOOM_TO = 1.04;
+type Props = { durationInFrames: number };
 
-type Props = {
-  // Длительность сцены из TIMING в MainSequence: на неё растягивается зум камеры.
-  durationInFrames: number;
-};
-
+/** Интро на ink: главный заголовок лендинга, вторая строка — лаймом (§12: лайм только на тёмном). */
 export const Intro: React.FC<Props> = ({ durationInFrames }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const logo = springAt(frame, fps, INTRO_KEYFRAMES.logoIn);
+  const K = INTRO_KEYFRAMES;
+  const exit = progress(frame, K.exitStart, durationInFrames - K.exitStart, EASE_IN_OUT);
 
   return (
-    // Фон общий (MainSequence), сцена прозрачная.
     <AbsoluteFill
       style={{
         alignItems: 'center',
         justifyContent: 'center',
-        scale: String(interpolate(frame, [0, durationInFrames], [1, CAMERA_ZOOM_TO], CLAMP)),
+        fontFamily: theme.font.family,
+        scale: String(interpolate(frame, [0, K.exitStart], [1, 1.04], CLAMP) * (1 + exit * 0.18)),
+        opacity: 1 - exit,
+        filter: exit > 0 ? `blur(${exit * 8}px)` : undefined,
       }}
     >
       <div
         style={{
-          opacity: interpolate(logo, [0, 1], [0, 1], CLAMP),
-          scale: String(interpolate(logo, [0, 1], [0.8, 1], CLAMP)),
-          marginBottom: 56,
+          fontSize: 24,
+          fontWeight: 700,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          color: theme.color.lime,
+          marginBottom: 36,
+          opacity: progress(frame, K.eyebrowIn, 10),
+          translate: `0 ${(1 - progress(frame, K.eyebrowIn, 10)) * 10}px`,
         }}
       >
-        <Logo size={128} />
+        {LANDING.eyebrow}
       </div>
       <div
         style={{
-          fontFamily: theme.font.family,
-          fontSize: 96,
-          fontWeight: 600,
-          letterSpacing: '-0.035em',
-          lineHeight: 1.12,
+          fontSize: 108,
+          lineHeight: 1.08,
+          fontWeight: 800,
+          letterSpacing: '-0.02em',
           textAlign: 'center',
-          color: theme.color.text,
+          color: theme.color.white,
         }}
       >
-        <AnimatedText
-          text={INTRO.headline}
-          startFrame={INTRO_KEYFRAMES.headlineIn}
-          staggerFrames={INTRO_KEYFRAMES.wordStagger}
-        />
+        <Words text={LANDING.headline} frame={frame} start={K.headlineIn} stagger={K.wordStagger} />
         <br />
-        <AnimatedText
-          text={INTRO.headlineAccent}
-          startFrame={INTRO_KEYFRAMES.headlineAccentIn}
-          staggerFrames={INTRO_KEYFRAMES.wordStagger}
-          style={{ color: theme.color.accentBright }}
+        <Words
+          text={LANDING.headlineAccent}
+          frame={frame}
+          start={K.accentIn}
+          stagger={K.wordStagger}
+          style={{ color: theme.color.lime }}
         />
       </div>
     </AbsoluteFill>

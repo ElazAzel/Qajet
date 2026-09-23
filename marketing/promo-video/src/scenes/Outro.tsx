@@ -1,115 +1,143 @@
 import type React from 'react';
-import { AbsoluteFill, Freeze, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
-import { AnimatedText } from '../components/AnimatedText';
-import { Logo } from '../components/Logo';
-import { OUTRO } from '../content';
+import { AbsoluteFill, Freeze, interpolate, useCurrentFrame } from 'remotion';
+import { LANDING, SITE_HOST } from '../content';
+import { Words } from '../fx/Words';
 import { CLAMP, EASE_IN_OUT, springAt } from '../lib/motion';
 import { theme } from '../theme';
+import { Check } from '../ui/icons';
 
-// Ключевые кадры аутро (локальные кадры сцены, 30 fps).
-// Первые ~20 кадров аутро проявляется поверх демо (fade в MainSequence).
+// Ключевые кадры аутро (локальные кадры сцены).
+// Первые ~18 кадров аутро проявляется поверх пути покупателя (fade в MainSequence).
 export const OUTRO_KEYFRAMES = {
   logoIn: 6,
-  subtitleIn: 14,
-  wordStagger: 4,
-  ctaIn: 34,
-  urlIn: 46,
-  // Блик проходит по кнопке.
-  shineStart: 58,
-  shineEnd: 84,
+  subtitleIn: 12,
+  wordStagger: 3,
+  reasonsIn: 34,
+  reasonStagger: 6,
+  ctaIn: 54,
+  urlIn: 64,
+  shineStart: 74,
+  shineEnd: 100,
 } as const;
 
-// Последние кадры ролика — стоп-кадр без движения, чтобы видео чисто зацикливалось.
+// Последние кадры — стоп-кадр без движения, чтобы ролик чисто зацикливался.
 export const OUTRO_HOLD_FRAMES = 10;
 
-// Зум камеры внутри сцены: из ТЗ, 1 → 1.04.
-const CAMERA_ZOOM_TO = 1.04;
-
-type Props = {
-  // Длительность сцены из TIMING в MainSequence. Стоп-кадр = последние OUTRO_HOLD_FRAMES.
-  durationInFrames: number;
-};
+type Props = { durationInFrames: number };
 
 const OutroContent: React.FC<{ freezeFrom: number }> = ({ freezeFrom }) => {
-  // Внутри <Freeze> кадр после freezeFrom не растёт: вся сцена замирает.
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
   const K = OUTRO_KEYFRAMES;
-  const logo = springAt(frame, fps, K.logoIn);
-  const cta = springAt(frame, fps, K.ctaIn);
+  const logo = springAt(frame, K.logoIn);
+  const cta = springAt(frame, K.ctaIn, { damping: 13, stiffness: 180 });
 
   return (
-    // Фон общий (MainSequence), сцена прозрачная.
     <AbsoluteFill
       style={{
         alignItems: 'center',
         justifyContent: 'center',
         fontFamily: theme.font.family,
-        scale: String(interpolate(frame, [0, freezeFrom], [1, CAMERA_ZOOM_TO], CLAMP)),
+        color: theme.color.white,
+        scale: String(interpolate(frame, [0, freezeFrom], [1, 1.04], CLAMP)),
       }}
     >
       <div
         style={{
           position: 'absolute',
-          top: 170,
-          opacity: interpolate(logo, [0, 1], [0, 1], CLAMP),
+          top: 150,
+          fontSize: 64,
+          fontWeight: 800,
+          letterSpacing: '-0.02em',
+          opacity: logo,
           scale: String(interpolate(logo, [0, 1], [0.8, 1], CLAMP)),
         }}
       >
-        <Logo size={60} />
+        QAJET
       </div>
 
       <div
         style={{
-          fontSize: 80,
-          fontWeight: 600,
-          letterSpacing: '-0.035em',
-          color: theme.color.text,
+          fontSize: 84,
+          lineHeight: 1.1,
+          fontWeight: 800,
+          letterSpacing: '-0.02em',
           textAlign: 'center',
-          marginTop: 40,
+          marginTop: 20,
         }}
       >
-        <AnimatedText
-          text={OUTRO.subtitle}
-          startFrame={K.subtitleIn}
-          staggerFrames={K.wordStagger}
-        />
+        <Words text={LANDING.eyebrow} frame={frame} start={K.subtitleIn} stagger={K.wordStagger} />
       </div>
 
-      {/* CTA: появление пружиной, затем по кнопке проходит блик */}
+      {/* Три отличия с лендинга */}
+      <div style={{ display: 'flex', gap: 36, marginTop: 44 }}>
+        {LANDING.reasons.map((reason, i) => {
+          const p = springAt(frame, K.reasonsIn + i * K.reasonStagger);
+          return (
+            <div
+              key={reason}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                fontSize: 28,
+                fontWeight: 600,
+                color: 'rgba(255, 255, 255, 0.82)',
+                opacity: p,
+                translate: `0 ${(1 - p) * 16}px`,
+              }}
+            >
+              <span
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: '50%',
+                  background: theme.color.lime,
+                  color: theme.color.ink,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Check size={20} strokeWidth={3} />
+              </span>
+              {reason}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* CTA: лайм на ink (§12), затем блик */}
       <div
         style={{
           position: 'relative',
           overflow: 'hidden',
-          marginTop: 64,
-          height: 100,
-          padding: '0 56px',
+          marginTop: 60,
+          height: 96,
+          padding: '0 52px',
           display: 'flex',
           alignItems: 'center',
-          borderRadius: theme.radius.card,
-          background: theme.color.accent,
-          color: theme.color.accentText,
-          boxShadow: theme.shadow.cardRaised,
+          borderRadius: theme.radius.hero,
+          background: theme.color.lime,
+          color: theme.color.ink,
           fontSize: 36,
-          fontWeight: 600,
-          letterSpacing: '-0.01em',
+          fontWeight: 700,
           opacity: interpolate(cta, [0, 1], [0, 1], CLAMP),
-          scale: String(interpolate(cta, [0, 1], [0.88, 1], CLAMP)),
+          scale: String(interpolate(cta, [0, 1], [0.86, 1], CLAMP)),
           translate: `0 ${interpolate(cta, [0, 1], [24, 0], CLAMP)}px`,
         }}
       >
-        {OUTRO.cta}
+        {LANDING.cta}
         <div
           style={{
             position: 'absolute',
             top: '-50%',
             left: 0,
-            width: 140,
+            width: 120,
             height: '200%',
             rotate: '20deg',
             background:
-              'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.38) 50%, rgba(255,255,255,0) 100%)',
-            translate: `${interpolate(frame, [K.shineStart, K.shineEnd], [-220, 640], {
+              'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.7) 50%, rgba(255,255,255,0) 100%)',
+            translate: `${interpolate(frame, [K.shineStart, K.shineEnd], [-200, 560], {
               ...CLAMP,
               easing: EASE_IN_OUT,
             })}px 0`,
@@ -119,14 +147,14 @@ const OutroContent: React.FC<{ freezeFrom: number }> = ({ freezeFrom }) => {
 
       <div
         style={{
-          marginTop: 36,
+          marginTop: 30,
           fontSize: 30,
           fontWeight: 500,
-          color: theme.color.textMuted,
-          opacity: interpolate(frame, [K.urlIn, K.urlIn + 14], [0, 1], CLAMP),
+          color: 'rgba(255, 255, 255, 0.6)',
+          opacity: interpolate(frame, [K.urlIn, K.urlIn + 12], [0, 1], CLAMP),
         }}
       >
-        {OUTRO.url}
+        {SITE_HOST}
       </div>
     </AbsoluteFill>
   );

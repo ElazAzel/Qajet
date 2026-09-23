@@ -1,14 +1,14 @@
 {
   "name": "qajet-promo-video",
   "version": "0.1.0",
-  "description": "QAJET: промо-ролик 15 сек (Remotion)",
+  "description": "QAJET: промо-ролик 30 сек по реальному интерфейсу (Remotion)",
   "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "remotion studio",
     "typecheck": "tsc",
-    "still": "remotion still QajetDemo out/still.png --frame=200",
+    "still": "remotion still QajetDemo out/still.png --frame=500",
     "render": "remotion render QajetDemo out/qajet-demo.mp4 --codec=h264 --crf=18",
     "build": "remotion bundle"
   },
