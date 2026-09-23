@@ -46,9 +46,21 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   silent_supplier: 'Поставщик молчит',
 };
 
+/**
+ * Дата по календарю Алматы. Сервер работает в UTC, а срок, который видит консьерж,
+ * обязан совпадать с датой в WhatsApp-напоминании поставщику.
+ */
+export function formatAlmatyDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'Asia/Almaty',
+  });
+}
+
 function formatDeadline(iso: string | null): string {
-  if (!iso) return 'срок не задан';
-  return `срок ${new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`;
+  return iso ? `срок ${formatAlmatyDate(iso)}` : 'срок не задан';
 }
 
 interface RfqQueryRow {

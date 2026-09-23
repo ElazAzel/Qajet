@@ -1,13 +1,12 @@
 import { Reveal, Stamp } from '@qajet/ui/motion';
 import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { EXCEPTION_LABEL, loadConciergeExceptions } from '../../lib/concierge-exceptions';
+import {
+  EXCEPTION_LABEL,
+  formatAlmatyDate,
+  loadConciergeExceptions,
+} from '../../lib/concierge-exceptions';
 import { requireActor } from '../../lib/current-user';
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-}
 
 /**
  * Обработка исключений — agents.md §10 «Консьерж → Исключения». См.
@@ -43,8 +42,8 @@ export default async function ConciergeExceptionsPage() {
                     <p className="truncate text-fine text-muted">
                       {row.buyerCompany} ·{' '}
                       {row.kind === 'silent_supplier'
-                        ? `ответ до ${formatDate(row.since)}`
-                        : `с ${formatDate(row.since)}`}
+                        ? `ответ до ${formatAlmatyDate(row.since)}`
+                        : `с ${formatAlmatyDate(row.since)}`}
                     </p>
                     {row.note && <p className="mt-1 text-micro text-muted">{row.note}</p>}
                   </div>
