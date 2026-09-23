@@ -1,5 +1,6 @@
 import { Reveal, Stagger } from '@qajet/ui/motion';
 import { Card, formatKzt, StatTile } from '@qajet/ui/primitives';
+import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireActor } from '../lib/current-user';
 import { loadMetrics } from '../lib/metrics';
@@ -47,6 +48,16 @@ export default async function MetricsPage({
         <Reveal>
           <div className="flex items-start justify-between gap-4">
             <div>
+              {/* Экран вне оболочки админа (он для сцены), но не тупик: под сессией
+                  админа есть путь назад. По ссылке жюри админки нет — и ссылки тоже (F8). */}
+              {!isJuryAccess && (
+                <Link
+                  href="/admin"
+                  className="mb-3 inline-block text-fine font-semibold text-purple underline-offset-4 hover:underline"
+                >
+                  ← В админку
+                </Link>
+              )}
               <p className="text-micro tracking-wide text-muted uppercase">QAJET · /metrics</p>
               <h1 className="mt-1 text-3xl font-extrabold text-ink">Юнит-экономика</h1>
               <p className="mt-2 max-w-2xl text-sm text-muted">

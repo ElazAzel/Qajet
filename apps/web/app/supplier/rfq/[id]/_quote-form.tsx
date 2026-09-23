@@ -26,6 +26,33 @@ const inputClass =
   'w-full rounded-control border border-transparent bg-page px-3 py-2 text-sm text-ink placeholder:text-muted focus-visible:border-purple';
 
 const warningId = (itemId: string) => `capability-warning-${itemId}`;
+const fieldErrorId = (itemId: string) => `line-error-${itemId}`;
+
+/**
+ * Ошибка строки, которую видно по черновику без сервера. Поле, оставленное пустым,
+ * — не ошибка (позиция просто без цены); введённый ноль или дробь — ошибка, и о
+ * ней сказано прямо, а не общим «укажите цену» (аудит F2).
+ */
+function lineError(draft: LineDraft | undefined): string | null {
+  if (!draft) return null;
+  const positiveInteger = (value: string) => {
+    const n = Number(value);
+    return Number.isSafeInteger(n) && n > 0;
+  };
+  if (draft.unitPriceKzt !== '' && !positiveInteger(draft.unitPriceKzt)) {
+    return 'Цена должна быть больше нуля и в целых тенге';
+  }
+  if (draft.leadTimeDays !== '' && !positiveInteger(draft.leadTimeDays)) {
+    return 'Срок должен быть целым числом дней больше нуля';
+  }
+  if (draft.unitPriceKzt !== '' && draft.leadTimeDays === '') {
+    return 'Укажите срок поставки для этой позиции';
+  }
+  if (draft.unitPriceKzt === '' && draft.leadTimeDays !== '') {
+    return 'Укажите цену для этой позиции';
+  }
+  return null;
+}
 
 export function QuoteForm({
   rfqId,
@@ -39,12 +66,18 @@ export function QuoteForm({
   const router = useRouter();
   const [drafts, setDrafts] = useState<Record<string, LineDraft>>({});
   const [warned, setWarned] = useState(false);
+  // Ошибки проверяются вычислением по текущему черновику, а показываются после
+  // первой попытки: исправленное поле убирает сообщение сразу (аудит F2).
+  const [attempted, setAttempted] = useState(false);
+  // Ответ сервера относится к отправленному черновику: любая правка его снимает.
+  const [serverErrorStale, setServerErrorStale] = useState(false);
 
   const { run, pending, error } = useAsyncAction(submitQuote, () => {
-    router.push('/supplier');
+    router.push(`/supplier?sent=${encodeURIComponent(rfqId)}`);
   });
 
   function patch(itemId: string, field: keyof LineDraft, value: string | boolean) {
+    setServerErrorStale(true);
     setDrafts((prev) => ({
       ...prev,
       [itemId]: {
@@ -67,7 +100,7 @@ export function QuoteForm({
     const draft = drafts[item.id];
     const unitPriceKzt = Number(draft?.unitPriceKzt);
     const leadTimeDays = Number(draft?.leadTimeDays);
-    if (!draft || !unitPriceKzt || !leadTimeDays) return null;
+    if (!draft || lineError(draft) || !unitPriceKzt || !leadTimeDays) return null;
     return {
       requestItemId: item.id,
       unitPriceKzt,
@@ -85,13 +118,30 @@ export function QuoteForm({
     lines.filter((line) => !line.capabilityConfirmed).map((line) => line.requestItemId),
   );
 
+  const lineErrors = new Map(
+    items
+      .map((item) => [item.id, lineError(drafts[item.id])] as const)
+      .filter((entry): entry is readonly [string, string] => entry[1] !== null),
+  );
+  const formError =
+    lineErrors.size > 0
+      ? 'Исправьте отмеченные позиции'
+      : lines.length === 0
+        ? 'Укажите цену хотя бы по одной позиции'
+        : null;
+  const visibleError = attempted ? formError : null;
+  const visibleServerError = error && !serverErrorStale ? error : null;
+
   function handleSubmit() {
+    setAttempted(true);
+    if (formError) return;
     // Отправка без подтверждения разрешена (политику не меняем), но не молча:
     // первое нажатие показывает последствие, второе — отправляет. Аудит F1.
     if (unconfirmed.size > 0 && !warned) {
       setWarned(true);
       return;
     }
+    setServerErrorStale(false);
     run(rfqId, lines);
   }
 
@@ -118,8 +168,12 @@ export function QuoteForm({
                 </span>
                 <input
                   type="number"
-                  min={0}
+                  min={1}
                   value={draft.unitPriceKzt}
+                  aria-invalid={attempted && lineErrors.has(item.id) ? true : undefined}
+                  aria-describedby={
+                    attempted && lineErrors.has(item.id) ? fieldErrorId(item.id) : undefined
+                  }
                   onChange={(e) => patch(item.id, 'unitPriceKzt', e.target.value)}
                   className={inputClass}
                 />
@@ -130,6 +184,10 @@ export function QuoteForm({
                   type="number"
                   min={1}
                   value={draft.leadTimeDays}
+                  aria-invalid={attempted && lineErrors.has(item.id) ? true : undefined}
+                  aria-describedby={
+                    attempted && lineErrors.has(item.id) ? fieldErrorId(item.id) : undefined
+                  }
                   onChange={(e) => patch(item.id, 'leadTimeDays', e.target.value)}
                   className={inputClass}
                 />
@@ -157,6 +215,11 @@ export function QuoteForm({
                 />
               </label>
             </div>
+            {attempted && lineErrors.has(item.id) && (
+              <p id={fieldErrorId(item.id)} role="alert" className="mt-1.5 text-fine text-signal">
+                {lineErrors.get(item.id)}
+              </p>
+            )}
             <label className="mt-3 flex items-start gap-2 text-fine text-muted">
               <input
                 type="checkbox"
@@ -181,6 +244,13 @@ export function QuoteForm({
         );
       })}
 
+      {/* Сообщение стоит над кнопкой и в регионе alert: экранный читатель его
+          объявит, а исправление формы убирает его без повторной отправки (F2). */}
+      {(visibleError || visibleServerError) && (
+        <p role="alert" className="text-fine text-signal">
+          {visibleError ?? visibleServerError}
+        </p>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-fine text-muted">
           Оставьте пустыми позиции, по которым не даёте цену. Незаполненные условия сохранятся как
@@ -206,7 +276,6 @@ export function QuoteForm({
                 : 'Отправить КП'}
         </Button>
       </div>
-      {error && <p className="text-fine text-signal">{error}</p>}
     </div>
   );
 }

@@ -56,7 +56,7 @@ test('консьерж: заказ с отбракованными КП → за
     // поэтому дальше сценарий тот же — КП принято и будет отбраковано.
     await supplier.getByRole('button', { name: 'Отправить КП' }).click();
     await supplier.getByRole('button', { name: 'Всё равно отправить без подтверждения' }).click();
-    await supplier.waitForURL('**/supplier');
+    await supplier.waitForURL('**/supplier?sent=*');
 
     // Консьерж видит причину тупика и не может предложить план.
     await loginAs(concierge, 'concierge@demo.qajet.kz');
@@ -99,7 +99,7 @@ test('консьерж: заказ с отбракованными КП → за
       .first()
       .check();
     await supplier.getByRole('button', { name: 'Отправить исправленное КП' }).click();
-    await supplier.waitForURL('**/supplier');
+    await supplier.waitForURL('**/supplier?sent=*');
 
     // Тупик снят: план можно предложить.
     await gotoUntilButtonVisible(concierge, orderUrl, 'Предложить этот план');
@@ -194,7 +194,7 @@ test('консьерж: заказ с отбракованными КП виде
     await supplier.getByLabel('Мин. партия, шт.').first().fill('1');
     await supplier.getByRole('button', { name: 'Отправить КП' }).click();
     await supplier.getByRole('button', { name: 'Всё равно отправить без подтверждения' }).click();
-    await supplier.waitForURL('**/supplier');
+    await supplier.waitForURL('**/supplier?sent=*');
 
     await loginAs(concierge, 'concierge@demo.qajet.kz');
     await advanceStage(concierge, orderUrl, '→ КП получены');

@@ -5,6 +5,7 @@ import { requireActor } from '../../lib/current-user';
 import {
   formatOutboxBody,
   type OutboxStatusTone,
+  outboxDeliveryNote,
   outboxStatusLabel,
   outboxStatusTone,
 } from '../../lib/outbox';
@@ -63,8 +64,9 @@ export default async function AdminOutboxPage() {
       <Reveal>
         <h1 className="text-2xl font-extrabold text-ink">Исходящие уведомления</h1>
         <p className="mt-1.5 text-sm text-muted">
-          Dev-очередь email и других каналов. Здесь видно, что система поставила на отправку; ключ
-          Resend не нужен для локального сценария.
+          Очередь писем и других каналов. «Отправлено» значит, что запись ушла из очереди; дошло ли
+          письмо, видно в строке ниже — принял ли его провайдер или оно осталось в локальном
+          журнале.
         </p>
       </Reveal>
 
@@ -113,6 +115,11 @@ export default async function AdminOutboxPage() {
                             попыток: {row.attempts}
                             {row.sent_at ? ` · отправлено ${formatDateTime(row.sent_at)}` : ''}
                           </p>
+                          {outboxDeliveryNote(row.status, row.provider_message_id) && (
+                            <p className="mt-1 max-w-48 text-micro text-muted">
+                              {outboxDeliveryNote(row.status, row.provider_message_id)}
+                            </p>
+                          )}
                           {row.last_error && (
                             <p className="mt-1 max-w-48 text-micro text-danger">{row.last_error}</p>
                           )}

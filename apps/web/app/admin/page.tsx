@@ -3,6 +3,7 @@ import { Card, Money, StatTile } from '@qajet/ui/primitives';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadAdminHome, type VerificationRow } from '../lib/admin-home';
 import { CATEGORY_LABEL, type CatalogCategory } from '../lib/catalog';
+import { SupplierVerificationActions } from './companies/_company-actions';
 
 /**
  * Обзор платформы / верификация поставщиков — §10 «Админ». Первый пункт
@@ -90,6 +91,7 @@ export default async function AdminHome() {
                     <th className="px-2 py-2.5 text-left font-semibold">Город</th>
                     <th className="px-2 py-2.5 text-left font-semibold">Подан</th>
                     <th className="px-2 py-2.5 text-left font-semibold">Статус</th>
+                    <th className="px-2 py-2.5 text-left font-semibold">Решение</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -105,6 +107,16 @@ export default async function AdminHome() {
                       <td className="px-2 py-3 text-muted">{formatDate(v.submittedAt)}</td>
                       <td className="px-2 py-3">
                         <Stamp tone={STATUS_TONE[v.status]}>{STATUS_LABEL[v.status]}</Stamp>
+                      </td>
+                      {/* Очередь и действие в одном месте (аудит F11): решение по
+                          компании на проверке принимается прямо здесь, тем же server
+                          action, что и в «Компаниях». */}
+                      <td className="px-2 py-3">
+                        {v.status === 'pending' ? (
+                          <SupplierVerificationActions companyId={v.companyId} />
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}

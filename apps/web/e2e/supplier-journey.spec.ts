@@ -72,7 +72,7 @@ test('поставщик: от нового RFQ до подтверждения 
     await supplier.getByLabel('Мин. партия, шт.').first().fill('1');
     await supplier.getByRole('checkbox', { name: CAPABILITY }).first().check();
     await supplier.getByRole('button', { name: 'Отправить КП' }).click();
-    await supplier.waitForURL('**/supplier');
+    await supplier.waitForURL('**/supplier?sent=*');
 
     // Результат ясен: запрос ушёл из «новых», а на странице RFQ сказано, что ответ дан.
     await expect(rowContaining(supplier, title, 'li')).toHaveCount(0);
@@ -188,7 +188,7 @@ test('поставщик: КП без подтверждения предупр�
 
     // Второе нажатие отправляет: политика не изменилась, изменилось молчание.
     await supplier.getByRole('button', { name: 'Всё равно отправить без подтверждения' }).click();
-    await supplier.waitForURL('**/supplier');
+    await supplier.waitForURL('**/supplier?sent=*');
 
     // Поставщик видит, что ответ ждёт его подтверждения, — и на главной, и в самом RFQ.
     await expect(
@@ -203,17 +203,87 @@ test('поставщик: КП без подтверждения предупр�
   }
 });
 
-/**
- * Найдено ручным проходом (docs/qa/post-hardening-ux-audit.md, F2-F3). Сценарии
- * записаны заранее и пропущены: ассерт на нынешнее поведение закрепил бы дефект
- * как норму.
- */
-test.describe('известные дефекты формы КП', () => {
-  test.fixme('ошибка формы объявляется экранному читателю и не остаётся после исправления (F2)', async () => {
-    // Ожидание: у сообщения role="alert"; после корректного ввода оно исчезает.
-  });
+/** Открывает форму КП нового RFQ этого заказа и возвращает её адрес. */
+async function openQuoteForm(supplier: import('@playwright/test').Page, title: string) {
+  await loginAs(supplier, 'supplier@demo.qajet.kz');
+  await supplier.goto('/supplier');
+  await rowContaining(supplier, title, 'li')
+    .getByRole('link', { name: 'Берусь, цена и срок' })
+    .click();
+  await supplier.waitForURL(/\/supplier\/rfq\//);
+  return supplier.url();
+}
 
-  test.fixme('после отправки виден отправленный ответ и его статус (F3)', async () => {
-    // Ожидание: на главной есть раздел отправленных КП со статусом.
-  });
+/**
+ * F2 (docs/qa/post-hardening-ux-audit.md): ошибка формы объявляется экранному
+ * читателю, называет настоящую причину (ноль — не пусто) и не остаётся на экране
+ * после того, как человек её исправил.
+ */
+test('поставщик: ошибка формы КП объявляется и уходит после исправления (F2)', async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const { title } = await createRfqSentOrder(browser, { name: 'supplier-form-errors' });
+  const supplierCtx = await browser.newContext();
+  const supplier = await supplierCtx.newPage();
+  try {
+    const rfqUrl = await openQuoteForm(supplier, title);
+
+    // Пустая форма: сообщение — в регионе alert, а не просто текст под кнопкой.
+    await supplier.getByRole('button', { name: 'Отправить КП' }).click();
+    await expect(
+      supplier.getByRole('alert').filter({ hasText: 'Укажите цену хотя бы по одной позиции' }),
+    ).toBeVisible();
+
+    // Ноль — не пустота: сказано, что именно не так, и у самой позиции.
+    await supplier.getByLabel('Цена за ед., ₸').first().fill('0');
+    await supplier.getByLabel('Срок, дней').first().fill('10');
+    await supplier.getByRole('button', { name: 'Отправить КП' }).click();
+    await expect(
+      supplier.getByRole('alert').filter({ hasText: 'Цена должна быть больше нуля' }),
+    ).toBeVisible();
+    await expect(supplier).toHaveURL(rfqUrl);
+
+    // Исправление убирает ошибку сразу, без повторной отправки.
+    await supplier.getByLabel('Цена за ед., ₸').first().fill('4500');
+    await expect(supplier.getByText('Цена должна быть больше нуля')).toHaveCount(0);
+    await expect(supplier.getByText('Укажите цену хотя бы по одной позиции')).toHaveCount(0);
+  } finally {
+    await supplierCtx.close();
+  }
+});
+
+/**
+ * F3: после отправки человек видит, что КП ушло, и находит свой ответ на главной
+ * со статусом, пока тот не стал заказом.
+ */
+test('поставщик: после отправки видно подтверждение и КП в «Отправленных» (F3)', async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const { title } = await createRfqSentOrder(browser, { name: 'supplier-sent-quotes' });
+  const supplierCtx = await browser.newContext();
+  const supplier = await supplierCtx.newPage();
+  try {
+    await openQuoteForm(supplier, title);
+    await supplier.getByLabel('Цена за ед., ₸').first().fill('4500');
+    await supplier.getByLabel('Срок, дней').first().fill('10');
+    await supplier.getByRole('checkbox', { name: CAPABILITY }).first().check();
+    await supplier.getByRole('button', { name: 'Отправить КП' }).click();
+    await supplier.waitForURL('**/supplier?sent=*');
+
+    await expect(supplier.getByRole('status').filter({ hasText: 'КП отправлено' })).toBeVisible();
+    const sent = supplier.getByRole('region', { name: /Отправленные КП/ });
+    const row = sent.getByRole('listitem').filter({ hasText: title });
+    await expect(row).toBeVisible();
+    await expect(row.getByText('На рассмотрении у QAJET')).toBeVisible();
+
+    // Подтверждение одноразовое: после перезагрузки главной без параметра его нет,
+    // а сам ответ остаётся в списке.
+    await supplier.goto('/supplier');
+    await expect(supplier.getByRole('status').filter({ hasText: 'КП отправлено' })).toHaveCount(0);
+    await expect(row).toBeVisible();
+  } finally {
+    await supplierCtx.close();
+  }
 });
