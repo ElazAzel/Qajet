@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildRfqNotification,
   formatOutboxBody,
+  outboxDeliveryNote,
   outboxStatusLabel,
   outboxStatusTone,
 } from './outbox';
@@ -56,5 +57,32 @@ describe('outbox presentation helpers', () => {
       requestTitle: 'Мерч для команды',
       respondBy: '2026-09-15T00:00:00.000Z',
     });
+  });
+});
+
+/**
+ * Аудит F9: «Отправлено» не значит «доставлено». Экран обязан различать письмо,
+ * принятое провайдером, и запись, которая осела в локальном журнале.
+ */
+describe('outboxDeliveryNote', () => {
+  it('names the provider when the provider accepted the message', () => {
+    expect(outboxDeliveryNote('sent', 're_123')).toBe('Принято Resend, id re_123');
+  });
+
+  it('never presents a local-sink row as delivered', () => {
+    expect(outboxDeliveryNote('sent', 'local:rfq-invitation:1')).toBe(
+      'Только локальный журнал: письмо никуда не ушло',
+    );
+  });
+
+  it('says nothing about delivery before the message was sent', () => {
+    expect(outboxDeliveryNote('pending', null)).toBeNull();
+    expect(outboxDeliveryNote('failed', null)).toBeNull();
+  });
+
+  it('flags a sent row without any provider id instead of implying delivery', () => {
+    expect(outboxDeliveryNote('sent', null)).toBe(
+      'Отправка без id провайдера: доставка не подтверждена',
+    );
   });
 });

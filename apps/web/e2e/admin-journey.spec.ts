@@ -120,12 +120,55 @@ test('админ: из меню открываются все разделы', a
   }
 });
 
-test.describe('известные дефекты админки', () => {
-  test.fixme('со страницы «Метрики» есть путь назад в админку (F8)', async () => {
-    // Ожидание: на /metrics есть ссылка или навигация, а не тупик.
-  });
+/** F8 (docs/qa/post-hardening-ux-audit.md): /metrics вне оболочки, но не тупик. */
+test('админ: со страницы «Метрики» есть путь назад в админку (F8)', async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await loginAs(page, 'admin@demo.qajet.kz');
+    await page.goto('/metrics');
+    await expect(page.getByRole('heading', { level: 1, name: 'Юнит-экономика' })).toBeVisible();
+    await page.getByRole('link', { name: 'В админку' }).click();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Верификация поставщиков' }),
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
 
-  test.fixme('очередь верификации на главной позволяет одобрить компанию на месте (F11)', async () => {
-    // Ожидание: действие рядом с очередью, а не на другой странице.
-  });
+/** F11: очередь и действие в одном месте — одобрить можно прямо с главной админа. */
+test('админ: очередь верификации на главной позволяет одобрить компанию на месте (F11)', async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const name = `E2E-${RUN_ID}-admin-queue`;
+  try {
+    await loginAs(page, 'admin@demo.qajet.kz');
+    await page.goto('/admin/companies');
+    await page.getByLabel('Тип').selectOption('supplier');
+    await page.getByLabel('Название').fill(name);
+    await page.getByLabel('БИН').fill('900540990099');
+    await page.getByLabel('Город').fill('Алматы');
+    await page.getByLabel('Имя owner-а').fill('E2E Owner');
+    await page.getByLabel('Email owner-а').fill(`e2e-${RUN_ID}-admin-queue@demo.qajet.kz`);
+    await press(
+      page,
+      page.getByRole('button', { name: 'Создать компанию и отправить приглашение' }),
+    );
+    await expect(page.getByRole('row').filter({ hasText: name })).toBeVisible();
+
+    await page.getByRole('link', { name: 'Верификация', exact: true }).click();
+    const row = page.getByRole('row').filter({ hasText: name });
+    await expect(row.getByText('На проверке')).toBeVisible();
+    await row.getByPlaceholder('Комментарий').fill('Проверено из очереди');
+    await press(page, row.getByRole('button', { name: 'Одобрить' }));
+    await expect(row.getByText('Одобрен')).toBeVisible();
+    // После решения действие уходит: одобренную компанию повторно не одобряют.
+    await expect(row.getByRole('button', { name: 'Одобрить' })).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
 });

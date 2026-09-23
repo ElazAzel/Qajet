@@ -26,10 +26,24 @@ function formatEta(iso: string | null): string {
   return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
-export default async function SupplierHome() {
+function formatSentAt(iso: string): string {
+  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
+export default async function SupplierHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ sent?: string | string[] }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const user = await requireCurrentUser();
   const home = await loadSupplierHome(supabase, user.companyId);
+  // Параметр — только подсказка, какое КП подсветить. Он ничего не утверждает сам:
+  // подтверждение показывается, лишь если такое КП есть среди отправленных своих.
+  const { sent } = await searchParams;
+  const justSent =
+    typeof sent === 'string' ? home.sentQuotes.find((row) => row.rfqId === sent) : undefined;
+  const awaitingCount = home.sentQuotes.filter((row) => row.unconfirmedCount > 0).length;
 
   return (
     <div className="flex flex-col gap-6 px-4 py-5 sm:px-6 sm:py-6">
@@ -41,6 +55,17 @@ export default async function SupplierHome() {
           У вас {home.pendingRfqs.length} новых RFQ и {home.activeOrders.length} заказов в работе.
         </p>
       </Reveal>
+
+      {justSent && (
+        <p
+          role="status"
+          className="rounded-card border border-rule bg-surface px-5 py-4 text-fine text-ink"
+        >
+          <span className="font-semibold">КП отправлено:</span> {justSent.requestTitle}. Оно в
+          разделе «Отправленные КП» ниже; если QAJET выберет его, заказ появится в «Заказах в
+          производстве».
+        </p>
+      )}
 
       <Stagger startIndex={1} as="div" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile value={String(home.pendingRfqs.length)} title="Новых RFQ" note="Требуют ответа" />
@@ -108,30 +133,38 @@ export default async function SupplierHome() {
       {/* Блок появляется, только когда есть что показать. Внутри строк СОЗНАТЕЛЬНО
           нет ссылок и кнопок: действия у поставщика тут пока нет (новую версию КП
           открывает запрос исправления от QAJET), а ссылка сделала бы строку
-          неотличимой от карточки нового RFQ для проверок сценариев. */}
-      {home.awaitingConfirmation.length > 0 && (
+          неотличимой от карточки нового RFQ для проверок сценариев. Аудит F1, F3. */}
+      {home.sentQuotes.length > 0 && (
         <Reveal delay={0.15} className="rounded-card border border-rule bg-surface p-5">
-          <h3 className="mb-1 text-base font-bold">
-            Ждут вашего подтверждения · {home.awaitingConfirmation.length}
-          </h3>
-          <p className="mb-4 text-fine text-muted">
-            КП отправлено, но по части позиций не отмечено «могу исполнить» — они не участвуют в
-            сравнении.
-          </p>
-          <ul className="flex flex-col gap-3.5">
-            {home.awaitingConfirmation.map((row) => (
-              <li key={row.rfqId} className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-fine font-semibold">{row.requestTitle}</p>
-                  <p className="text-micro text-muted">
-                    {row.unconfirmedCount} {row.unconfirmedCount === 1 ? 'позиция' : 'позиций'} без
-                    отметки «могу исполнить»
-                  </p>
-                </div>
-                <Stamp tone="signal">Ждёт подтверждения</Stamp>
-              </li>
-            ))}
-          </ul>
+          <section aria-labelledby="sent-quotes-heading">
+            <h3 id="sent-quotes-heading" className="mb-1 text-base font-bold">
+              Отправленные КП · {home.sentQuotes.length}
+            </h3>
+            <p className="mb-4 text-fine text-muted">
+              {awaitingCount > 0
+                ? `Ждут вашего подтверждения: ${awaitingCount}. В них есть позиции без отметки «могу исполнить» — они не участвуют в сравнении.`
+                : 'Ответы, которые QAJET сравнивает. Выбранное КП станет заказом ниже.'}
+            </p>
+            <ul className="flex flex-col gap-3.5">
+              {home.sentQuotes.map((row) => (
+                <li key={row.rfqId} className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-fine font-semibold">{row.requestTitle}</p>
+                    <p className="text-micro text-muted">
+                      Отправлено {formatSentAt(row.submittedAt)}
+                      {row.unconfirmedCount > 0 &&
+                        ` · ${row.unconfirmedCount} ${row.unconfirmedCount === 1 ? 'позиция' : 'позиций'} без отметки «могу исполнить»`}
+                    </p>
+                  </div>
+                  {row.unconfirmedCount > 0 ? (
+                    <Stamp tone="signal">Ждёт вашего подтверждения</Stamp>
+                  ) : (
+                    <Stamp tone="pending">На рассмотрении у QAJET</Stamp>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
         </Reveal>
       )}
 

@@ -236,7 +236,7 @@ export async function createQuotesReceivedOrder(
       .first()
       .check();
     await supplier.getByRole('button', { name: 'Отправить КП' }).click();
-    await supplier.waitForURL('**/supplier');
+    await supplier.waitForURL('**/supplier?sent=*');
 
     await advanceStage(concierge, orderUrl, '→ КП получены');
 

@@ -42,6 +42,23 @@ export function outboxStatusTone(status: string): OutboxStatusTone {
   return STATUS_TONES[status as OutboxStatus] ?? 'neutral';
 }
 
+/**
+ * Что известно о доставке отправленной записи (аудит F9). «Отправлено» — статус
+ * очереди, а не факт доставки: локальный журнал помечает запись `local:` и не
+ * должен выглядеть как письмо, дошедшее до человека.
+ */
+export function outboxDeliveryNote(
+  status: string,
+  providerMessageId: string | null,
+): string | null {
+  if (status !== 'sent') return null;
+  if (!providerMessageId) return 'Отправка без id провайдера: доставка не подтверждена';
+  if (providerMessageId.startsWith('local:')) {
+    return 'Только локальный журнал: письмо никуда не ушло';
+  }
+  return `Принято Resend, id ${providerMessageId}`;
+}
+
 export function buildRfqNotification(input: {
   rfqId: string;
   token: string;

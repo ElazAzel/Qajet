@@ -213,9 +213,16 @@ export const supplierProfiles = pgTable(
     leadTimeDaysDefault: integer('lead_time_days_default'),
     portfolioUrls: text('portfolio_urls').array().notNull().default(sql`'{}'::text[]`),
     notes: text('notes'),
+    /**
+     * Номер для напоминаний в WhatsApp (+7XXXXXXXXXX). Персональные данные
+     * (ADR-0011): читают только своя компания и staff — та же политика, что
+     * у всего профиля.
+     */
+    whatsappPhone: text('whatsapp_phone'),
     ...timestamps,
   },
   (t) => [
+    check('supplier_profiles_whatsapp_phone_format', sql`${t.whatsappPhone} ~ '^\\+7[0-9]{10}$'`),
     // Личность/профиль поставщика покупателю не раскрывается — agents.md §10
     // «Покупатель»/«Поставщик»: с точки зрения покупателя поставщик — сам
     // QAJET, реальный исполнитель невидим. Профиль читают только сам

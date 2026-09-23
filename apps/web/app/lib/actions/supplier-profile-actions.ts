@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { actionFailure } from '../action-result';
 import { orderActorFor, requireCurrentUser } from '../current-user';
+import { normalizeKzPhone } from '../whatsapp';
 import type { ActionResult } from './request-actions';
 
 const supplierProfileSchema = z
@@ -16,6 +17,8 @@ const supplierProfileSchema = z
     leadTimeDaysDefault: z.number().int().positive().max(365).nullable(),
     portfolioUrls: z.array(z.string().trim().url().max(500)).max(10),
     notes: z.string().trim().max(2000),
+    /** Пусто — номера нет. Иначе нормализуется к +7XXXXXXXXXX на сервере. */
+    whatsappPhone: z.string().trim().max(40),
   })
   .strict();
 
@@ -28,6 +31,13 @@ export async function updateSupplierProfile(rawInput: SupplierProfileInput): Pro
   }
   const parsed = supplierProfileSchema.safeParse(rawInput);
   if (!parsed.success) return { ok: false, error: 'Проверьте категории, возможности и ссылки' };
+  const whatsappPhone = parsed.data.whatsappPhone
+    ? normalizeKzPhone(parsed.data.whatsappPhone)
+    : null;
+  if (parsed.data.whatsappPhone && !whatsappPhone) {
+    const message = 'Номер WhatsApp укажите в формате +7 701 123 45 67';
+    return { ok: false, code: 'invalid', error: message, fieldErrors: { whatsappPhone: message } };
+  }
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase
@@ -40,6 +50,7 @@ export async function updateSupplierProfile(rawInput: SupplierProfileInput): Pro
       lead_time_days_default: parsed.data.leadTimeDaysDefault,
       portfolio_urls: parsed.data.portfolioUrls,
       notes: parsed.data.notes || null,
+      whatsapp_phone: whatsappPhone,
       updated_at: new Date().toISOString(),
     })
     .eq('company_id', user.companyId);

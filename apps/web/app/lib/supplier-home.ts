@@ -36,20 +36,25 @@ export interface SupplierOrderRow {
 }
 
 /**
- * Отправленное КП, в котором остались позиции без отметки «могу исполнить».
- * Такие позиции не идут в сравнение, поэтому поставщик должен видеть их у себя,
- * а не узнавать о последствии из письма (аудит F1).
+ * Отправленное КП, которое ещё не стало заказом этого поставщика (аудит F3).
+ * `unconfirmedCount > 0` — в нём остались позиции без отметки «могу исполнить»:
+ * они не идут в сравнение, и поставщик должен видеть это у себя, а не узнавать
+ * о последствии из письма (аудит F1).
  */
-export interface SupplierAwaitingConfirmationRow {
+export interface SupplierSentQuoteRow {
   rfqId: string;
   requestTitle: string;
+  submittedAt: string;
   unconfirmedCount: number;
 }
+
+/** Сколько последних отправленных КП показывать: список не должен расти вечно. */
+export const SENT_QUOTES_LIMIT = 10;
 
 export interface SupplierHomeData {
   pendingRfqs: SupplierRfqRow[];
   activeOrders: SupplierOrderRow[];
-  awaitingConfirmation: SupplierAwaitingConfirmationRow[];
+  sentQuotes: SupplierSentQuoteRow[];
   totalPayoutsKzt: number;
   avgBuyerScore: number | null;
   supplierMembers: SupplierTeamMemberOption[];
@@ -76,7 +81,7 @@ export async function loadSupplierHome(
       .order('respond_by', { ascending: true }),
     supabase
       .from('orders')
-      .select('id, state, requests(title, companies(name)), plans(eta_date)')
+      .select('id, state, request_id, requests(title, companies(name)), plans(eta_date)')
       .not('state', 'in', '(closed,cancelled)'),
     supabase.from('supplier_payouts').select('amount_kzt').eq('status', 'paid'),
     companyId
@@ -99,13 +104,20 @@ export async function loadSupplierHome(
     supabase
       .from('rfqs')
       .select(
-        'id, requests(title), quotes(id, version, submitted_at, quote_lines(capability_confirmed))',
+        'id, request_id, requests(title), quotes(id, version, submitted_at, quote_lines(capability_confirmed))',
       )
       .eq('status', 'quoted'),
   ]);
 
-  const awaitingConfirmation: SupplierAwaitingConfirmationRow[] = [];
+  // Заказ, в план которого вошёл поставщик, уже виден в «Заказах» — дублировать
+  // его среди отправленных КП незачем. RLS отдаёт только такие заказы, поэтому
+  // чужой исход (КП не выбрано) отсюда не узнать, и экран этого не утверждает.
+  const requestsWithMyOrder = new Set(
+    (orderRows ?? []).map((row) => row.request_id as string | null).filter(Boolean),
+  );
+  const sentQuotes: SupplierSentQuoteRow[] = [];
   for (const row of quotedRfqRows ?? []) {
+    if (requestsWithMyOrder.has(row.request_id)) continue;
     const quotes = (Array.isArray(row.quotes) ? row.quotes : []) as {
       id: string;
       version: number;
@@ -116,14 +128,17 @@ export async function loadSupplierHome(
     const unconfirmedCount = (latest?.quote_lines ?? []).filter(
       (line) => line.capability_confirmed === false,
     ).length;
-    if (unconfirmedCount === 0) continue;
+    if (!latest) continue;
     const request = Array.isArray(row.requests) ? row.requests[0] : row.requests;
-    awaitingConfirmation.push({
+    sentQuotes.push({
       rfqId: row.id,
       requestTitle: request?.title ?? '—',
+      submittedAt: latest.submitted_at,
       unconfirmedCount,
     });
   }
+  sentQuotes.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+  sentQuotes.splice(SENT_QUOTES_LIMIT);
 
   const memberNameById = new Map(
     (supplierMembers ?? []).map((member) => [member.id, member.full_name]),
@@ -180,7 +195,7 @@ export async function loadSupplierHome(
   return {
     pendingRfqs,
     activeOrders,
-    awaitingConfirmation,
+    sentQuotes,
     totalPayoutsKzt,
     avgBuyerScore: statsResult.data?.avg_buyer_score ?? null,
     supplierMembers: (supplierMembers ?? []).map((member) => ({

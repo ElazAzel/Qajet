@@ -27,9 +27,16 @@ export function SupplierProfileForm({
   const [leadTime, setLeadTime] = useState(initial.leadTimeDaysDefault?.toString() ?? '');
   const [portfolio, setPortfolio] = useState(initial.portfolioUrls.join('\n'));
   const [notes, setNotes] = useState(initial.notes);
-  const { run, pending, error } = useAsyncAction(updateSupplierProfile, () => router.refresh());
+  const [whatsappPhone, setWhatsappPhone] = useState(initial.whatsappPhone);
+  // «Сохранено» относится к тому, что сохранили: любая правка его снимает.
+  const [saved, setSaved] = useState(false);
+  const { run, pending, error } = useAsyncAction(updateSupplierProfile, () => {
+    setSaved(true);
+    router.refresh();
+  });
 
   function submit() {
+    setSaved(false);
     const split = (value: string) => [
       ...new Set(
         value
@@ -49,6 +56,7 @@ export function SupplierProfileForm({
         .map((url) => url.trim())
         .filter(Boolean),
       notes,
+      whatsappPhone,
     });
   }
 
@@ -112,6 +120,26 @@ export function SupplierProfileForm({
         </label>
       </div>
       <label className="text-fine text-muted">
+        WhatsApp для напоминаний
+        <input
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          value={whatsappPhone}
+          onChange={(event) => {
+            setWhatsappPhone(event.target.value);
+            setSaved(false);
+          }}
+          disabled={!canManage}
+          className={inputClass}
+          placeholder="+7 701 123 45 67"
+        />
+        <span className="mt-1 block text-micro text-muted">
+          Сюда QAJET напомнит о новом запросе, если вы не заходили на сайт. Номер видят только ваша
+          компания и команда QAJET.
+        </span>
+      </label>
+      <label className="text-fine text-muted">
         Портфолио — по одной HTTPS-ссылке на строку
         <textarea
           value={portfolio}
@@ -139,7 +167,16 @@ export function SupplierProfileForm({
       ) : (
         <p className="text-fine text-muted">Изменять профиль может только owner компании.</p>
       )}
-      {error && <p className="text-fine text-signal">{error}</p>}
+      {error && (
+        <p role="alert" className="text-fine text-signal">
+          {error}
+        </p>
+      )}
+      {saved && !error && (
+        <p role="status" className="text-fine text-ink">
+          Профиль сохранён.
+        </p>
+      )}
     </div>
   );
 }

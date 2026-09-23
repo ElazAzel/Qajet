@@ -93,6 +93,7 @@ export function SupplierVerificationActions({ companyId }: { companyId: string }
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder="Комментарий"
+        aria-label="Комментарий к решению по компании"
         className={inputClass}
       />
       <div className="flex gap-2">
