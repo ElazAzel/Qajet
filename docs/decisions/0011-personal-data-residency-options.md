@@ -40,6 +40,7 @@
   | `auth.users` / `auth.identities` | `email`, `phone`, токены; `auth.audit_log_entries.ip_address` |
   | Supabase Storage | загруженные вложения и документы |
   | `public.messages` | тексты переписки |
+  | `public.supplier_profiles` | `whatsapp_phone` (добавлено миграцией 0058, 2026-09-23) |
 
   `pd` описывает только первые две строки. Supabase Auth — отдельная служба со
   своими таблицами; перенос одного Postgres её не переносит

@@ -407,6 +407,13 @@
       "when": 1789888180477,
       "tag": "0057_scheduled_jobs_in_database",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1790181437948,
+      "tag": "0058_supplier_whatsapp_phone",
+      "breakpoints": true
     }
   ]
 }

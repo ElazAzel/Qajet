@@ -46,12 +46,36 @@ export default async function ConciergeExceptionsPage() {
                         ? `ответ до ${formatDate(row.since)}`
                         : `с ${formatDate(row.since)}`}
                     </p>
-                    {row.note && <p className="mt-1 truncate text-micro text-muted">{row.note}</p>}
+                    {row.note && <p className="mt-1 text-micro text-muted">{row.note}</p>}
                   </div>
                   <Stamp tone={row.kind === 'on_hold' ? 'neutral' : 'signal'} className="shrink-0">
                     {EXCEPTION_LABEL[row.kind]}
                   </Stamp>
                 </Link>
+                {/* Напоминание — одно нажатие: WhatsApp открывается с готовым текстом,
+                    консьерж отправляет его сам. Без номера — честно сказано, что звонить. */}
+                {row.reminders && row.reminders.length > 0 && (
+                  <ul className="mt-3 flex flex-wrap gap-2">
+                    {row.reminders.map((reminder) => (
+                      <li key={reminder.supplierName}>
+                        {reminder.whatsappUrl ? (
+                          <a
+                            href={reminder.whatsappUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-block rounded-control border border-rule px-3 py-1.5 text-fine font-semibold text-ink hover:border-purple"
+                          >
+                            Напомнить в WhatsApp: {reminder.supplierName}
+                          </a>
+                        ) : (
+                          <span className="inline-block px-1 py-1.5 text-fine text-muted">
+                            {reminder.supplierName}: WhatsApp не указан — позвоните
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>

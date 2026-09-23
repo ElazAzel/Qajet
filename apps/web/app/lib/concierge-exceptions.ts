@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadBlockedOrders } from './concierge-blocked';
 import { findSilentRfqs, type RfqContactRow, type RfqStatus } from './silent-suppliers';
+import { buildRfqReminderText, whatsappChatUrl } from './whatsapp';
 
 /**
  * Обработка исключений — agents.md §10 «Консьерж → Исключения». Состояния
@@ -28,6 +29,14 @@ export interface ExceptionRow {
   kind: ExceptionKind;
   since: string | null;
   note: string | null;
+  /** Только у «Поставщик молчит»: кому и как напомнить. */
+  reminders?: SupplierReminder[];
+}
+
+export interface SupplierReminder {
+  supplierName: string;
+  /** Ссылка wa.me с готовым текстом; null — номер WhatsApp не указан. */
+  whatsappUrl: string | null;
 }
 
 export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
@@ -48,7 +57,16 @@ interface RfqQueryRow {
   status: RfqStatus;
   sent_at: string;
   respond_by: string | null;
-  companies: { name: string } | { name: string }[] | null;
+  companies: CompanyWithProfile | CompanyWithProfile[] | null;
+}
+
+interface CompanyWithProfile {
+  name: string;
+  supplier_profiles: { whatsapp_phone: string | null } | { whatsapp_phone: string | null }[] | null;
+}
+
+function one<T>(value: T | T[] | null | undefined): T | null {
+  return (Array.isArray(value) ? value[0] : value) ?? null;
 }
 
 /** Заказы в «RFQ отправлен», по которым пора звонить поставщикам. */
@@ -60,14 +78,18 @@ async function loadSilentSupplierRows(
   if (orders.length === 0) return [];
   const { data } = await supabase
     .from('rfqs')
-    .select('id, request_id, status, sent_at, respond_by, companies(name)')
+    .select(
+      'id, request_id, status, sent_at, respond_by, companies(name, supplier_profiles(whatsapp_phone))',
+    )
     .in(
       'request_id',
       orders.map((row) => row.request_id),
     )
     .eq('status', 'sent');
+  const phoneByRfq = new Map<string, string | null>();
   const contacts: RfqContactRow[] = ((data ?? []) as unknown as RfqQueryRow[]).map((row) => {
-    const company = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+    const company = one(row.companies);
+    phoneByRfq.set(row.id, one(company?.supplier_profiles)?.whatsapp_phone ?? null);
     return {
       id: row.id,
       requestId: row.request_id,
@@ -83,6 +105,9 @@ async function loadSilentSupplierRows(
     silentByRequest.set(rfq.requestId, [...(silentByRequest.get(rfq.requestId) ?? []), rfq]);
   }
 
+  // Ссылка в напоминании должна открываться с телефона поставщика, то есть быть
+  // абсолютной. Без NEXT_PUBLIC_SITE_URL (локально) остаётся путь.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? '';
   const rows: ExceptionRow[] = [];
   for (const order of orders) {
     const silent = silentByRequest.get(order.request_id);
@@ -95,6 +120,23 @@ async function loadSilentSupplierRows(
       kind: 'silent_supplier',
       since: first?.respondBy ?? first?.sentAt ?? null,
       note: `${silent.length === 1 ? 'Не ответил' : 'Не ответили'}: ${names} (${formatDeadline(first?.respondBy ?? null)}). Свяжитесь напрямую.`,
+      reminders: silent.map((rfq) => {
+        const phone = phoneByRfq.get(rfq.id) ?? null;
+        const { requestTitle } = describe(order);
+        return {
+          supplierName: rfq.supplierName,
+          whatsappUrl: phone
+            ? whatsappChatUrl(
+                phone,
+                buildRfqReminderText({
+                  requestTitle,
+                  respondBy: rfq.respondBy,
+                  rfqUrl: `${siteUrl}/supplier/rfq/${rfq.id}`,
+                }),
+              )
+            : null,
+        };
+      }),
     });
   }
   return rows;

@@ -11,7 +11,7 @@ export default async function SupplierProfilePage() {
     supabase
       .from('supplier_profiles')
       .select(
-        'categories, capabilities, service_cities, min_order_kzt, lead_time_days_default, portfolio_urls, notes',
+        'categories, capabilities, service_cities, min_order_kzt, lead_time_days_default, portfolio_urls, notes, whatsapp_phone',
       )
       .eq('company_id', user.companyId ?? '')
       .maybeSingle(),
@@ -29,6 +29,7 @@ export default async function SupplierProfilePage() {
     leadTimeDaysDefault: profile?.lead_time_days_default ?? null,
     portfolioUrls: (profile?.portfolio_urls ?? []) as string[],
     notes: profile?.notes ?? '',
+    whatsappPhone: profile?.whatsapp_phone ?? '',
   } as const;
 
   return (
