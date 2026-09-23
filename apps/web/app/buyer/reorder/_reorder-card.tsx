@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { reorderItem } from '../../lib/actions/request-actions';
 import type { ReorderCandidate } from '../../lib/buyer-reorder';
+import { formatDate } from '../../lib/dates';
 
 /**
  * Карточка повтора — «в один клик с новым количеством» (agents.md §10):
@@ -73,5 +74,5 @@ function pluralTimes(n: number): string {
 }
 
 function formatMonth(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  return formatDate(iso, { month: 'long', year: 'numeric' });
 }

@@ -2,6 +2,7 @@ import { Reveal, Stagger, Stamp } from '@qajet/ui/motion';
 import { Card, formatKzt, StatTile } from '@qajet/ui/primitives';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireActor } from '../../lib/current-user';
+import { formatDateTime } from '../../lib/dates';
 
 type PaymentFactRow = {
   id: string;
@@ -33,18 +34,6 @@ const STATUS_TONE: Record<string, 'success' | 'pending' | 'neutral'> = {
   pending: 'pending',
   void: 'neutral',
 };
-
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleString('ru-RU', {
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-}
 
 function relatedTitle(row: PaymentFactRow): string {
   const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;

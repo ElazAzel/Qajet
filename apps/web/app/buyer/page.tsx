@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { type BuyerCaseSummary, loadBuyerCases } from '../lib/buyer-case';
 import { hrefForAction, isBuyerTurn, waitingOnLabel } from '../lib/buyer-stage';
 import { requireActor } from '../lib/current-user';
+import { formatDate } from '../lib/dates';
 import { BuyerHero } from './_hero';
 
 /**
@@ -14,9 +15,6 @@ import { BuyerHero } from './_hero';
  * закупки, где сейчас ход покупателя: он видит, что от него ждут, не
  * открывая каждую.
  */
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-}
 
 export default async function BuyerHome() {
   const user = await requireActor('buyer');

@@ -3,15 +3,7 @@ import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadAdminDisputes } from '../../lib/admin-disputes';
 import { requireActor } from '../../lib/current-user';
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
+import { formatDate } from '../../lib/dates';
 
 /**
  * Журнал споров — agents.md §10 «Админ → Споры». См. `admin-disputes.ts`.
@@ -49,7 +41,12 @@ export default async function AdminDisputesPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">{d.requestTitle}</p>
                     <p className="truncate text-fine text-muted">
-                      {d.buyerCompany} · с {formatDate(d.disputedAt)}
+                      {d.buyerCompany} · с{' '}
+                      {formatDate(d.disputedAt, {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
                     </p>
                   </div>
                   <Stamp tone="signal" className="shrink-0">

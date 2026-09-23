@@ -58,6 +58,19 @@ describe('outbox presentation helpers', () => {
       respondBy: '2026-09-15T00:00:00.000Z',
     });
   });
+
+  it('names the reply deadline by the Almaty calendar', () => {
+    vi.stubEnv('LINK_SIGNING_SECRET', 'rfq-test-secret');
+    const message = buildRfqNotification({
+      rfqId: 'rfq-1',
+      token: 'token',
+      requestTitle: 'Мерч для команды',
+      respondBy: '2026-09-25T20:00:00.000Z',
+      recipient: 'supplier@example.kz',
+    });
+
+    expect(message.body).toContain('Ответьте до 26.09.2026.');
+  });
 });
 
 /**

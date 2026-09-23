@@ -1,3 +1,5 @@
+import { formatDate } from './dates';
+
 /**
  * Что показывает строка доски консьержа помимо названия и стадии — аудит F6.
  * Утренний вопрос консьержа: что просрочено и у кого сейчас мяч.
@@ -37,11 +39,7 @@ export function formatBoardDeadline(deadlineDate: string | null, today: string):
   }
   if (diff === 0) return { text: 'срок сегодня', overdue: false };
 
-  const shown = new Date(`${deadlineDate}T00:00:00Z`).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-  });
+  const shown = formatDate(deadlineDate);
   return { text: `к ${shown} · ${diff} ${plural(diff, 'день', 'дня', 'дней')}`, overdue: false };
 }
 

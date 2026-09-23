@@ -8,6 +8,8 @@
  * (docs/product/growth-and-matching-strategy.md).
  */
 
+import { formatDate } from './dates';
+
 /** Приводит казахстанский номер к +7XXXXXXXXXX или возвращает null. */
 export function normalizeKzPhone(input: string): string | null {
   const digits = input.replace(/\D/g, '');
@@ -35,8 +37,6 @@ export function buildRfqReminderText(input: {
   respondBy: string | null;
   rfqUrl: string;
 }): string {
-  const deadline = input.respondBy
-    ? ` до ${new Date(input.respondBy).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'Asia/Almaty' })}`
-    : '';
+  const deadline = input.respondBy ? ` до ${formatDate(input.respondBy)}` : '';
   return `Здравствуйте! Это QAJET. Ждём ваш ответ на запрос «${input.requestTitle}»${deadline}. Цена и срок — по ссылке: ${input.rfqUrl}`;
 }

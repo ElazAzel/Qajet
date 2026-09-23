@@ -8,6 +8,7 @@ import {
   loadThreadMessages,
 } from '../../lib/buyer-messages';
 import { requireCurrentUser } from '../../lib/current-user';
+import { formatDate } from '../../lib/dates';
 import { MarkThreadRead, MessageBubble } from '../../lib/message-ui';
 import { AttachmentForm } from './_attachment-form';
 import { MessageComposer } from './_composer';
@@ -164,6 +165,5 @@ function formatBytes(bytes: number): string {
 }
 
 function formatTime(iso: string | null): string {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  return iso ? formatDate(iso) : '';
 }

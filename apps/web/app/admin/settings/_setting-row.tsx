@@ -5,6 +5,7 @@ import { Button } from '@qajet/ui/primitives';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { updateSetting } from '../../lib/actions/settings-actions';
+import { formatDate, NUMERIC_DATE } from '../../lib/dates';
 import type { SettingValue } from '../../lib/settings-catalog';
 
 export function SettingRow({ setting }: { setting: SettingValue }) {
@@ -26,8 +27,7 @@ export function SettingRow({ setting }: { setting: SettingValue }) {
         <p className="mt-1 text-fine text-muted">{setting.hint}</p>
         <p className="mt-1 text-micro text-muted">
           <code>{setting.key}</code>
-          {setting.updatedAt &&
-            ` · изменён ${new Date(setting.updatedAt).toLocaleDateString('ru-RU')}`}
+          {setting.updatedAt && ` · изменён ${formatDate(setting.updatedAt, NUMERIC_DATE)}`}
         </p>
         {error && <p className="mt-1 text-fine text-danger">{error}</p>}
       </div>
