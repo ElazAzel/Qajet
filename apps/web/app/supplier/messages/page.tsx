@@ -6,6 +6,7 @@ import { AttachmentForm } from '../../buyer/messages/_attachment-form';
 import { MessageComposer } from '../../buyer/messages/_composer';
 import { loadThreadAttachments, loadThreadMessages } from '../../lib/buyer-messages';
 import { requireCurrentUser } from '../../lib/current-user';
+import { formatDate } from '../../lib/dates';
 import { MarkThreadRead, MessageBubble } from '../../lib/message-ui';
 import { loadSupplierThreads } from '../../lib/supplier-messages';
 
@@ -65,7 +66,7 @@ export default async function SupplierMessagesPage({
                       </span>
                       {thread.lastAt && (
                         <span className="shrink-0 text-micro text-muted">
-                          {formatTime(thread.lastAt)}
+                          {formatDate(thread.lastAt)}
                         </span>
                       )}
                     </span>
@@ -159,11 +160,4 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
-}
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? ''
-    : date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }

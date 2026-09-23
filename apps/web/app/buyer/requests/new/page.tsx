@@ -11,6 +11,7 @@ import {
 } from '../../../lib/actions/intake-actions';
 import { createRequest } from '../../../lib/actions/request-actions';
 import { CATALOG, CATEGORY_LABEL, type CatalogCategory } from '../../../lib/catalog';
+import { almatyToday } from '../../../lib/dates';
 import {
   firstFieldWithError,
   type RequestField,
@@ -116,7 +117,7 @@ export default function NewRequestPage() {
   const [fieldErrors, setFieldErrors] = useState<RequestFieldErrors>({});
   // Один ключ на всё время жизни формы: повтор отправки вернёт ту же заявку.
   const [submissionKey] = useState(() => crypto.randomUUID());
-  const today = new Date().toISOString().slice(0, 10);
+  const today = almatyToday();
 
   function clearFieldError(field: RequestField) {
     setFieldErrors((prev) => {

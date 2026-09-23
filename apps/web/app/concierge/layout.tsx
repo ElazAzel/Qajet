@@ -7,6 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { formatBoardDeadline } from '../lib/board-row';
 import { loadBlockedOrders } from '../lib/concierge-blocked';
 import { requireActor, shellUserFrom } from '../lib/current-user';
+import { almatyToday } from '../lib/dates';
 import {
   ORDER_STATE_LABEL,
   ORDER_STATE_PRIORITY,
@@ -119,7 +120,7 @@ export default async function ConciergeLayout({ children }: { children: ReactNod
     loadBoard(supabase),
     loadPendingRequests(supabase),
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = almatyToday();
 
   return (
     <ConciergeShell

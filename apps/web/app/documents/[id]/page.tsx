@@ -2,6 +2,7 @@ import { Card, formatKzt } from '@qajet/ui/primitives';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../../lib/current-user';
+import { formatDate } from '../../lib/dates';
 import type { ActItem, QajetRequisites } from '../../lib/documents';
 import { PrintDocumentButton } from '../_print-button';
 
@@ -49,14 +50,7 @@ const SETTLEMENT_LABEL: Record<string, string> = {
   exact: 'Точно по плану',
 };
 
-function formatDate(iso: string | undefined): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ru-RU', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-}
+const DOCUMENT_DATE = { year: 'numeric', month: 'long', day: 'numeric' } as const;
 
 function RequisitesBlock({ requisites }: { requisites: QajetRequisites | null | undefined }) {
   if (!requisites) return <p className="text-fine text-muted">—</p>;
@@ -106,7 +100,7 @@ export default async function DocumentPage({
           <div>
             <p className="text-micro tracking-wide text-muted uppercase">Счёт на предоплату</p>
             <h1 className="mt-1 text-2xl font-extrabold text-ink">{meta.invoiceNo ?? '—'}</h1>
-            <p className="mt-1 text-sm text-muted">от {formatDate(meta.issuedAt)}</p>
+            <p className="mt-1 text-sm text-muted">от {formatDate(meta.issuedAt, DOCUMENT_DATE)}</p>
           </div>
           <PrintDocumentButton />
         </div>
@@ -150,7 +144,7 @@ export default async function DocumentPage({
           <div>
             <p className="text-micro tracking-wide text-muted uppercase">Акт выполненных работ</p>
             <h1 className="mt-1 text-2xl font-extrabold text-ink">{meta.actNo ?? '—'}</h1>
-            <p className="mt-1 text-sm text-muted">от {formatDate(meta.closedAt)}</p>
+            <p className="mt-1 text-sm text-muted">от {formatDate(meta.closedAt, DOCUMENT_DATE)}</p>
           </div>
           <PrintDocumentButton />
         </div>

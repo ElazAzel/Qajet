@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../../../lib/current-user';
+import { formatDate, NUMERIC_DATE } from '../../../lib/dates';
 import { pickLatestQuoteByRfq } from '../../../lib/latest-quote';
 import { QuoteForm } from './_quote-form';
 
@@ -88,7 +89,7 @@ export default async function SupplierRfqPage({ params }: { params: Promise<{ id
       <p className="mt-1.5 text-fine text-muted">
         {buyerCompany?.name ?? '—'}
         {request.deadline_date &&
-          ` · нужна доставка к ${new Date(request.deadline_date).toLocaleDateString('ru-RU')}`}
+          ` · нужна доставка к ${formatDate(request.deadline_date, NUMERIC_DATE)}`}
       </p>
 
       {alreadyAnswered ? (

@@ -2,6 +2,7 @@ import { Reveal, Stamp, type StampTone } from '@qajet/ui/motion';
 import { Card } from '@qajet/ui/primitives';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireActor } from '../../lib/current-user';
+import { formatDateTime } from '../../lib/dates';
 import {
   formatOutboxBody,
   type OutboxStatusTone,
@@ -34,18 +35,6 @@ const STAMP_TONE: Record<OutboxStatusTone, StampTone> = {
   danger: 'signal',
   neutral: 'neutral',
 };
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 export default async function AdminOutboxPage() {
   await requireActor('admin');

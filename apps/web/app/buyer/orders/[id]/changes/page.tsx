@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerOrder } from '../../../../lib/buyer-order';
 import { requireCurrentUser } from '../../../../lib/current-user';
+import { formatDateTime, NUMERIC_DATE_TIME } from '../../../../lib/dates';
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'На рассмотрении',
@@ -59,7 +60,7 @@ export default async function BuyerOrderChangesPage({
                     {STATUS_LABEL[change.status] ?? change.status}
                   </p>
                   <time className="text-micro text-muted">
-                    {new Date(change.created_at).toLocaleString('ru-RU')}
+                    {formatDateTime(change.created_at, NUMERIC_DATE_TIME)}
                   </time>
                 </div>
                 <p className="mt-2 text-fine text-ink">

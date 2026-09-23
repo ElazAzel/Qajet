@@ -3,6 +3,7 @@ import { Card, StatTile } from '@qajet/ui/primitives';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadCommissionSuggestions } from '../../lib/actions/plan-actions';
 import { CATEGORY_LABEL, type CatalogCategory } from '../../lib/catalog';
+import { formatDateTime } from '../../lib/dates';
 import { loadAliasMetrics, loadLearningMetrics } from '../../lib/learning-metrics';
 import { ExplorationChart, LeadtimeChart, MapeMarginChart } from './_charts';
 
@@ -263,19 +264,6 @@ export default async function AdminLearningPage() {
       </Reveal>
     </div>
   );
-}
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleString('ru-RU', {
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 }
 
 function EmptyNote({ text }: { text: string }) {

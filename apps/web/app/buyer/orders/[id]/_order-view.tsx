@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerOrder } from '../../../lib/buyer-order';
 import { orderActorFor, requireCurrentUser } from '../../../lib/current-user';
+import { formatDate } from '../../../lib/dates';
 import { PLAN_LABEL } from '../../../lib/order-state';
 import { supplierCountLabel } from '../../../lib/pluralize';
 import { AttachmentForm } from '../../messages/_attachment-form';
@@ -315,9 +316,7 @@ export async function BuyerOrderView({ orderId }: { orderId: string }) {
                   <p className="mt-0.5 text-fine text-muted">{event.actorName}</p>
                 )}
               </div>
-              <span className="shrink-0 text-fine text-muted">
-                {new Date(event.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-              </span>
+              <span className="shrink-0 text-fine text-muted">{formatDate(event.at)}</span>
             </div>
           ))}
         </div>

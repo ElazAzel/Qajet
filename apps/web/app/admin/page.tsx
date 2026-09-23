@@ -3,6 +3,7 @@ import { Card, Money, StatTile } from '@qajet/ui/primitives';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadAdminHome, type VerificationRow } from '../lib/admin-home';
 import { CATEGORY_LABEL, type CatalogCategory } from '../lib/catalog';
+import { formatDate } from '../lib/dates';
 import { SupplierVerificationActions } from './companies/_company-actions';
 
 /**
@@ -27,10 +28,6 @@ const STATUS_TONE: Record<VerificationRow['status'], StampTone> = {
   approved: 'progress',
   rejected: 'signal',
 };
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-}
 
 export default async function AdminHome() {
   const supabase = await createSupabaseServerClient();

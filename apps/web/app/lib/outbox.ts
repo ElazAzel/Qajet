@@ -1,3 +1,4 @@
+import { formatDate, NUMERIC_DATE } from './dates';
 import { createRfqResponseToken } from './rfq-response';
 
 export type OutboxStatus = 'pending' | 'processing' | 'sent' | 'failed';
@@ -78,7 +79,7 @@ export function buildRfqNotification(input: {
     subject: `QAJET: запрос предложения — ${input.requestTitle}`,
     body: [
       `Новая заявка QAJET: ${input.requestTitle}.`,
-      `Ответьте до ${new Date(input.respondBy).toLocaleDateString('ru-RU')}.`,
+      `Ответьте до ${formatDate(input.respondBy, NUMERIC_DATE)}.`,
       `Открыть RFQ: ${responseUrl}`,
     ].join('\n'),
     payload: {

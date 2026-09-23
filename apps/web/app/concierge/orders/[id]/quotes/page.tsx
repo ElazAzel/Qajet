@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { orderActorFor, requireCurrentUser } from '../../../../lib/current-user';
+import { formatDate, formatDateTime, NUMERIC_DATE, NUMERIC_DATE_TIME } from '../../../../lib/dates';
 import { RequestQuoteRevision } from './_request-revision';
 
 type Nested<T> = T | T[] | null | undefined;
@@ -101,7 +102,7 @@ export default async function ConciergeQuotesPage({ params }: { params: Promise<
                     <p className="mt-1 text-fine text-muted">
                       RFQ: {rfq.status === 'quoted' ? 'КП получено' : rfq.status}
                       {rfq.respond_by
-                        ? ` · ответ до ${new Date(rfq.respond_by).toLocaleDateString('ru-RU')}`
+                        ? ` · ответ до ${formatDate(rfq.respond_by, NUMERIC_DATE)}`
                         : ''}
                     </p>
                   </div>
@@ -122,7 +123,7 @@ export default async function ConciergeQuotesPage({ params }: { params: Promise<
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                           <p className="text-fine font-semibold text-ink">Версия {quote.version}</p>
                           <p className="text-micro text-muted">
-                            {new Date(quote.submitted_at).toLocaleString('ru-RU')}
+                            {formatDateTime(quote.submitted_at, NUMERIC_DATE_TIME)}
                           </p>
                         </div>
                         {quote.revision_reason && (

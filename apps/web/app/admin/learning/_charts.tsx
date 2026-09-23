@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { formatDate } from '../../lib/dates';
 import type { ExplorationPoint, LeadtimePoint, LearningPoint } from '../../lib/learning-metrics';
 
 // .62, не .5 — тот же контраст, что у --color-muted в globals.css (AA на
@@ -18,7 +19,7 @@ const AXIS_COLOR = 'rgba(20,20,26,.62)';
 const GRID_COLOR = 'rgba(20,20,26,.08)';
 
 function formatMonth(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' });
+  return formatDate(iso, { month: 'short', year: '2-digit' });
 }
 
 export function MapeMarginChart({ points }: { points: LearningPoint[] }) {
@@ -109,10 +110,7 @@ export function LeadtimeChart({ points }: { points: LeadtimePoint[] }) {
 
 export function ExplorationChart({ points }: { points: ExplorationPoint[] }) {
   const data = points.map((p) => ({
-    month: new Date(`${p.month}-01`).toLocaleDateString('ru-RU', {
-      month: 'short',
-      year: '2-digit',
-    }),
+    month: formatMonth(`${p.month}-01`),
     'Слоты исследования': p.count,
   }));
 

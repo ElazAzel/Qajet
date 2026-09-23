@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadBuyerCase } from '../../../lib/buyer-case';
 import { hrefForAction, waitingOnLabel } from '../../../lib/buyer-stage';
 import { requireActor } from '../../../lib/current-user';
+import { formatDate } from '../../../lib/dates';
 import { AttachmentForm } from '../../messages/_attachment-form';
 import { BuyerOrderView } from '../../orders/[id]/_order-view';
 import { ShareCaseButton } from './_share-button';
@@ -21,10 +22,6 @@ import { ShareCaseButton } from './_share-button';
  * нет) состав заявки.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-}
 
 export default async function BuyerCasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -76,12 +73,16 @@ export default async function BuyerCasePage({ params }: { params: Promise<{ id: 
             {procurement.expectedAt && (
               <div className="flex justify-between border-t border-rule pt-2">
                 <dt className="text-muted">Ожидаемая дата</dt>
-                <dd className="font-semibold text-ink">{formatDate(procurement.expectedAt)}</dd>
+                <dd className="font-semibold text-ink">
+                  {formatDate(procurement.expectedAt, { day: 'numeric', month: 'long' })}
+                </dd>
               </div>
             )}
             <div className="flex justify-between border-t border-rule pt-2">
               <dt className="text-muted">Обновлено</dt>
-              <dd className="text-muted">{formatDate(procurement.updatedAt)}</dd>
+              <dd className="text-muted">
+                {formatDate(procurement.updatedAt, { day: 'numeric', month: 'long' })}
+              </dd>
             </div>
           </dl>
           {action && (

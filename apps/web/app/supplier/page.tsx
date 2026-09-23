@@ -3,6 +3,7 @@ import { Money, StatTile } from '@qajet/ui/primitives';
 import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireCurrentUser } from '../lib/current-user';
+import { formatDate } from '../lib/dates';
 import { ORDER_STATE_LABEL, ORDER_STATE_TONE, type OrderState } from '../lib/order-state';
 import { loadSupplierHome } from '../lib/supplier-home';
 import { RfqActions } from './_rfq-actions';
@@ -15,20 +16,6 @@ import { RfqAssignment } from './_rfq-assignment';
  * не мок. Мобильный сценарий первичен — оболочка уже даёт нижние табы,
  * здесь контент одной колонкой, читаемой с телефона.
  */
-
-function formatRespondBy(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-}
-
-function formatEta(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-}
-
-function formatSentAt(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-}
 
 export default async function SupplierHome({
   searchParams,
@@ -114,7 +101,7 @@ export default async function SupplierHome({
                   </p>
                 </div>
                 <p className="text-fine font-semibold text-signal sm:whitespace-nowrap">
-                  Ответить до {formatRespondBy(r.respondBy)}
+                  Ответить до {formatDate(r.respondBy)}
                 </p>
                 <RfqAssignment
                   rfqId={r.id}
@@ -151,7 +138,7 @@ export default async function SupplierHome({
                   <div className="min-w-0 flex-1">
                     <p className="text-fine font-semibold">{row.requestTitle}</p>
                     <p className="text-micro text-muted">
-                      Отправлено {formatSentAt(row.submittedAt)}
+                      Отправлено {formatDate(row.submittedAt)}
                       {row.unconfirmedCount > 0 &&
                         ` · ${row.unconfirmedCount} ${row.unconfirmedCount === 1 ? 'позиция' : 'позиций'} без отметки «могу исполнить»`}
                     </p>
@@ -180,7 +167,7 @@ export default async function SupplierHome({
                   <p className="text-fine font-semibold">
                     {o.title} — {o.buyerCompany}
                   </p>
-                  <p className="text-micro text-muted">ETA {formatEta(o.etaDate)}</p>
+                  <p className="text-micro text-muted">ETA {formatDate(o.etaDate)}</p>
                 </div>
                 <Stamp tone={ORDER_STATE_TONE[o.state as OrderState]} className="shrink-0">
                   {ORDER_STATE_LABEL[o.state as OrderState]}

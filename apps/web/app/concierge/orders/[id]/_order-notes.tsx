@@ -4,6 +4,7 @@ import { useAsyncAction } from '@qajet/ui/hooks';
 import { Button, Card } from '@qajet/ui/primitives';
 import { useState } from 'react';
 import { addInternalNote } from '../../../lib/actions/order-actions';
+import { formatDateTime } from '../../../lib/dates';
 import type { OrderNote } from '../../../lib/order-notes';
 
 /**
@@ -34,7 +35,7 @@ export function OrderNotes({ orderId, notes }: { orderId: string; notes: OrderNo
             <li key={note.id} className="text-fine">
               <p className="text-ink">{note.body}</p>
               <p className="mt-0.5 text-micro text-muted">
-                {note.authorName} · {formatAt(note.createdAt)}
+                {note.authorName} · {formatDateTime(note.createdAt)}
               </p>
             </li>
           ))}
@@ -63,13 +64,4 @@ export function OrderNotes({ orderId, notes }: { orderId: string; notes: OrderNo
       {error && <p className="mt-1 text-fine text-danger">{error}</p>}
     </Card>
   );
-}
-
-function formatAt(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { loadBlockedOrders } from './concierge-blocked';
+import { formatDate } from './dates';
 import { findSilentRfqs, type RfqContactRow, type RfqStatus } from './silent-suppliers';
 import { buildRfqReminderText, whatsappChatUrl } from './whatsapp';
 
@@ -46,21 +47,10 @@ export const EXCEPTION_LABEL: Record<ExceptionKind, string> = {
   silent_supplier: 'Поставщик молчит',
 };
 
-/**
- * Дата по календарю Алматы. Сервер работает в UTC, а срок, который видит консьерж,
- * обязан совпадать с датой в WhatsApp-напоминании поставщику.
- */
-export function formatAlmatyDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'Asia/Almaty',
-  });
-}
-
+// Срок, который видит консьерж, обязан совпадать с датой в WhatsApp-напоминании
+// поставщику — оба берут календарь Алматы из ./dates.
 function formatDeadline(iso: string | null): string {
-  return iso ? `срок ${formatAlmatyDate(iso)}` : 'срок не задан';
+  return iso ? `срок ${formatDate(iso)}` : 'срок не задан';
 }
 
 interface RfqQueryRow {

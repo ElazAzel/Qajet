@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { formatDate, NUMERIC_DATE } from '../../../lib/dates';
 import { verifyRfqResponseToken } from '../../../lib/rfq-response';
 import { type PublicRfqDetail, PublicRfqResponse } from './_public-response';
 
@@ -32,10 +33,9 @@ export default async function PublicRfqResponsePage({
       </p>
       <h1 className="text-2xl font-extrabold text-ink">{detail.request.title}</h1>
       <p className="mt-1.5 text-fine text-muted">
-        Ответить до{' '}
-        {detail.respondBy ? new Date(detail.respondBy).toLocaleDateString('ru-RU') : '—'}
+        Ответить до {formatDate(detail.respondBy, NUMERIC_DATE)}
         {detail.request.deadlineDate &&
-          ` · доставка к ${new Date(detail.request.deadlineDate).toLocaleDateString('ru-RU')}`}
+          ` · доставка к ${formatDate(detail.request.deadlineDate, NUMERIC_DATE)}`}
       </p>
       <PublicRfqResponse token={token} detail={detail} />
     </div>
