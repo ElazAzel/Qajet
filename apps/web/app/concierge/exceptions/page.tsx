@@ -41,7 +41,10 @@ export default async function ConciergeExceptionsPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">{row.requestTitle}</p>
                     <p className="truncate text-fine text-muted">
-                      {row.buyerCompany} · с {formatDate(row.since)}
+                      {row.buyerCompany} ·{' '}
+                      {row.kind === 'silent_supplier'
+                        ? `ответ до ${formatDate(row.since)}`
+                        : `с ${formatDate(row.since)}`}
                     </p>
                     {row.note && <p className="mt-1 truncate text-micro text-muted">{row.note}</p>}
                   </div>
