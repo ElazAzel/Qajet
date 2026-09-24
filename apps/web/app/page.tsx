@@ -1,6 +1,10 @@
 import { BarGrow, Reveal } from '@qajet/ui/motion';
+import { ArrowRight, Check, Eye, FileCheck2, Repeat2 } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { DemoVideo } from './_landing/demo-video';
 import { CONTACTS } from './lib/contacts';
+import { LANDING_EXAMPLE_PHRASE } from './lib/landing-example';
 
 /**
  * Посадочная — отвечает на один вопрос: что это и зачем мне. Раньше заголовок
@@ -10,6 +14,10 @@ import { CONTACTS } from './lib/contacts';
  *
  * Правила §13 и §17 в силе: никаких выдуманных цифр, отзывов и логотипов клиентов.
  * Демонстрационные варианты ниже помечены на странице как пример.
+ *
+ * Первый экран отвечает за три секунды: кто мы (заголовок), чем полезны (одна
+ * строка и три пункта), что делать (одна кнопка) — и тут же сам продукт в
+ * ролике. Шаги ниже показаны настоящими экранами на демо-данных, а не макетами.
  */
 
 const heroVariants = [
@@ -97,163 +105,309 @@ const heroVariants = [
   },
 ];
 
-/** Реальная последовательность работы — нумерация здесь несёт порядок, а не украшает. */
-const STEPS = [
+/**
+ * Реальная последовательность работы — нумерация несёт порядок. У каждого шага
+ * настоящий экран продукта; сравнение (шаг 3) — демонстрационное и так подписано.
+ */
+const STEPS: {
+  title: string;
+  text: string;
+  visual: ReactNode;
+}[] = [
   {
-    title: 'Опишите задачу',
-    text: 'Своими словами: что нужно, сколько, к какому сроку и в каком бюджете. Без форм на тридцать полей.',
+    title: 'Опишите задачу одной фразой',
+    text: 'Что, сколько, к какому сроку и в каком бюджете. Форма сама разберёт текст на позицию, количество, срок и бюджет — вы только проверяете.',
+    visual: (
+      <img
+        src="/landing/step-describe.webp"
+        width={940}
+        height={728}
+        loading="lazy"
+        decoding="async"
+        alt="Экран заявки: в поле «Что нужно закупить?» фраза про 150 welcome-наборов, ниже — что система поняла: позиция, количество, срок и бюджет"
+        className="h-auto w-full rounded-card border border-rule bg-surface shadow-xl shadow-ink/5"
+      />
+    ),
   },
   {
     title: 'Мы собираем предложения',
-    text: 'Рассылаем запросы проверенным поставщикам, уточняем условия и отсеиваем то, что не успеет или не подойдёт.',
+    text: 'Рассылаем запрос проверенным поставщикам, уточняем условия и отсеиваем тех, кто не успеет или не подойдёт. Вы видите, чей сейчас ход и к какой дате ждать.',
+    visual: (
+      <img
+        src="/landing/step-status.webp"
+        width={1408}
+        height={586}
+        loading="lazy"
+        decoding="async"
+        alt="Экран заказа: статус «Подбираем исполнителей», сейчас ход за QAJET, ожидаемая дата"
+        className="h-auto w-full rounded-card border border-rule bg-surface shadow-xl shadow-ink/5"
+      />
+    ),
   },
   {
     title: 'Вы выбираете вариант',
-    text: 'Рекомендуемый, дешевле или с запасом по сроку. У каждого видно, из чего складывается цена и почему он такой.',
+    text: 'Рекомендуемый, дешевле или с запасом по сроку. Видно, из чего складывается цена: вариант, дешёвый по предложению поставщика, бывает дороже в итоге — из-за налогов. Мы это считаем.',
+    visual: (
+      <div className="rounded-card border border-rule bg-surface p-5 shadow-xl shadow-ink/5 sm:p-6">
+        <div className="space-y-6">
+          {heroVariants.map((variant, i) => (
+            <div key={variant.label}>
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <span className="text-fine text-muted">{variant.label}</span>
+                <span className="numeric text-sm font-semibold">{variant.total}</span>
+              </div>
+              <BarGrow index={i} segments={variant.segments} />
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-micro text-muted">
+          Пример экрана сравнения: цифры демонстрационные, не реальная сделка.
+        </p>
+      </div>
+    ),
   },
   {
     title: 'Получаете заказ и документы',
-    text: 'Мы ведём производство и доставку. Вы принимаете заказ и получаете закрывающие документы.',
+    text: 'Мы ведём производство и доставку. Вы принимаете заказ, разница с предоплатой возвращается или доплачивается, закрывающие документы — в одном месте.',
+    visual: (
+      <img
+        src="/landing/step-documents.webp"
+        width={1408}
+        height={586}
+        loading="lazy"
+        decoding="async"
+        alt="Закрытый заказ: итоговая стоимость, возврат разницы покупателю и «Документы заказа» — счёт и акт"
+        className="h-auto w-full rounded-card border border-rule bg-surface shadow-xl shadow-ink/5"
+      />
+    ),
   },
 ];
 
 /** Только то, что продукт действительно делает, — без обещаний на вырост. */
 const REASONS = [
   {
+    icon: <FileCheck2 size={20} aria-hidden="true" />,
     title: 'Один договор и один счёт',
     text: 'Вместо пяти поставщиков у вас один подрядчик. Расчёты с исполнителями — наша забота.',
   },
   {
+    icon: <Eye size={20} aria-hidden="true" />,
     title: 'Видно, почему дешевле',
     text: 'Сравниваем не прайсы, а итог: сроки, минимальные партии, доставку и налоговые последствия выбора поставщика.',
   },
   {
+    icon: <Repeat2 size={20} aria-hidden="true" />,
     title: 'Повторить — без повторного описания',
     text: 'Прошлая закупка сохраняется. Следующий такой же заказ не нужно объяснять заново.',
   },
 ];
 
+const HERO_POINTS = ['Один договор и один счёт', 'Видно, почему дешевле', 'Повтор в один шаг'];
+
+function PrimaryCta({ className = '' }: { className?: string }) {
+  return (
+    <a
+      href={CONTACTS.whatsapp}
+      target="_blank"
+      rel="noreferrer"
+      className={`inline-flex h-12 items-center justify-center gap-2 rounded-control bg-lime px-6 text-sm font-bold text-ink transition-transform duration-[var(--duration-quick)] hover:-translate-y-0.5 ${className}`}
+    >
+      Обсудить закупку <ArrowRight size={16} aria-hidden="true" />
+    </a>
+  );
+}
+
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-page">
-      <header className="border-b border-rule bg-surface">
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-6">
-          <span className="text-sm font-extrabold tracking-wide">QAJET</span>
-          <Link href="/login" className="text-fine text-muted hover:text-ink">
+    <div className="min-h-screen bg-page text-ink">
+      {/* Первый экран: тёмный, как ролик, — кто мы, чем полезны, что делать. */}
+      <section className="relative overflow-hidden bg-ink text-white">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:22px_22px]"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-48 right-[-15%] h-[560px] w-[560px] rounded-full bg-purple/35 blur-[120px]"
+        />
+        <header className="relative mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+          <span className="text-base font-extrabold tracking-wide">QAJET</span>
+          <nav
+            aria-label="Разделы страницы"
+            className="hidden gap-7 text-fine text-white/70 md:flex"
+          >
+            <a href="#how" className="hover:text-white">
+              Как это работает
+            </a>
+            <a href="#why" className="hover:text-white">
+              Почему проще
+            </a>
+            <a href="#who" className="hover:text-white">
+              Для кого
+            </a>
+          </nav>
+          <Link href="/login" className="text-fine font-semibold text-white/80 hover:text-white">
             Войти
           </Link>
-        </div>
-      </header>
+        </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-16">
-        <Reveal>
-          <p className="text-micro font-semibold tracking-wide text-purple uppercase">
-            Внешний отдел закупок для бизнеса
-          </p>
-          <h1 className="mt-3 max-w-2xl text-3xl font-extrabold text-balance text-ink sm:text-4xl">
-            Скажите, что нужно купить. Остальное сделаем мы.
-          </h1>
-        </Reveal>
-        <Reveal delay={0.05}>
-          <p className="mt-4 max-w-xl text-base text-muted">
-            Мерч, корпоративные подарки, welcome-наборы, полиграфия. Вы описываете задачу — QAJET
-            находит поставщиков, сравнивает предложения и доводит заказ до закрывающих документов.
-          </p>
-        </Reveal>
-
-        <Reveal delay={0.1} className="mt-8 flex flex-wrap gap-3">
-          <a
-            href={CONTACTS.whatsapp}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-11 items-center justify-center rounded-control bg-purple px-5 text-sm font-semibold text-white hover:bg-purple/90"
-          >
-            Обсудить закупку
-          </a>
-          <Link
-            href="/login"
-            className="inline-flex h-11 items-center justify-center rounded-control border border-rule bg-surface px-5 text-sm font-semibold text-ink hover:bg-page"
-          >
-            Войти в систему →
-          </Link>
-        </Reveal>
-
-        <section className="mt-16" aria-labelledby="example-heading">
-          <h2 id="example-heading" className="text-lg font-bold text-ink">
-            Как это выглядит
-          </h2>
-          <p className="mt-2 max-w-xl text-sm text-muted">Вы пишете одной фразой:</p>
-          <p className="mt-3 max-w-xl rounded-card border border-rule bg-surface px-4 py-3 text-sm text-ink">
-            «300 welcome-наборов до 20 октября, бюджет 3 млн ₸»
-          </p>
-          <p className="mt-6 max-w-xl text-sm text-muted">
-            И получаете варианты, где видно, из чего складывается цена. Бывает, что вариант, дешёвый
-            по предложению поставщика, в итоге обходится дороже — из-за налоговых последствий. Мы
-            это считаем и показываем отдельно.
-          </p>
-          <div className="mt-8 space-y-8">
-            {heroVariants.map((variant, i) => (
-              <div key={variant.label}>
-                <div className="mb-2 flex items-baseline justify-between gap-3">
-                  <span className="text-fine text-muted">{variant.label}</span>
-                  <span className="numeric text-sm">{variant.total}</span>
-                </div>
-                <BarGrow index={i} segments={variant.segments} />
-              </div>
-            ))}
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 pt-6 pb-16 sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:pt-12 lg:pb-24">
+          <div>
+            <Reveal>
+              <p className="text-micro font-semibold tracking-[0.14em] text-lime uppercase">
+                Внешний отдел закупок для бизнеса
+              </p>
+              <h1 className="mt-4 text-4xl leading-[1.05] font-extrabold tracking-tight text-balance sm:text-5xl lg:text-6xl">
+                Скажите, что нужно купить. <span className="text-lime">Остальное сделаем мы.</span>
+              </h1>
+            </Reveal>
+            <Reveal delay={0.05}>
+              <p className="mt-5 max-w-xl text-base text-white/75 sm:text-lg">
+                Мерч, подарки, welcome-наборы и полиграфия для HR и маркетинга — от одной фразы до
+                закрывающих документов.
+              </p>
+            </Reveal>
+            <Reveal delay={0.1} className="mt-7 flex flex-wrap items-center gap-3">
+              <PrimaryCta />
+              <Link
+                href="/login"
+                className="inline-flex h-12 items-center justify-center rounded-control border border-white/20 px-5 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Войти в систему
+              </Link>
+            </Reveal>
+            <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-fine text-white/80">
+              {HERO_POINTS.map((point) => (
+                <li key={point} className="flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-lime text-ink">
+                    <Check size={13} strokeWidth={3} aria-hidden="true" />
+                  </span>
+                  {point}
+                </li>
+              ))}
+            </ul>
           </div>
-          <p className="mt-4 text-fine text-muted">
-            Цифры демонстрационные — это пример экрана сравнения, а не реальная сделка.
+          <Reveal delay={0.12}>
+            <DemoVideo />
+          </Reveal>
+        </div>
+      </section>
+
+      <main>
+        {/* Одна фраза — главный жест продукта, крупно, до шагов. */}
+        <section
+          className="mx-auto max-w-6xl px-5 pt-16 sm:px-8 sm:pt-20"
+          aria-labelledby="phrase-heading"
+        >
+          <h2
+            id="phrase-heading"
+            className="text-micro font-semibold tracking-[0.14em] text-purple uppercase"
+          >
+            Вы пишете одной фразой
+          </h2>
+          <p className="mt-4 max-w-3xl text-2xl leading-snug font-bold text-balance text-ink sm:text-3xl">
+            «{LANDING_EXAMPLE_PHRASE}»
+          </p>
+          <p className="mt-3 max-w-2xl text-sm text-muted">
+            И всё. Остальное — поставщиков, сравнение, оплату, доставку и документы — ведёт QAJET.
           </p>
         </section>
 
-        <section className="mt-16" aria-labelledby="how-heading">
-          <h2 id="how-heading" className="text-lg font-bold text-ink">
-            Как работаем
+        <section
+          id="how"
+          className="mx-auto max-w-6xl scroll-mt-8 px-5 pt-16 sm:px-8 sm:pt-24"
+          aria-labelledby="how-heading"
+        >
+          <h2
+            id="how-heading"
+            className="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl"
+          >
+            Как это работает
           </h2>
-          <ol className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <ol aria-label="Как это работает" className="mt-10 flex flex-col gap-14 sm:gap-20">
             {STEPS.map((step, index) => (
-              <li key={step.title} className="rounded-card border border-rule bg-surface p-5">
-                <span className="numeric text-fine text-purple">{index + 1}</span>
-                <p className="mt-1 text-sm font-bold text-ink">{step.title}</p>
-                <p className="mt-1.5 text-fine text-muted">{step.text}</p>
+              <li key={step.title} className="grid items-center gap-6 lg:grid-cols-2 lg:gap-14">
+                <div className={index % 2 === 1 ? 'lg:order-2' : undefined}>
+                  <span className="numeric flex h-9 w-9 items-center justify-center rounded-full bg-ink text-sm font-bold text-lime">
+                    {index + 1}
+                  </span>
+                  <h3 className="mt-4 text-xl font-bold text-ink sm:text-2xl">{step.title}</h3>
+                  <p className="mt-2 max-w-md text-sm text-muted sm:text-base">{step.text}</p>
+                </div>
+                <div className={index % 2 === 1 ? 'lg:order-1' : undefined}>{step.visual}</div>
               </li>
             ))}
           </ol>
         </section>
 
-        <section className="mt-16" aria-labelledby="why-heading">
-          <h2 id="why-heading" className="text-lg font-bold text-ink">
+        <section
+          id="why"
+          className="mx-auto max-w-6xl scroll-mt-8 px-5 pt-20 sm:px-8 sm:pt-28"
+          aria-labelledby="why-heading"
+        >
+          <h2
+            id="why-heading"
+            className="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl"
+          >
             Почему это проще, чем самим
           </h2>
-          <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <ul className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {REASONS.map((reason) => (
-              <li key={reason.title}>
-                <p className="text-sm font-bold text-ink">{reason.title}</p>
-                <p className="mt-1.5 text-fine text-muted">{reason.text}</p>
+              <li key={reason.title} className="rounded-card border border-rule bg-surface p-6">
+                <span className="flex h-10 w-10 items-center justify-center rounded-control bg-purple-10 text-purple">
+                  {reason.icon}
+                </span>
+                <p className="mt-4 text-base font-bold text-ink">{reason.title}</p>
+                <p className="mt-1.5 text-sm text-muted">{reason.text}</p>
               </li>
             ))}
           </ul>
         </section>
 
-        <section className="mt-16" aria-labelledby="who-heading">
-          <h2 id="who-heading" className="text-lg font-bold text-ink">
+        <section
+          id="who"
+          className="mx-auto max-w-6xl scroll-mt-8 px-5 pt-20 sm:px-8 sm:pt-28"
+          aria-labelledby="who-heading"
+        >
+          <h2
+            id="who-heading"
+            className="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl"
+          >
             Для кого
           </h2>
-          <p className="mt-3 max-w-xl text-sm text-muted">
+          <p className="mt-4 max-w-2xl text-base text-muted">
             Для HR, маркетинга и офис-менеджеров — для тех, у кого закупки не основная работа и нет
             своего закупщика. Сейчас работаем в Алматы.
           </p>
         </section>
 
-        <p className="mt-16 border-t border-rule pt-6 text-fine text-muted">
-          Честный статус: сервис готовится к первым пилотным закупкам. Если вам подходит — напишите,
-          и мы обсудим вашу задачу.
-        </p>
+        {/* Финальный призыв — тот же, что наверху: одна кнопка на всю страницу. */}
+        <section
+          className="mx-auto max-w-6xl px-5 pt-20 pb-16 sm:px-8 sm:pt-28 sm:pb-24"
+          aria-labelledby="cta-heading"
+        >
+          <div className="relative overflow-hidden rounded-hero bg-ink px-6 py-12 text-white sm:px-12 sm:py-16">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -bottom-40 -left-24 h-[420px] w-[420px] rounded-full bg-purple/30 blur-[110px]"
+            />
+            <h2
+              id="cta-heading"
+              className="relative max-w-2xl text-3xl font-extrabold tracking-tight text-balance sm:text-4xl"
+            >
+              Опишите задачу — мы вернёмся с вариантами.
+            </h2>
+            <p className="relative mt-3 max-w-xl text-white/75">
+              Честный статус: сервис готовится к первым пилотным закупкам. Если вам подходит —
+              напишите, и мы обсудим вашу задачу.
+            </p>
+            <PrimaryCta className="relative mt-7" />
+          </div>
+        </section>
       </main>
 
       <footer className="border-t border-rule bg-surface">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-x-5 gap-y-2 px-6 py-6 text-fine text-muted">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-5 py-6 text-fine text-muted sm:px-8">
           <span>© QAJET</span>
           <Link href="/privacy" className="hover:text-ink">
             Политика конфиденциальности

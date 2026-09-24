@@ -7,6 +7,9 @@ const withSerwist = withSerwistInit({
   // В dev service worker мешает горячей перезагрузке и маскирует ошибки.
   disable: process.env.NODE_ENV === 'development',
   reloadOnOnline: true,
+  // В предзагрузку — только картинки из public/. Демо-ролик посадочной (2+ МБ)
+  // туда попадать не должен: иначе его скачивал бы каждый, кто открыл сайт.
+  globPublicPatterns: ['**/*.{webp,png,jpg,jpeg,svg,ico}'],
 });
 
 const nextConfig: NextConfig = {

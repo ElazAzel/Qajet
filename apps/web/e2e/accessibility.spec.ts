@@ -18,6 +18,7 @@ import { canRunLive, loginAs, skipLiveReason } from './fixtures';
 test.skip(!canRunLive, skipLiveReason);
 
 const SCREENS: { name: string; path: string; email: string | null }[] = [
+  { name: 'посадочная', path: '/', email: null },
   { name: 'вход', path: '/login', email: null },
   { name: 'покупатель: главная', path: '/buyer', email: 'buyer@demo.qajet.kz' },
   { name: 'покупатель: новая заявка', path: '/buyer/requests/new', email: 'buyer@demo.qajet.kz' },
