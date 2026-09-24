@@ -19,8 +19,8 @@ migrations cite it as `agents.md §N`. Those section numbers refer to
 6. README and journals, which are narrative and may require revalidation.
 
 When evidence conflicts, record the conflict and prefer a reproducible test over
-a documentation claim. Use only `CONFIRMED`, `REPRODUCED`, `NOT REPRODUCED`,
-`NOT RUN`, and `ASSUMPTION`.
+a documentation claim. Use only the status words defined under «Release
+semantics» below.
 
 ## Scope and commands
 
@@ -102,6 +102,9 @@ Local tests never prove provider, deployment, CI, or production behavior. See
 - `NOT RUN` is no proof and blocks any required release gate.
 - `CONFIRMED` source inspection is not runtime evidence.
 - `REPRODUCED` and `NOT REPRODUCED` require executed scenarios.
+- `EXTERNAL BLOCKER` is a gate only a person outside the repository can clear
+  (a secret, a provider account, a legal decision).
+- `ASSUMPTION` is a claim not yet checked; it never counts as evidence.
 - Never infer CI, browser, database, provider, deployment, or production
   evidence from lint, build, mocks, or local demo data.
 

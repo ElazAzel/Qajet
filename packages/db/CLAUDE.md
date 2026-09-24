@@ -1,14 +1,16 @@
 # packages/db — database rules
 
-@../../AGENTS.md
+@../../agents.md
 
 Schema, migrations, RLS policies and PostgreSQL-backed tests. Root `CLAUDE.md` and
 `agents.md` still apply; this file adds what is specific to the database.
 
 ## Migrations are immutable once applied
 
-- **Never edit a migration that has run against production.** Production is at
-  `0050`. Correct a mistake with a new, additive migration.
+- **Never edit a migration that has run against production.** Which migrations
+  production has is recorded in `docs/release/readiness.json` → `productionMigrations`;
+  when unsure, treat every committed migration as applied. Correct a mistake with a
+  new, additive migration.
 - Take the next free number. Update the matching Drizzle journal entry
   (`migrations/meta/_journal.json`) and snapshot.
 - Prefer additive change: add a column, backfill, then constrain. Avoid a

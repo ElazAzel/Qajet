@@ -1,6 +1,6 @@
 # QAJET — project context for Claude
 
-@AGENTS.md
+@agents.md
 
 Durable orientation only. This file does not restate the rules; it points at the
 documents that own them. Read the pointed-to file before acting in its area.
