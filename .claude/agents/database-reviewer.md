@@ -10,8 +10,9 @@ apply a migration, never write to any database.
 
 ## What you check
 
-- **Immutability.** Migrations applied to production (through `0050`) are never
-  rewritten. A correction is a new, additive migration with the next free number
+- **Immutability.** Migrations applied to production (recorded in
+  `docs/release/readiness.json` → `productionMigrations`; when unsure, every
+  committed migration) are never rewritten. A correction is a new, additive migration with the next free number
   and a matching Drizzle journal entry.
 - **Concurrency.** Double-click, retry, two tabs, interrupted network. Is
   correctness guaranteed by a unique key, guard or row lock, or only by UI timing?

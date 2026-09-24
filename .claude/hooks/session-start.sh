@@ -85,6 +85,6 @@ fi
 
 echo
 echo "Наличие файла не равно рабочей функции."
-echo "Уровни: IMPLEMENTATION PRESENT · VERIFIED · NOT VERIFIED · EXTERNAL BLOCKER"
+echo "Уровни: FILE EXISTS → IMPLEMENTATION PRESENT → VERIFIED → PRODUCTION OPERATIONAL"
 echo "=============================================="
 exit 0
