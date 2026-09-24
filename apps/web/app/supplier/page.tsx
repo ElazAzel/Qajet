@@ -54,25 +54,6 @@ export default async function SupplierHome({
         </p>
       )}
 
-      <Stagger startIndex={1} as="div" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile value={String(home.pendingRfqs.length)} title="Новых RFQ" note="Требуют ответа" />
-        <StatTile
-          value={String(home.activeOrders.length)}
-          title="Заказов в работе"
-          note="Не закрыто"
-        />
-        <StatTile
-          value={<Money amountKzt={home.totalPayoutsKzt} className="text-xl font-semibold" />}
-          title="Выплачено всего"
-          note="По оплаченным заказам"
-        />
-        <StatTile
-          value={home.avgBuyerScore !== null ? String(home.avgBuyerScore) : '—'}
-          title="Оценка покупателей"
-          note={home.avgBuyerScore !== null ? 'Средний балл' : 'Пока нет оценок'}
-        />
-      </Stagger>
-
       <Reveal delay={0.12} className="rounded-card border border-rule bg-surface">
         <div className="flex items-center justify-between border-rule border-b p-5">
           <h3 className="text-base font-bold">Новые RFQ — быстрый ответ</h3>
@@ -86,7 +67,6 @@ export default async function SupplierHome({
                 key={r.id}
                 className="flex flex-col gap-3 border-rule border-b px-5 py-4 last:border-b-0 sm:flex-row sm:items-center"
               >
-                <div className="h-10 w-10 shrink-0 rounded-control bg-page" />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 text-sm font-semibold">
                     {r.requestTitle}
@@ -183,6 +163,26 @@ export default async function SupplierHome({
           </ul>
         )}
       </Reveal>
+      {/* Статистика — справочная, а не действие: она ниже запросов и заказов,
+          чтобы на телефоне первым экраном был новый RFQ. */}
+      <Stagger startIndex={3} as="div" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile value={String(home.pendingRfqs.length)} title="Новых RFQ" note="Требуют ответа" />
+        <StatTile
+          value={String(home.activeOrders.length)}
+          title="Заказов в работе"
+          note="Не закрыто"
+        />
+        <StatTile
+          value={<Money amountKzt={home.totalPayoutsKzt} className="text-xl font-semibold" />}
+          title="Выплачено всего"
+          note="По оплаченным заказам"
+        />
+        <StatTile
+          value={home.avgBuyerScore !== null ? String(home.avgBuyerScore) : '—'}
+          title="Оценка покупателей"
+          note={home.avgBuyerScore !== null ? 'Средний балл' : 'Пока нет оценок'}
+        />
+      </Stagger>
     </div>
   );
 }

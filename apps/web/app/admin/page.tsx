@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadAdminHome, type VerificationRow } from '../lib/admin-home';
 import { CATEGORY_LABEL, type CatalogCategory } from '../lib/catalog';
 import { formatDate } from '../lib/dates';
+import { turnoverNote } from '../lib/turnover-note';
 import { SupplierVerificationActions } from './companies/_company-actions';
 
 /**
@@ -58,11 +59,7 @@ export default async function AdminHome() {
             <Money amountKzt={data.turnoverThisMonthKzt} className="text-2xl font-extrabold" />
           }
           title="Оборот за месяц"
-          note={
-            data.turnoverMomPct === null
-              ? 'нет данных за прошлый месяц'
-              : `${data.turnoverMomPct >= 0 ? '+' : ''}${data.turnoverMomPct}% к прошлому`
-          }
+          note={turnoverNote(data.turnoverThisMonthKzt, data.turnoverLastMonthKzt)}
         />
         <StatTile
           value={String(data.pendingVerificationCount)}

@@ -10,13 +10,16 @@ import {
   loadCommissionSuggestions,
   loadPlanLinesForConcierge,
 } from '../../../lib/actions/plan-actions';
+import { formatBoardDeadline } from '../../../lib/board-row';
 import { loadRequestComparison } from '../../../lib/comparison';
 import { type OrderActor, orderActorFor, requireCurrentUser } from '../../../lib/current-user';
+import { almatyToday } from '../../../lib/dates';
 import { loadOrderNotes, type OrderNote } from '../../../lib/order-notes';
 import {
   ITEMS_EDITABLE_STATES,
   ORDER_STATE_LABEL,
   ORDER_STATE_TONE,
+  ORDER_TURN,
   type OrderState,
   PLAN_EDITABLE_STATES,
 } from '../../../lib/order-state';
@@ -63,12 +66,28 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
 
   const { data: order } = await supabase
     .from('orders')
-    .select('id, state, request_id, approved_plan_id, concierge_user_id')
+    .select(
+      'id, state, request_id, approved_plan_id, concierge_user_id, requests(title, deadline_date, companies(name))',
+    )
     .eq('id', id)
     .maybeSingle();
   if (!order) notFound();
 
   const state = order.state as OrderState;
+  const request = Array.isArray(order.requests) ? order.requests[0] : order.requests;
+  const requestCompany = request
+    ? Array.isArray(request.companies)
+      ? request.companies[0]
+      : request.companies
+    : null;
+  const header = (
+    <OrderHeader
+      state={state}
+      title={request?.title ?? '—'}
+      buyerCompany={requestCompany?.name ?? '—'}
+      deadlineDate={(request?.deadline_date as string | null) ?? null}
+    />
+  );
   const { data: conciergeRows } = canPropose
     ? await supabase
         .from('users')
@@ -98,6 +117,7 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
   if (PLAN_SCREEN_STATES.includes(state)) {
     return (
       <>
+        {header}
         <PlanLinesScreen
           orderId={order.id}
           planId={order.approved_plan_id}
@@ -121,6 +141,7 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
       state === 'rfq_sent' ? await loadRfqResponseLinks(supabase, order.request_id) : [];
     return (
       <>
+        {header}
         <OrderStagePanel
           state={state}
           orderId={order.id}
@@ -138,6 +159,7 @@ export default async function ConciergeOrderPage({ params }: { params: Promise<{
   if (!comparison || comparison.result.plans.length === 0) {
     return (
       <>
+        {header}
         {assignment}
         <OrderStagePanel
           state={state}
@@ -404,7 +426,7 @@ async function PlanLinesScreen({
         <p className="text-micro tracking-wide text-muted uppercase">
           Позиции плана · {ORDER_STATE_LABEL[state]}
         </p>
-        <h1 className="mt-1 text-2xl font-extrabold text-ink">Комиссия по позициям</h1>
+        <h2 className="mt-1 text-lg font-bold text-ink">Комиссия по позициям</h2>
         <p className="mt-1 text-sm text-muted">
           По умолчанию 23% на каждую позицию — можно точечно менять, 21-24%, по объёму и сложности
           исполнения.
@@ -506,23 +528,12 @@ function OrderStagePanel({
   rfqLinks?: { id: string; supplierName: string; token: string }[];
 }) {
   return (
-    <Reveal className="flex max-w-md flex-col gap-3 py-16">
-      <Stamp tone={ORDER_STATE_TONE[state]} className="w-fit">
-        {ORDER_STATE_LABEL[state]}
-      </Stamp>
-      <h1 className="text-lg font-bold text-ink">Текущая стадия заказа</h1>
-      <p className="text-sm text-muted">
-        {note ??
-          'Для этой стадии доступны действия ниже. Сравнение исполнений показывается на шаге «КП получены», а здесь сохраняются переходы, ссылки поставщикам и рабочее время.'}
-      </p>
-      {orderId && timeStages !== undefined && (
-        <div className="mt-4 flex w-full max-w-md flex-col gap-4">
-          <TimeTracking orderId={orderId} currentState={state} stages={timeStages} />
-          {notes && <OrderNotes orderId={orderId} notes={notes} />}
-        </div>
-      )}
+    <Reveal className="flex max-w-md flex-col gap-3">
+      {/* Сначала — что делать сейчас. Учёт времени и заметки — вспомогательные,
+          они ниже, а не между человеком и кнопкой следующего шага. */}
+      {note && <p className="text-sm text-muted">{note}</p>}
       {orderId && nextStates.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-start gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           {nextStates.map((toState, i) => (
             <StageAdvanceButton
               key={toState}
@@ -579,7 +590,46 @@ function OrderStagePanel({
           Проверить позиции заявки →
         </Link>
       )}
+      {orderId && timeStages !== undefined && (
+        <div className="mt-6 flex w-full max-w-md flex-col gap-4">
+          <TimeTracking orderId={orderId} currentState={state} stages={timeStages} />
+          {notes && <OrderNotes orderId={orderId} notes={notes} />}
+        </div>
+      )}
     </Reveal>
+  );
+}
+
+/**
+ * Шапка заказа: что это за заказ, чей ход и к какому сроку. Консьерж открывает
+ * заказ из списка, и экран обязан сказать это сам, а не только подсветкой строки.
+ */
+function OrderHeader({
+  state,
+  title,
+  buyerCompany,
+  deadlineDate,
+}: {
+  state: OrderState;
+  title: string;
+  buyerCompany: string;
+  deadlineDate: string | null;
+}) {
+  const deadline = formatBoardDeadline(deadlineDate, almatyToday());
+  return (
+    <header className="mb-6 max-w-3xl">
+      <div className="flex flex-wrap items-center gap-2">
+        <Stamp tone={ORDER_STATE_TONE[state]}>{ORDER_STATE_LABEL[state]}</Stamp>
+        <span className="text-fine font-semibold text-ink">{ORDER_TURN[state].label}</span>
+      </div>
+      <h1 className="mt-2 text-2xl font-extrabold text-ink">{title}</h1>
+      <p className="mt-1 text-sm text-muted">
+        {buyerCompany} ·{' '}
+        <span className={deadline.overdue ? 'font-semibold text-signal' : undefined}>
+          {deadline.text}
+        </span>
+      </p>
+    </header>
   );
 }
 

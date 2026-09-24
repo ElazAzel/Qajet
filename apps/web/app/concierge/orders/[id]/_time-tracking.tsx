@@ -112,7 +112,7 @@ export function TimeTracking({
       )}
 
       <div className="mt-4 flex flex-wrap items-end gap-2 border-rule border-t pt-4">
-        <label className="min-w-0 flex-1">
+        <label className="min-w-40 flex-1">
           <span className="mb-1 block text-micro text-muted">Стадия</span>
           <select
             value={stage}

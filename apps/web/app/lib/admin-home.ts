@@ -37,7 +37,7 @@ export interface AdminHomeData {
   suppliersTotal: number;
   suppliersNewLast30d: number;
   turnoverThisMonthKzt: number;
-  turnoverMomPct: number | null;
+  turnoverLastMonthKzt: number;
   pendingVerificationCount: number;
   verificationQueue: VerificationRow[];
   recentUsers: RecentUserRow[];
@@ -125,10 +125,6 @@ export async function loadAdminHome(supabase: SupabaseClient): Promise<AdminHome
     (sum, o) => sum + (o.final_cost_kzt ?? 0),
     0,
   );
-  const turnoverMomPct =
-    turnoverLastMonthKzt > 0
-      ? Math.round(((turnoverThisMonthKzt - turnoverLastMonthKzt) / turnoverLastMonthKzt) * 100)
-      : null;
 
   const verificationQueue: VerificationRow[] = (verificationCompanies ?? []).map((c) => {
     const profile = Array.isArray(c.supplier_profiles)
@@ -177,7 +173,7 @@ export async function loadAdminHome(supabase: SupabaseClient): Promise<AdminHome
     suppliersTotal: suppliersTotal ?? 0,
     suppliersNewLast30d: suppliersNewLast30d ?? 0,
     turnoverThisMonthKzt,
-    turnoverMomPct,
+    turnoverLastMonthKzt,
     pendingVerificationCount,
     verificationQueue,
     recentUsers,

@@ -1,9 +1,9 @@
 'use client';
 
-import { Bell, Search } from 'lucide-react';
+import { Bell, MoreHorizontal, Search } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { CommandPalette, type CommandPaletteItem } from './command-palette';
 
@@ -24,12 +24,21 @@ import { CommandPalette, type CommandPaletteItem } from './command-palette';
 export interface ShellNavItem {
   key: string;
   label: string;
+  /** Подпись в нижних табах телефона, если полная не помещается в 60px. */
+  shortLabel?: string;
   href: string;
   icon: ReactNode;
   /** Ручной оверрайд — обычно не нужен, активность считается от pathname. */
   active?: boolean;
   badge?: number;
 }
+
+/**
+ * Сколько пунктов помещается в нижние табы на 375px: по 60px на пункт. Больше —
+ * последние уходят в «Ещё», а не за край экрана (аудит F12: у админа 8 пунктов,
+ * «Параметры» и «Исходящие» были не видны).
+ */
+const MAX_MOBILE_TABS = 6;
 
 /** Корневой пункт роли ("/buyer") подсвечивается только на точном совпадении,
  *  иначе он горел бы активным на любой вложенной подстранице тоже. */
@@ -78,6 +87,39 @@ export function ShellLayout({
   const ordersHref = navItems[0]?.href;
   const messagesHref = navItems.find((item) => item.key === 'messages')?.href;
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const hasMore = navItems.length > MAX_MOBILE_TABS;
+  const mobileTabs = hasMore ? navItems.slice(0, MAX_MOBILE_TABS - 1) : navItems;
+  const moreItems = hasMore ? navItems.slice(MAX_MOBILE_TABS - 1) : [];
+  const moreActive = moreItems.some((item) => item.active ?? isNavItemActive(pathname, item.href));
+
+  // Меню «Ещё» закрывается при переходе, по Escape (фокус возвращается на кнопку)
+  // и по нажатию вне него.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: закрыть при смене адреса
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
+  useEffect(() => {
+    if (!moreOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      setMoreOpen(false);
+      moreButtonRef.current?.focus();
+    }
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (moreMenuRef.current?.contains(target) || moreButtonRef.current?.contains(target)) return;
+      setMoreOpen(false);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [moreOpen]);
 
   // Палитра (⌘K) монтируется здесь, а не в каждой роли: компонент был
   // написан целиком, но не подключён нигде — ⌘K не работал, кнопка поиска
@@ -147,7 +189,7 @@ export function ShellLayout({
         )}
       >
         <div className="px-2 text-lg font-extrabold">{brand}</div>
-        <nav className="mt-8 flex flex-col gap-1">
+        <nav aria-label="Разделы" className="mt-8 flex flex-col gap-1">
           {navItems.map((item) => {
             const active = item.active ?? isNavItemActive(pathname, item.href);
             return (
@@ -188,6 +230,9 @@ export function ShellLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-20 shrink-0 items-center justify-between gap-4 border-b border-rule bg-surface px-6">
           <div className="flex min-w-0 items-center gap-4">
+            {/* На телефоне сайдбара нет, и шапка была пустой слева: название
+                сервиса возвращает ориентир, где человек находится. */}
+            <span className="text-lg font-extrabold text-ink md:hidden">{brand}</span>
             {headerTitle}
             {search && (
               <button
@@ -231,45 +276,28 @@ export function ShellLayout({
       </div>
 
       <nav
+        aria-label="Разделы"
         className={cn(
-          'fixed inset-x-0 bottom-0 z-40 flex overflow-x-auto border-t md:hidden',
+          'fixed inset-x-0 bottom-0 z-40 flex border-t md:hidden',
           dark ? 'border-white/10 bg-ink' : 'border-rule bg-surface',
         )}
         style={{ paddingBottom: 'var(--safe-bottom)' }}
       >
-        {navItems.map((item) => {
+        {mobileTabs.map((item) => {
           const active = item.active ?? isNavItemActive(pathname, item.href);
           return (
             <a
               key={item.key}
               href={item.href}
               aria-current={active ? 'page' : undefined}
-              className={cn(
-                // flex-[1_0_60px]: делит ширину поровну, пока пунктов мало
-                // (растёт), но не сжимается тоньше 60px — при 6-7 пунктах
-                // (buyer/admin, agents.md §8) подпись в одну строку с
-                // `truncate` при такой ширине обрезалась до нечитаемых
-                // обрывков («Новая...», «Сообщ...») даже когда сама ячейка
-                // помещалась без горизонтального скролла — обрыв текста, а
-                // не переполнение контейнера. Сама подпись (ниже) переносится
-                // на 2 строки вместо truncate — на 60px это и есть читаемый
-                // предел для русских подписей в 1-2 слова. Лишние пункты
-                // (7-й у admin) по-прежнему уезжают в горизонтальный скролл
-                // контейнера — известное ограничение, нужен паттерн «Ещё»,
-                // не предмет этой правки.
-                'relative flex min-w-0 flex-[1_0_60px] flex-col items-center gap-1 py-2.5 text-micro',
-                active
-                  ? dark
-                    ? 'text-lime'
-                    : 'text-purple'
-                  : dark
-                    ? 'text-white/60'
-                    : 'text-muted',
-              )}
+              className={mobileTabClass(active, dark)}
             >
               <span aria-hidden="true">{item.icon}</span>
-              <span className="line-clamp-2 w-full text-center leading-[1.15] break-words">
-                {item.label}
+              {/* Одна строка: 11px помещают русские подписи в 1-2 слова в 60px.
+                  Раньше подпись переносилась посреди слова, потому что размер
+                  шрифта терялся при склейке классов (см. lib/cn.ts). */}
+              <span className="w-full truncate px-0.5 text-center leading-tight">
+                {item.shortLabel ?? item.label}
               </span>
               {!!item.badge && (
                 <span className="absolute top-1 right-[calc(50%-18px)] flex h-4 min-w-4 items-center justify-center rounded-full bg-purple px-1 text-[10px] font-medium text-white">
@@ -279,8 +307,70 @@ export function ShellLayout({
             </a>
           );
         })}
+        {hasMore && (
+          <>
+            <button
+              ref={moreButtonRef}
+              type="button"
+              aria-expanded={moreOpen}
+              aria-controls="shell-more-menu"
+              data-active={moreActive ? 'true' : 'false'}
+              onClick={() => setMoreOpen((open) => !open)}
+              className={mobileTabClass(moreActive || moreOpen, dark)}
+            >
+              <span aria-hidden="true">
+                <MoreHorizontal size={20} />
+              </span>
+              <span className="w-full truncate px-0.5 text-center leading-tight">Ещё</span>
+            </button>
+            {moreOpen && (
+              <div
+                ref={moreMenuRef}
+                id="shell-more-menu"
+                className={cn(
+                  'absolute inset-x-0 bottom-full border-t p-2 shadow-lg',
+                  dark ? 'border-white/10 bg-ink' : 'border-rule bg-surface',
+                )}
+              >
+                <ul className="grid grid-cols-2 gap-1">
+                  {moreItems.map((item) => {
+                    const active = item.active ?? isNavItemActive(pathname, item.href);
+                    return (
+                      <li key={item.key}>
+                        <a
+                          href={item.href}
+                          aria-current={active ? 'page' : undefined}
+                          className={cn(
+                            'flex items-center gap-3 rounded-control px-3 py-3 text-sm font-medium',
+                            active
+                              ? dark
+                                ? 'bg-lime text-ink'
+                                : 'bg-purple-10 text-purple'
+                              : dark
+                                ? 'text-white/80 hover:bg-white/10'
+                                : 'text-ink hover:bg-page',
+                          )}
+                        >
+                          <span aria-hidden="true">{item.icon}</span>
+                          {item.label}
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
       </nav>
     </div>
+  );
+}
+
+function mobileTabClass(active: boolean, dark: boolean): string {
+  return cn(
+    'relative flex min-w-0 flex-[1_0_60px] flex-col items-center gap-1 py-2.5 text-micro',
+    active ? (dark ? 'text-lime' : 'text-purple') : dark ? 'text-white/60' : 'text-muted',
   );
 }
 

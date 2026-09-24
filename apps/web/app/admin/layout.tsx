@@ -22,12 +22,19 @@ import { requireActor, shellUserFrom } from '../lib/current-user';
  * подтверждение денег или переход заказа.
  */
 const NAV_ITEMS = [
-  { key: 'verification', href: '/admin', label: 'Верификация', icon: <ShieldCheck size={18} /> },
+  {
+    key: 'verification',
+    href: '/admin',
+    label: 'Верификация',
+    shortLabel: 'Проверка',
+    icon: <ShieldCheck size={18} />,
+  },
   { key: 'companies', href: '/admin/companies', label: 'Компании', icon: <Building2 size={18} /> },
   {
     key: 'learning',
     href: '/admin/learning',
     label: 'Как система учится',
+    shortLabel: 'Обучение',
     icon: <LineChart size={18} />,
   },
   // «Метрики» убраны из меню: страница живёт вне оболочки админа и не имеет ни
@@ -35,7 +42,13 @@ const NAV_ITEMS = [
   // можно прямым адресом /metrics. Место заняли «Учётные записи»: девятый пункт
   // вытолкнул бы за экран третью подпись на 375px, что закреплено тестом
   // доступности как известная граница.
-  { key: 'users', href: '/admin/users', label: 'Учётные записи', icon: <Users size={18} /> },
+  {
+    key: 'users',
+    href: '/admin/users',
+    label: 'Учётные записи',
+    shortLabel: 'Аккаунты',
+    icon: <Users size={18} />,
+  },
   { key: 'finance', href: '/admin/finance', label: 'Финансы', icon: <Landmark size={18} /> },
   { key: 'disputes', href: '/admin/disputes', label: 'Споры', icon: <Scale size={18} /> },
   {

@@ -56,12 +56,12 @@ export function MapeMarginChart({ points }: { points: LearningPoint[] }) {
         <Line
           type="monotone"
           dataKey="MAPE, %"
-          stroke="#6C5DD3"
+          stroke="#6859CB"
           strokeWidth={2}
           dot={false}
           connectNulls
         />
-        <Line type="monotone" dataKey="Запас, %" stroke="#B36A16" strokeWidth={2} dot={false} />
+        <Line type="monotone" dataKey="Запас, %" stroke="#9D5D13" strokeWidth={2} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -99,7 +99,7 @@ export function LeadtimeChart({ points }: { points: LeadtimePoint[] }) {
         <Line
           type="monotone"
           dataKey="Поставщиков с историей срока"
-          stroke="#1F8A3B"
+          stroke="#1C7C35"
           strokeWidth={2}
           dot={{ r: 3 }}
         />
@@ -140,7 +140,7 @@ export function ExplorationChart({ points }: { points: ExplorationPoint[] }) {
         <Line
           type="monotone"
           dataKey="Слоты исследования"
-          stroke="#6C5DD3"
+          stroke="#6859CB"
           strokeWidth={2}
           dot={{ r: 3 }}
         />

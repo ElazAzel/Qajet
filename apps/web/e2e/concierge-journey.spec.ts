@@ -240,3 +240,39 @@ test('консьерж: строка доски показывает срок и
     await context.close();
   }
 });
+
+/**
+ * Экран заказа отвечает на вопросы «что это за заказ, чей ход, что делать». Раньше
+ * вместо названия был общий заголовок «Текущая стадия заказа», а кнопка
+ * следующего шага стояла под учётом времени и заметками.
+ */
+test('консьерж: заказ назван, чей ход виден, следующий шаг выше учёта времени', async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const { title, orderUrl } = await createRfqSentOrder(browser, { name: 'concierge-order-head' });
+
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  try {
+    await loginAs(page, 'concierge@demo.qajet.kz');
+    await page.goto(orderUrl);
+    const detail = page.getByTestId('detail');
+    await expect(detail.getByRole('heading', { level: 1, name: title })).toBeVisible();
+    await expect(detail.getByText('Поставщики · ждём КП')).toBeVisible();
+
+    const next = detail.getByRole('button', { name: '→ КП получены' });
+    const timeHeading = detail.getByText('Учёт времени', { exact: true });
+    const nextBox = await next.boundingBox();
+    const timeBox = await timeHeading.boundingBox();
+    expect(nextBox && timeBox && nextBox.y < timeBox.y, 'следующий шаг выше учёта времени').toBe(
+      true,
+    );
+    // У содержимого панели есть отступ от левой границы колонки.
+    const panelBox = await detail.boundingBox();
+    const headingBox = await detail.getByRole('heading', { level: 1 }).boundingBox();
+    expect((headingBox?.x ?? 0) - (panelBox?.x ?? 0)).toBeGreaterThanOrEqual(16);
+  } finally {
+    await context.close();
+  }
+});
