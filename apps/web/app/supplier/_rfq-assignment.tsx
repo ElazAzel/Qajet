@@ -21,6 +21,10 @@ export function RfqAssignment({
   const router = useRouter();
   const { run, pending, error } = useAsyncAction(assignSupplierRfq, () => router.refresh());
 
+  // В компании из одного человека назначать некого: выбор на каждой карточке
+  // был шумом рядом с главным действием (аудит F4).
+  if (members.length <= 1) return null;
+
   if (!canManage) {
     return (
       <p className="text-micro text-muted">

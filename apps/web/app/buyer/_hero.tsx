@@ -44,13 +44,15 @@ export function BuyerHero() {
       <div
         className={
           collapsed
-            ? 'flex items-center py-5 pl-10 pr-16'
-            : 'flex flex-col items-start pl-10 pr-16 pt-10 sm:flex-row sm:items-center sm:justify-between'
+            ? 'flex items-center py-5 pr-16 pl-6 sm:pl-10'
+            : 'flex flex-col items-start pt-7 pr-16 pl-6 sm:flex-row sm:items-center sm:justify-between sm:pt-10 sm:pl-10'
         }
       >
         <h1
           className={
-            collapsed ? 'text-base font-bold text-white' : 'text-3xl font-extrabold text-white'
+            collapsed
+              ? 'text-base font-bold text-white'
+              : 'text-2xl font-extrabold text-white sm:text-3xl'
           }
         >
           {collapsed ? (
@@ -72,7 +74,9 @@ export function BuyerHero() {
         style={{ gridTemplateRows: collapsed ? '0fr' : '1fr' }}
       >
         <div className="overflow-hidden">
-          <div className="max-w-md px-10 pb-10">
+          {/* На телефоне блок компактнее: «Ждут вашего решения» — главное действие
+              покупателя — должно попадать в первый экран, а не уходить под баннер. */}
+          <div className="max-w-md px-6 pb-7 sm:px-10 sm:pb-10">
             <p className="mt-3 text-sm text-white/65">
               Заявки, поставщики и заказы от идеи до доставки — под одним закупочным партнёром.
             </p>

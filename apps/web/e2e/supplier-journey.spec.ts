@@ -287,3 +287,26 @@ test('поставщик: после отправки видно подтвер�
     await supplierCtx.close();
   }
 });
+
+/**
+ * Главный вопрос поставщика — «есть ли новый запрос и что ответить». На телефоне
+ * первый экран раньше целиком занимали четыре плитки статистики, и кнопка ответа
+ * уходила ниже края.
+ */
+test('поставщик на телефоне: новый запрос виден без прокрутки', async ({ browser }) => {
+  test.setTimeout(120_000);
+  await createRfqSentOrder(browser, { name: 'supplier-mobile-first' });
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const supplier = await context.newPage();
+  try {
+    await loginAs(supplier, 'supplier@demo.qajet.kz');
+    await supplier.goto('/supplier');
+    const answer = supplier.getByRole('link', { name: 'Берусь, цена и срок' }).first();
+    await expect(answer).toBeVisible();
+    const box = await answer.boundingBox();
+    // Нижнее меню телефона занимает около 64px: кнопка не должна прятаться под ним.
+    expect(box && box.y + box.height <= 812 - 64, 'кнопка ответа в первом экране').toBe(true);
+  } finally {
+    await context.close();
+  }
+});

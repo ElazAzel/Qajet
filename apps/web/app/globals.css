@@ -21,7 +21,7 @@
 @theme {
   /* --- Палитра §12 --- */
   --color-ink: #14141a; /* текст, тёмный сайдбар админа, тёмные кнопки и hero-блоки */
-  --color-purple: #6c5dd3; /* основной акцент: CTA, активный пункт навигации */
+  --color-purple: #6859cb; /* основной акцент: CTA, активный пункт навигации */
   --color-lime: #d6ff3f; /* акцент ТОЛЬКО на тёмном фоне */
   --color-purple-10: #edebfb; /* заливка иконок-чипов, лёгкие пилюли */
   --color-page: #f4f4f6; /* фон страницы */
@@ -31,21 +31,23 @@
      12.5-13px текста, которым --muted написан почти везде (agents.md §12)
      — .62 даёт ~5:1, найдено и исправлено в UX/UI-аудите фазы 7. */
   --color-muted: rgba(20, 20, 26, 0.62); /* вторичный текст */
-  --color-signal: #c23a3a; /* отклонено, спор, высокий приоритет — единственный блокер-цвет */
+  --color-signal: #ba3838; /* отклонено, спор, высокий приоритет — единственный блокер-цвет */
 
   /* Статусные пары — agents.md §12, таблица "Статусные пары". */
+  /* Цвета текста статусов и фиолетовый подобраны под WCAG AA (≥ 4.5:1) на своей
+     заливке и на белом; e2e/accessibility.spec.ts держит контраст в гейте. */
   --color-status-progress-bg: #edebfb;
-  --color-status-progress-fg: #6c5dd3;
+  --color-status-progress-fg: #6859cb;
   --color-status-success-bg: #dff7e3;
-  --color-status-success-fg: #1f8a3b;
+  --color-status-success-fg: #1c7c35;
   --color-status-pending-bg: #ffefd6;
-  --color-status-pending-fg: #b36a16;
+  --color-status-pending-fg: #9d5d13;
   --color-status-neutral-bg: #f0f0f2;
   --color-status-neutral-fg: rgba(20, 20, 26, 0.6);
   --color-status-done-bg: #eaf1ff;
   --color-status-done-fg: #2a5fcb;
   --color-status-danger-bg: #fde3e3;
-  --color-status-danger-fg: #c23a3a;
+  --color-status-danger-fg: #ba3838;
 
   /* --- Типографика §12: Helvetica Neue, системный стек, ноль внешней загрузки --- */
   --font-sans: "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;

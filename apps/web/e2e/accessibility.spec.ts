@@ -5,16 +5,10 @@ import { canRunLive, loginAs, skipLiveReason } from './fixtures';
 /**
  * Доступность критичных экранов.
  *
- * Гейт: ни одного `critical` и ни одного `serious`, кроме контраста цвета. Так
- * падают настоящие функциональные дефекты: кнопка без имени, поле без подписи,
- * неверная роль, ловушка фокуса.
- *
- * Контраст (`color-contrast`, serious) на 2026-09-20 присутствует на каждом
- * экране, включая активный пункт меню, и упирается в цвета дизайн-токенов, то
- * есть в решение по дизайну, а не в правку одного компонента. Он НЕ скрыт: число
- * затронутых элементов пишется в аннотацию теста, а находка записана в
- * docs/qa/post-hardening-ux-audit.md. Когда токены исправят, условие
- * `IGNORED_FOR_GATE` убирается и контраст становится частью гейта.
+ * Гейт: ни одного `critical` и ни одного `serious`, включая контраст цвета.
+ * Контраст был вне гейта до 2026-09-24: цвета текста статусов и фиолетовый не
+ * дотягивали до 4.5:1 (аудит F14), а мелкие кнопки теряли белый текст из-за
+ * склейки классов. Токены исправлены в globals.css, склейка — в packages/ui/src/lib/cn.ts.
  *
  * Не покрыто и не заявлено: порядок фокуса при ошибке валидации, ловушка фокуса
  * в диалогах, работа с экранным читателем. Клавиатурный ввод формы заявки
@@ -23,9 +17,8 @@ import { canRunLive, loginAs, skipLiveReason } from './fixtures';
 
 test.skip(!canRunLive, skipLiveReason);
 
-const IGNORED_FOR_GATE = new Set(['color-contrast']);
-
 const SCREENS: { name: string; path: string; email: string | null }[] = [
+  { name: 'посадочная', path: '/', email: null },
   { name: 'вход', path: '/login', email: null },
   { name: 'покупатель: главная', path: '/buyer', email: 'buyer@demo.qajet.kz' },
   { name: 'покупатель: новая заявка', path: '/buyer/requests/new', email: 'buyer@demo.qajet.kz' },
@@ -38,7 +31,7 @@ const SCREENS: { name: string; path: string; email: string | null }[] = [
 ];
 
 for (const screen of SCREENS) {
-  test(`axe: ${screen.name}`, async ({ browser }, testInfo) => {
+  test(`axe: ${screen.name}`, async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
     try {
@@ -50,16 +43,7 @@ for (const screen of SCREENS) {
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
         .analyze();
 
-      const contrast = violations.find((v) => v.id === 'color-contrast');
-      if (contrast) {
-        testInfo.annotations.push({
-          type: 'известное: контраст цвета',
-          description: `${contrast.nodes.length} элементов (не в гейте, см. шапку файла)`,
-        });
-      }
-
       const blocking = violations
-        .filter((v) => !IGNORED_FOR_GATE.has(v.id))
         .filter((v) => v.impact === 'critical' || v.impact === 'serious')
         .map(
           (v) =>
@@ -77,12 +61,12 @@ test.describe('адаптивность: экраны ролей не требу
     { name: 'покупатель', path: '/buyer', email: 'buyer@demo.qajet.kz' },
     { name: 'поставщик', path: '/supplier', email: 'supplier@demo.qajet.kz' },
     { name: 'консьерж', path: '/concierge', email: 'concierge@demo.qajet.kz' },
-    { name: 'админ', path: '/admin', email: 'admin@demo.qajet.kz', knownNavClipAt375: true },
+    { name: 'админ', path: '/admin', email: 'admin@demo.qajet.kz' },
   ];
 
   for (const width of [375, 768]) {
     for (const role of ROLE_HOMES) {
-      test(`${role.name}: ${width}px`, async ({ browser }, testInfo) => {
+      test(`${role.name}: ${width}px`, async ({ browser }) => {
         const context = await browser.newContext({ viewport: { width, height: 900 } });
         const page = await context.newPage();
         try {
@@ -104,27 +88,68 @@ test.describe('адаптивность: экраны ролей не требу
               .filter((x) => x.r.left < -1 || x.r.right > window.innerWidth + 1)
               .map((x) => `${x.text}: ${Math.round(x.r.left)}..${Math.round(x.r.right)}`),
           );
-          if (width === 375 && 'knownNavClipAt375' in role) {
-            // Известная находка (аудит, F12): 8 пунктов по 60px = 480px, «Параметры» и
-            // «Исходящие» вне экрана; панель прокручивается, но пункты не видны. Внутренняя
-            // роль, вне пилотного пути; когда навигацию сократят, признак убирается.
-            testInfo.annotations.push({
-              type: 'известное: навигация вне экрана',
-              description: clipped.join('; '),
-            });
-            // Ровно известный набор: и починка (пусто), и ухудшение (больше пунктов) краснят тест.
-            expect(
-              clipped.map((item) => item.split(':')[0]),
-              'вне экрана должны быть ровно известные пункты',
-            ).toEqual(['Параметры', 'Исходящие']);
-          } else {
-            expect(clipped, `пункты навигации вне экрана на ${width}px`).toEqual([]);
-          }
+          expect(clipped, `пункты навигации вне экрана на ${width}px`).toEqual([]);
+
+          // Подпись пункта — одна строка. Раньше размер шрифта подписи терялся
+          // (tailwind-merge выбрасывал text-micro), и «Сообщения», «Настройки»
+          // рвались посреди слова на две строки.
+          const wrapped = await page.evaluate(() =>
+            [...document.querySelectorAll('nav a, nav button')]
+              .filter((el) => el.getBoundingClientRect().width > 0)
+              // Подпись — текстовый span пункта; иконка скрыта aria-hidden, значок — число.
+              .map((el) =>
+                [...el.querySelectorAll('span')].find(
+                  (span) =>
+                    !span.closest('[aria-hidden="true"]') &&
+                    /\p{L}/u.test(span.textContent ?? '') &&
+                    span.children.length === 0,
+                ),
+              )
+              .filter((label): label is HTMLSpanElement => label instanceof HTMLSpanElement)
+              .filter((label) => {
+                const lineHeight = Number.parseFloat(getComputedStyle(label).lineHeight);
+                return label.getBoundingClientRect().height > lineHeight * 1.5;
+              })
+              .map((label) => label.textContent ?? ''),
+          );
+          expect(wrapped, `подписи навигации в две строки на ${width}px`).toEqual([]);
         } finally {
           await context.close();
         }
       });
     }
+  }
+});
+
+test('админ на телефоне: все разделы доступны через «Ещё»', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 375, height: 800 } });
+  const page = await context.newPage();
+  try {
+    await loginAs(page, 'admin@demo.qajet.kz');
+    await page.goto('/admin');
+    const mobileNav = page.getByRole('navigation', { name: 'Разделы' });
+    const more = mobileNav.getByRole('button', { name: 'Ещё' });
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await more.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
+    await mobileNav.getByRole('link', { name: 'Исходящие' }).click();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Исходящие уведомления' }),
+    ).toBeVisible();
+    // Раздел из «Ещё» активен — кнопка «Ещё» показывает, где человек находится.
+    await expect(
+      page.getByRole('navigation', { name: 'Разделы' }).getByRole('button', { name: 'Ещё' }),
+    ).toHaveAttribute('data-active', 'true');
+    // Escape закрывает меню, фокус возвращается на кнопку.
+    const moreAgain = page
+      .getByRole('navigation', { name: 'Разделы' })
+      .getByRole('button', { name: 'Ещё' });
+    await moreAgain.click();
+    await page.keyboard.press('Escape');
+    await expect(moreAgain).toHaveAttribute('aria-expanded', 'false');
+    await expect(moreAgain).toBeFocused();
+  } finally {
+    await context.close();
   }
 });
 

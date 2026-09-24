@@ -88,7 +88,10 @@ export function ConciergeShell({
         НА САМОМ Group ничего не прячет. Прячем через внешний div, до
         которого библиотека не дотягивается.
       */}
-      <div className="-m-6 hidden h-[calc(100%+3rem)] lg:block">
+      {/* Высота колонок — ровно экран под шапкой (h-20): каждая прокручивается
+          сама, а не вся страница целиком. Без этого обе колонки вытягивались на
+          длину списка, и подсказка «Выберите заказ» уезжала за край экрана. */}
+      <div className="-m-6 hidden h-[calc(100dvh-5rem)] lg:block">
         <Group
           orientation="horizontal"
           id="concierge-columns"
@@ -102,7 +105,8 @@ export function ConciergeShell({
           <Separator className="w-px bg-rule transition-colors hover:bg-purple data-[active]:bg-purple" />
           <Panel id="detail" minSize="40%">
             <div className="relative h-full overflow-y-auto bg-page">
-              {detail}
+              {/* Отступ карточки задаёт оболочка — одинаково в обеих раскладках. */}
+              <div className="h-full p-6">{detail}</div>
               {overlayPanel}
             </div>
           </Panel>

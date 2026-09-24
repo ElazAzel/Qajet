@@ -1,7 +1,7 @@
 import { Reveal, Stamp } from '@qajet/ui/motion';
 import Link from 'next/link';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { loadAdminDisputes } from '../../lib/admin-disputes';
+import { disputeAgeLabel, loadAdminDisputes } from '../../lib/admin-disputes';
 import { requireActor } from '../../lib/current-user';
 import { formatDate } from '../../lib/dates';
 
@@ -41,13 +41,17 @@ export default async function AdminDisputesPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">{d.requestTitle}</p>
                     <p className="truncate text-fine text-muted">
-                      {d.buyerCompany} · с{' '}
+                      {d.buyerCompany} · {disputeAgeLabel(d.disputedAt)} (с{' '}
                       {formatDate(d.disputedAt, {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
                       })}
+                      ) · {d.conciergeName ? `ведёт ${d.conciergeName}` : 'консьерж не назначен'}
                     </p>
+                    {d.disputedNote && (
+                      <p className="mt-1 text-fine text-ink">Причина: {d.disputedNote}</p>
+                    )}
                   </div>
                   <Stamp tone="signal" className="shrink-0">
                     Открыт
