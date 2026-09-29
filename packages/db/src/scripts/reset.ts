@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { createDbClient } from '../client.js';
+import { assertDemoDataAllowed, ENVIRONMENT_KIND_KEY, isLocalDatabaseUrl } from '../environment.js';
 import { SEED_ACCOUNTS } from '../seed/accounts.js';
 import { assertSeedEnv, runSeed } from '../seed/run.js';
 
@@ -61,9 +62,12 @@ async function main(): Promise<void> {
       'db:reset: не задан DATABASE_URL. Локально это `supabase start`, в облаке — настройки проекта Supabase.',
     );
   }
-  if (process.env.NODE_ENV === 'production' && !process.argv.includes('--force')) {
+  // По хосту, а не только по NODE_ENV: из локальной консоли с DATABASE_URL
+  // облачной базы NODE_ENV не выставлен, и прежняя проверка не срабатывала.
+  const remote = process.env.NODE_ENV === 'production' || !isLocalDatabaseUrl(databaseUrl);
+  if (remote && !process.argv.includes('--force')) {
     throw new Error(
-      'db:reset: NODE_ENV=production. Это удаление всех данных — повторите с --force, если действительно этого хотите.',
+      'db:reset: база не локальная. Это удаление всех данных — повторите с --force, если действительно этого хотите.',
     );
   }
 
@@ -74,6 +78,11 @@ async function main(): Promise<void> {
   assertSeedEnv();
 
   const db = createDbClient(databaseUrl);
+  // Клиентское окружение не сбрасывается даже с --force: метку снимают руками.
+  const [environmentKind] = await db.execute<{ value: unknown }>(
+    sql`select value from settings where key = ${ENVIRONMENT_KIND_KEY}`,
+  );
+  assertDemoDataAllowed(environmentKind?.value, 'db:reset');
   const keepEmails = SEED_ACCOUNTS.map((a) => a.email);
 
   console.log('Сношу демо-данные…');
