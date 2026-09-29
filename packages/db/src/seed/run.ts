@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { and, eq, inArray } from 'drizzle-orm';
 import { createDbClient } from '../client.js';
+import { assertDemoDataAllowed, ENVIRONMENT_KIND_KEY } from '../environment.js';
 import * as schema from '../schema/index.js';
 import { SEED_ACCOUNTS } from './accounts.js';
 import { DEMO_ORDER_REQUEST_TITLE, generateSeedDataset } from './generator.js';
@@ -54,6 +55,13 @@ export async function runSeed(): Promise<void> {
 
   const db = createDbClient(databaseUrl as string);
 
+  const [environmentKind] = await db
+    .select({ value: schema.settings.value })
+    .from(schema.settings)
+    .where(eq(schema.settings.key, ENVIRONMENT_KIND_KEY))
+    .limit(1);
+  assertDemoDataAllowed(environmentKind?.value, 'db:seed');
+
   const [existingDemoRequest] = await db
     .select({ id: schema.requests.id })
     .from(schema.requests)
@@ -77,6 +85,13 @@ export async function runSeed(): Promise<void> {
   const accountsByEmail = Object.fromEntries(existingUsers.map((u) => [u.email, u.id]));
   const buyerUser = existingUsers.find((u) => u.email === 'buyer@demo.qajet.kz');
   const supplierUser = existingUsers.find((u) => u.email === 'supplier@demo.qajet.kz');
+  const [supplierCompany] = supplierUser?.companyId
+    ? await db
+        .select({ bin: schema.companies.bin })
+        .from(schema.companies)
+        .where(eq(schema.companies.id, supplierUser.companyId))
+        .limit(1)
+    : [];
 
   const referenceDateIso = new Date().toISOString().slice(0, 10);
   console.log(`Генерирую сид детерминированно (seed=1, дата отсчёта ${referenceDateIso})…`);
@@ -85,7 +100,9 @@ export async function runSeed(): Promise<void> {
     referenceDateIso,
     existing: {
       ...(buyerUser?.companyId ? { buyerCompanyId: buyerUser.companyId } : {}),
-      ...(supplierUser?.companyId ? { supplierCompanyId: supplierUser.companyId } : {}),
+      ...(supplierUser?.companyId
+        ? { supplierCompanyId: supplierUser.companyId, supplierCompanyBin: supplierCompany?.bin }
+        : {}),
       accountsByEmail,
     },
   });

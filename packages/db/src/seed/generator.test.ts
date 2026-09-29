@@ -195,6 +195,33 @@ describe('generateSeedDataset', () => {
     // Все заявки покупателя ссылаются на переданный id, а не на новый сгенерированный.
     expect(dataset.requests.every((r) => r.buyerCompanyId === existingBuyerCompanyId)).toBe(true);
   });
+  it('демо-логин поставщика, привязанный к одной из сид-компаний, не дублирует её при пересеве', () => {
+    // Production 2026-09-17: supplier@demo перепривязан к BrandWear Studio, потому что
+    // у исходной компании логина не было ни одного RFQ. Пересев обязан узнать её по
+    // БИН, а не навесить на неё профиль printcraft-kz и создать второй «BrandWear Studio».
+    const existingSupplierCompanyId = 'aaaaaaaa-0000-0000-0000-000000000009';
+    const dataset = generateSeedDataset({
+      ...PARAMS,
+      existing: {
+        supplierCompanyId: existingSupplierCompanyId,
+        supplierCompanyBin: '900540000033',
+      },
+    });
+
+    expect(dataset.companies.filter((c) => c.bin === '900540000033')).toHaveLength(0);
+    expect(dataset.companies.some((c) => c.bin === '900540000011')).toBe(true);
+
+    const profile = dataset.supplierProfiles.find((p) => p.companyId === existingSupplierCompanyId);
+    expect(profile?.capabilities).toEqual(expect.arrayContaining(['embroidery']));
+    expect(
+      dataset.supplierProfiles.filter((p) => p.companyId === existingSupplierCompanyId),
+    ).toHaveLength(1);
+
+    const supplierAccount = dataset.accounts.find((a) => a.seedKey === 'demo-supplier');
+    expect(supplierAccount?.companyId).toBe(existingSupplierCompanyId);
+    expect(dataset.rfqs.some((r) => r.supplierCompanyId === existingSupplierCompanyId)).toBe(true);
+  });
+
   it('пишет учёт времени только для консьержа и по всем стадиям §9, с падающим трендом', () => {
     const dataset = generateSeedDataset(PARAMS);
     const conciergeUserId = dataset.accounts.find((a) => a.seedKey === 'demo-concierge')?.userId;

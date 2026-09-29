@@ -23,6 +23,15 @@ import {
   SEED_SUPPLIER_COMPANIES,
 } from './accounts.js';
 import { type CatalogItem, catalogInCategory, SEED_CATALOG } from './catalog.js';
+import {
+  CIT_RATE_PCT,
+  COMMISSION_RATE_PCT,
+  LOGISTICS_BUFFER_ALMATY_DAYS,
+  LOGISTICS_BUFFER_INTERCITY_DAYS,
+  LOGISTICS_DELIVERY_INTERCITY_KZT,
+  LOGISTICS_DELIVERY_LOCAL_KZT,
+  OPERATIONAL_SETTINGS,
+} from './operational-settings.js';
 import { createRng, pickMany, randInt } from './random.js';
 import type { SeedCategory } from './suppliers.js';
 
@@ -69,12 +78,6 @@ const ACTIVE_MINUTES_BY_TIME_ENTRY_STAGE: Record<TimeEntryStage, number> = {
  */
 const ACTIVE_TIME_LEARNING_DROP = 0.45;
 
-/** Плейсхолдер до решения по тарифам (agents.md §17: "финальный процент комиссии — параметр, не константа"). */
-const COMMISSION_RATE_PCT = 23;
-/** Ставка КПН РК, 2026 (agents.md §11.4). */
-const CIT_RATE_PCT = 20;
-/** Стоимость часа закупщика (agents.md §9) — параметр экономики, правится админом вживую. */
-const PROCUREMENT_HOUR_COST_KZT = 4500;
 /**
  * Заголовок заявки демо-заказа §13 — единственный устойчивый признак, по
  * которому его можно отличить от боевых заказов. Экспортируется, потому что
@@ -83,10 +86,6 @@ const PROCUREMENT_HOUR_COST_KZT = 4500;
  * живую заявку вместе со всем, что на неё каскадом завязано.
  */
 export const DEMO_ORDER_REQUEST_TITLE = 'Демо: мерч к корпоративному мероприятию';
-const LOGISTICS_BUFFER_ALMATY_DAYS = 1;
-const LOGISTICS_BUFFER_INTERCITY_DAYS = 3;
-const LOGISTICS_DELIVERY_LOCAL_KZT = 5_000;
-const LOGISTICS_DELIVERY_INTERCITY_KZT = 15_000;
 
 /** Те же демо-значения, что settings.qajet_requisites (agents.md §11.3) —
  *  Document Engine подставляет их и в живой счёт/акт, и здесь, в историю сида. */
@@ -249,8 +248,14 @@ export interface SeedDataset {
 export interface ExistingSeedState {
   /** Компания-покупатель уже существует (ручной бутстрап до появления этого генератора) — не дублировать. */
   buyerCompanyId?: string;
-  /** Компания, к которой уже привязан живой supplier@demo.qajet.kz — не одна из 15 генерируемых. */
+  /** Компания, к которой уже привязан живой supplier@demo.qajet.kz. */
   supplierCompanyId?: string;
+  /**
+   * БИН этой компании. Если он совпадает с одной из сид-компаний, пересев
+   * переиспользует её под своим ключом (профиль и история остаются её), а не
+   * под DEMO_SUPPLIER_COMPANY_SEED_KEY — иначе появился бы её дубликат.
+   */
+  supplierCompanyBin?: string | null | undefined;
   /** email → уже существующий auth/public.users id — не создавать аккаунт и не вставлять users-строку заново. */
   accountsByEmail?: Record<string, string>;
 }
@@ -310,20 +315,7 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
   };
 
   dataset.settings.push(
-    { key: 'commission_rate_pct', value: COMMISSION_RATE_PCT },
-    { key: 'commission_base', value: 'supplier_ex_delivery' },
-    { key: 'cit_rate_pct', value: CIT_RATE_PCT },
-    // Стоимость часа закупщика (agents.md §9) — из неё считается полная
-    // стоимость обслуживания заказа и вклад после прямых затрат. Параметра
-    // не было ни в сиде, ни в базе, поэтому метрика не считалась вовсе.
-    { key: 'procurement_hour_cost_kzt', value: PROCUREMENT_HOUR_COST_KZT },
-    { key: 'logistics_buffer_days_almaty', value: LOGISTICS_BUFFER_ALMATY_DAYS },
-    { key: 'logistics_buffer_days_intercity', value: LOGISTICS_BUFFER_INTERCITY_DAYS },
-    { key: 'logistics_delivery_kzt_local', value: LOGISTICS_DELIVERY_LOCAL_KZT },
-    { key: 'logistics_delivery_kzt_intercity', value: LOGISTICS_DELIVERY_INTERCITY_KZT },
-    // Подбор поставщиков под RFQ (agents.md §8C) — apps/web/app/lib/actions/order-actions.ts
-    { key: 'rfq_batch_size_per_item', value: 5 },
-    { key: 'rfq_exploration_every_n', value: 4 },
+    ...OPERATIONAL_SETTINGS,
     // Реквизиты QAJET (agents.md §11.3 «экран подтверждения с реквизитами»)
     // — единственный ключ settings, читаемый и покупателем (RLS-политика
     // settings_select_public_requisites), Document Engine подставляет их
@@ -361,10 +353,15 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
     });
   }
 
+  const demoSupplierSeedKey =
+    SEED_SUPPLIER_COMPANIES.find(
+      ({ supplier }) =>
+        existing?.supplierCompanyBin && supplier.bin === existing.supplierCompanyBin,
+    )?.seedKey ?? DEMO_SUPPLIER_COMPANY_SEED_KEY;
   const supplierCompanyIdBySeedKey = new Map<string, string>();
   for (const { seedKey, supplier } of SEED_SUPPLIER_COMPANIES) {
     const reusedCompanyId =
-      seedKey === DEMO_SUPPLIER_COMPANY_SEED_KEY ? existing?.supplierCompanyId : undefined;
+      seedKey === demoSupplierSeedKey ? existing?.supplierCompanyId : undefined;
     const companyId = reusedCompanyId ?? randomUUID();
     supplierCompanyIdBySeedKey.set(seedKey, companyId);
     if (!reusedCompanyId) {
@@ -402,7 +399,7 @@ export function generateSeedDataset(params: GenerateSeedParams): SeedDataset {
         ? buyerCompanyId
         : account.companySeedKey === 'supplier-company'
           ? (existing?.supplierCompanyId ??
-            supplierCompanyIdBySeedKey.get(DEMO_SUPPLIER_COMPANY_SEED_KEY) ??
+            supplierCompanyIdBySeedKey.get(demoSupplierSeedKey) ??
             null)
           : null;
     if (!existingUserId) {
