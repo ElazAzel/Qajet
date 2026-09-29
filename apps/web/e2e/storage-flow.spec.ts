@@ -341,6 +341,43 @@ test.describe('загрузка: недопустимое отбраковыва
     }
   });
 
+  // Vercel отрезает тело запроса к функции на ~4,5 МБ (413 FUNCTION_PAYLOAD_TOO_LARGE,
+  // воспроизведено на production 2026-09-29). Локальный Next такого лимита не имеет,
+  // поэтому проверяется сам инвариант: байты файла идут прямо в Storage, а ни один
+  // запрос к приложению не несёт тело больше 1 МБ.
+  test('файл 6 МБ загружается напрямую в Storage, мимо функции приложения', async ({ browser }) => {
+    const name = `E2E-${RUN_ID}-6mb.txt`;
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const appOrigin = new URL(process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000').origin;
+    let largestAppBody = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).origin !== appOrigin) return;
+      largestAppBody = Math.max(largestAppBody, request.postDataBuffer()?.length ?? 0);
+    });
+    try {
+      await loginAs(page, 'supplier@demo.qajet.kz');
+      await page.goto('/supplier/messages');
+      await page.locator('a[href*="thread="]').first().click();
+      await page.waitForURL(/thread=/);
+      await page
+        .locator('input[type=file]')
+        .first()
+        .setInputFiles({
+          name,
+          mimeType: 'text/plain',
+          buffer: Buffer.alloc(6 * 1024 * 1024, 'a'),
+        });
+      await page.getByRole('button', { name: 'Прикрепить', exact: true }).first().click();
+      await expect(page.getByRole('link', { name, exact: true }).first()).toBeVisible();
+      expect(largestAppBody, 'файл не должен проходить через функцию приложения').toBeLessThan(
+        1024 * 1024,
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
   test('файл 12 МБ отклоняется сообщением на странице, а не молча (проверка в форме)', async ({
     browser,
   }) => {

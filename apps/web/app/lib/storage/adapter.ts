@@ -16,8 +16,21 @@ export const ALLOWED_ATTACHMENT_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 
+/** Разовое право браузера положить один объект прямо в Storage. */
+export interface UploadGrant {
+  path: string;
+  token: string;
+}
+
+/** Что Storage реально хранит — не то, что заявил браузер. */
+export interface StoredObject {
+  size: number;
+  contentType: string;
+}
+
 export interface StorageAdapter {
-  put(objectKey: string, file: Blob, contentType: string): Promise<void>;
+  createUploadGrant(objectKey: string): Promise<UploadGrant>;
+  stat(objectKey: string): Promise<StoredObject | null>;
   getDownloadUrl(
     objectKey: string,
     expiresInSeconds?: number,
@@ -32,13 +45,23 @@ export class SupabaseStorageAdapter implements StorageAdapter {
     private readonly bucket = STORAGE_BUCKET,
   ) {}
 
-  async put(objectKey: string, file: Blob, contentType: string): Promise<void> {
-    const { error } = await this.client.storage.from(this.bucket).upload(objectKey, file, {
-      contentType,
-      cacheControl: 'private, max-age=0',
-      upsert: false,
-    });
-    if (error) throw new Error(error.message);
+  /**
+   * Файл идёт из браузера прямо в Storage, мимо функции приложения: Vercel
+   * отрезает тело запроса к функции на ~4,5 МБ, а вложение бывает до 10 МБ.
+   * Лимит размера и список типов Storage проверяет сам (настройки бакета).
+   */
+  async createUploadGrant(objectKey: string): Promise<UploadGrant> {
+    const { data, error } = await this.client.storage
+      .from(this.bucket)
+      .createSignedUploadUrl(objectKey);
+    if (error || !data) throw new Error(error?.message ?? 'Не удалось выдать право на загрузку');
+    return { path: data.path, token: data.token };
+  }
+
+  async stat(objectKey: string): Promise<StoredObject | null> {
+    const { data, error } = await this.client.storage.from(this.bucket).info(objectKey);
+    if (error || !data) return null;
+    return { size: data.size ?? 0, contentType: data.contentType ?? '' };
   }
 
   /**
