@@ -36,13 +36,18 @@ async function approvePlan(tx: postgres.TransactionSql, orderId: string) {
     await tx<{ id: string; version: number }[]>`
       select p.id, p.version
       from orders o
-      join plans p on p.id = o.approved_plan_id
+      join lateral public.get_buyer_plans(ARRAY[o.request_id]) p on p.id = o.approved_plan_id
       where o.id = ${orderId}
     `
   )[0];
   if (!plan) throw new Error('Тестовая фикстура не содержит план заказа.');
+  // Approval returns no backing row. Assert its result through the buyer DTO,
+  // under the same buyer role rather than resetting RLS for the assertion.
+  await tx`select approve_plan(${orderId}, ${plan.id}, ${plan.version})`;
   return tx<{ id: string; status: string }[]>`
-    select * from approve_plan(${orderId}, ${plan.id}, ${plan.version})
+    select p.id, p.status from orders o
+    join lateral public.get_buyer_plans(ARRAY[o.request_id]) p on p.id = o.approved_plan_id
+    where o.id = ${orderId}
   `;
 }
 

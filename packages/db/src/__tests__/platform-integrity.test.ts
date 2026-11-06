@@ -121,7 +121,7 @@ async function approvePlan(tx: postgres.TransactionSql, orderId: string) {
     await tx<{ id: string; version: number }[]>`
       select p.id, p.version
       from orders o
-      join plans p on p.id = o.approved_plan_id
+      join lateral public.get_buyer_plans(ARRAY[o.request_id]) p on p.id = o.approved_plan_id
       where o.id = ${orderId}
     `
   )[0];
@@ -294,7 +294,11 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe(
         'awaiting_internal_approval',
       );
-      expect((await tx`select status from plans where id = ${f[10]}`)[0]?.status).toBe('proposed');
+      expect(
+        (
+          await tx`select status from public.get_buyer_plans(ARRAY[${f[5]}]::uuid[]) where id = ${f[10]}`
+        )[0]?.status,
+      ).toBe('proposed');
     }));
   it('revoked approval permission still blocks the atomic RPC', async () =>
     scenario(async (tx, f) => {
@@ -305,7 +309,11 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       expect((await tx`select state from orders where id = ${f[11]}`)[0]?.state).toBe(
         'plan_proposed',
       );
-      expect((await tx`select status from plans where id = ${f[10]}`)[0]?.status).toBe('proposed');
+      expect(
+        (
+          await tx`select status from public.get_buyer_plans(ARRAY[${f[5]}]::uuid[]) where id = ${f[10]}`
+        )[0]?.status,
+      ).toBe('proposed');
     }));
   it('approved plans can be superseded without unlocking their terms', async () =>
     scenario(async (tx, f) => {

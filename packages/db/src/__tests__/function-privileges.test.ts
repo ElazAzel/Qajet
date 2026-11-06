@@ -124,6 +124,7 @@ describeIfConfigured('права на SECURITY DEFINER функции схемы
     const rows = await load();
     for (const name of [
       'approve_plan',
+      'get_buyer_plans',
       'select_order_plan',
       'confirm_supplier_delivery',
       'current_company_id',

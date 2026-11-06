@@ -3,6 +3,18 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 type Row = Record<string, unknown>;
 export function database(tables: Record<string, Row[]>, failTable?: string) {
   return {
+    // Model the DTO transport only. Authorization is covered by PostgreSQL tests.
+    rpc(name: string, args: { p_request_ids: string[] }) {
+      if (name !== 'get_buyer_plans') throw new Error(`Unexpected fixture RPC: ${name}`);
+      return database(
+        { buyer_plans: tables.plans ?? [] },
+        failTable === 'get_buyer_plans' ? 'buyer_plans' : undefined,
+      )
+        .from('buyer_plans')
+        .select('*')
+        .in('request_id', args.p_request_ids)
+        .in('status', ['draft', 'proposed', 'approved']);
+    },
     from(table: string) {
       const filters: Array<(row: Row) => boolean> = [];
       const orders: Array<[string, boolean]> = [];

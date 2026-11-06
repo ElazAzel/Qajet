@@ -521,11 +521,13 @@ export const plans = pgTable(
       sql`${t.totalSupplierKzt} >= 0 and ${t.deliveryKzt} >= 0 and ${t.commissionKzt} >= 0 and ${t.taxEffectKzt} >= 0 and ${t.supplierRebateKzt} >= 0 and ${t.totalKzt} >= 0`,
     ),
     index('plans_request_id_idx').on(t.requestId),
+    // Buyer price/date reads use get_buyer_plans; raw financial components and
+    // explanation JSON are staff-only (product specification section 7).
     pgPolicy('plans_select_via_request', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: visibleToBuyerOrStaff(t.requestId),
+      using: staffOnly,
     }),
     // Пишет только движок сравнения через packages/engine order/transition() —
     // agents.md §6: единственная функция переходов, прямых update из UI нет.

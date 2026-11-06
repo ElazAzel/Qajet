@@ -428,6 +428,13 @@
       "when": 1793948952134,
       "tag": "0060_outbox_owner_invite_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793949940666,
+      "tag": "0061_buyer_plan_confidentiality",
+      "breakpoints": true
     }
   ]
 }
