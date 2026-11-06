@@ -42,13 +42,16 @@ async function inRolledBackTransaction(run: (tx: postgres.TransactionSql) => Pro
 
 describeIfConfigured('клиентское окружение', () => {
   it('демо-база распознаётся как непригодная для клиентов', async () => {
-    const sql = postgres(databaseUrl as string, { max: 1, prepare: false });
-    try {
-      const reasons = await findDemoData(sql);
+    await inRolledBackTransaction(async (tx) => {
+      const userId = crypto.randomUUID();
+      await tx`insert into auth.users (id, email)
+        values (${userId}, ${`E2E-client-env-demo-${userId}@example.test`})`;
+      // Own rollback-only row; existing demo profiles are never changed.
+      await tx`insert into public.users (id, company_id, email, full_name, role, is_active)
+        values (${userId}, null, 'admin@demo.qajet.kz', 'E2E client-env demo marker', 'admin', true)`;
+      const reasons = await findDemoData(tx);
       expect(reasons.join('; ')).toMatch(/демо-аккаунты/);
-    } finally {
-      await sql.end();
-    }
+    });
   });
 
   it('пишет настройки, реальные реквизиты, метку и админа; после метки демо-операции запрещены', async () => {
