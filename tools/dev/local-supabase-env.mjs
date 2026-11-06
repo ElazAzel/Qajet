@@ -40,7 +40,7 @@ for (const [command, prefix] of candidates) {
   });
   if (status.status === 0) break;
 }
-if (!status || status.status !== 0) {
+if (status?.status !== 0) {
   console.error(
     'local-supabase-env: `supabase status` не вернул параметры. Запустите `supabase start`.',
   );

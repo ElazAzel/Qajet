@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 // Source contracts only. These do not replace PostgreSQL authorization tests.
@@ -9,9 +9,11 @@ const definitions = readdirSync(migrations)
   .sort()
   .flatMap((name) => {
     const sql = readFileSync(new URL(name, migrations), 'utf8');
-    return [...sql.matchAll(
-      /CREATE OR REPLACE FUNCTION public\.request_supplier_quote_revision\([\s\S]*?\$\$;/g,
-    )].map(([definition]) => ({ name, definition, sql }));
+    return [
+      ...sql.matchAll(
+        /CREATE OR REPLACE FUNCTION public\.request_supplier_quote_revision\([\s\S]*?\$\$;/g,
+      ),
+    ].map(([definition]) => ({ name, definition, sql }));
   });
 const latest = definitions.at(-1);
 

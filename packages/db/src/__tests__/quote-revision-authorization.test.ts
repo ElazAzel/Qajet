@@ -128,8 +128,8 @@ describeIfConfigured('request_supplier_quote_revision: fail-closed authorization
         expect(identity?.id).toBe(world.actors[actor]);
         expect(identity?.role).toBeNull();
         await expect(
-          tx.savepoint((sp) =>
-            sp`select public.request_supplier_quote_revision(${world.rfq}, ${note})`,
+          tx.savepoint(
+            (sp) => sp`select public.request_supplier_quote_revision(${world.rfq}, ${note})`,
           ),
         ).rejects.toThrow(denial);
         expect(await state(tx, world.rfq)).toEqual(before);
@@ -144,8 +144,8 @@ describeIfConfigured('request_supplier_quote_revision: fail-closed authorization
         const before = await state(tx, world.rfq);
         await asActor(tx, world.actors[actor]);
         await expect(
-          tx.savepoint((sp) =>
-            sp`select public.request_supplier_quote_revision(${world.rfq}, ${note})`,
+          tx.savepoint(
+            (sp) => sp`select public.request_supplier_quote_revision(${world.rfq}, ${note})`,
           ),
         ).rejects.toThrow(denial);
         expect(await state(tx, world.rfq)).toEqual(before);
@@ -160,8 +160,8 @@ describeIfConfigured('request_supplier_quote_revision: fail-closed authorization
       const [identity] = await tx`select auth.uid() as id`;
       expect(identity?.id).toBeNull();
       await expect(
-        tx.savepoint((sp) =>
-          sp`select public.request_supplier_quote_revision(${world.rfq}, ${note})`,
+        tx.savepoint(
+          (sp) => sp`select public.request_supplier_quote_revision(${world.rfq}, ${note})`,
         ),
       ).rejects.toThrow(denial);
       expect(await state(tx, world.rfq)).toEqual(before);
@@ -174,8 +174,8 @@ describeIfConfigured('request_supplier_quote_revision: fail-closed authorization
       await asActor(tx, null);
       await tx`set local role anon`;
       await expect(
-        tx.savepoint((sp) =>
-          sp`select public.request_supplier_quote_revision(${world.rfq}, ${note})`,
+        tx.savepoint(
+          (sp) => sp`select public.request_supplier_quote_revision(${world.rfq}, ${note})`,
         ),
       ).rejects.toThrow(/permission denied/);
       expect(await state(tx, world.rfq)).toEqual(before);
