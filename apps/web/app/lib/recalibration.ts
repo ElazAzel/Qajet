@@ -11,28 +11,14 @@ import {
 import { DEFAULT_WEIGHTS, type MatchWeights, type ScoringFeatures } from '@qajet/engine/match';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { appendEstimatorError, itemKeyForEstimator } from './estimator-recalibration';
+import { checkedLearningQuery } from './learning/query';
 
 /**
- * Замыкание контура обучения (agents.md §8G, §14 шаг 10) — вызывается из
- * order-actions.ts в момент нужного перехода стадии заказа. Комментарий в
- * order-actions.ts (createRfqsForOrder) прежде явно документировал этот
- * пробел («ничто в apps/web пока не пишет туда снапшоты... и не читает
- * последний перед скорингом») — этот файл его закрывает: пишет
- * `model_snapshots`, которые тот же `createRfqsForOrder` теперь читает
- * перед скорингом (см. правку там).
- *
- * Честно про охват: обе записи идут через RLS-сессию текущего актёра
- * (`model_snapshots_insert_staff` — staffOnly), а не `service_role` —
- * тот же принцип «без service_role», что и весь остальной жизненный цикл
- * заказа (ADR-0006). Переход shipped→delivered в packages/engine/order/
- * transition.ts выполняет поставщик, поэтому доступ к общей таблице
- * model_snapshots не расширяется до supplier-сессии. При staff-закрытии
- * история уже содержит supplier-confirmed delivered event и надёжность по
- * сроку пересчитывается безопасно staff-сессией. Переход к closed (веса матчера)
- * может совершить и покупатель (BUYER_OR_STAFF) — вызывающий код в
- * order-actions.ts поэтому пробует запись весов только когда актёр staff;
- * для остальных закрытий обучение просто смещается по времени до
- * следующего staff-инициированного перехода той же заявки, а не теряется.
+ * Learning recalibration is run by the leased learning dispatcher with its
+ * server-only client. Successful empty history remains a no-op, but every
+ * failed read/write must reject so the dispatcher does not mark it complete.
+ * Snapshot writes are not atomic with event completion: partial retries can
+ * still repeat an earlier model update.
  */
 
 const LEADTIME_MODEL = 'leadtime' as const;
@@ -55,20 +41,26 @@ export async function recalibrateLeadTimeForSupplier(
   supabase: SupabaseClient,
   supplierId: string,
 ): Promise<void> {
-  const { data: pastOrders } = await supabase
-    .from('orders')
-    .select('id, approved_plan_id')
-    .in('state', ['delivered', 'accepted', 'closed']);
+  const { data: pastOrders } = await checkedLearningQuery(
+    supabase
+      .from('orders')
+      .select('id, approved_plan_id')
+      .in('state', ['delivered', 'accepted', 'closed']),
+    'learning.leadtime.orders',
+  );
   const planIds = (pastOrders ?? [])
     .map((o) => o.approved_plan_id)
     .filter((id): id is string => id !== null);
   if (planIds.length === 0) return;
 
-  const { data: lines } = await supabase
-    .from('plan_lines')
-    .select('plan_id, quote_line_id, supplier_company_id')
-    .eq('supplier_company_id', supplierId)
-    .in('plan_id', planIds);
+  const { data: lines } = await checkedLearningQuery(
+    supabase
+      .from('plan_lines')
+      .select('plan_id, quote_line_id, supplier_company_id')
+      .eq('supplier_company_id', supplierId)
+      .in('plan_id', planIds),
+    'learning.leadtime.lines',
+  );
   if (!lines || lines.length === 0) return;
 
   const orderIdByPlanId = new Map(
@@ -77,10 +69,10 @@ export async function recalibrateLeadTimeForSupplier(
       .map((o) => [o.approved_plan_id as string, o.id as string]),
   );
   const quoteLineIds = lines.map((l) => l.quote_line_id);
-  const { data: quoteLines } = await supabase
-    .from('quote_lines')
-    .select('id, lead_time_days')
-    .in('id', quoteLineIds);
+  const { data: quoteLines } = await checkedLearningQuery(
+    supabase.from('quote_lines').select('id, lead_time_days').in('id', quoteLineIds),
+    'learning.leadtime.quotes',
+  );
   const declaredDaysByQuoteLineId = new Map(
     (quoteLines ?? []).map((q) => [q.id as string, q.lead_time_days as number]),
   );
@@ -93,11 +85,14 @@ export async function recalibrateLeadTimeForSupplier(
     ),
   ];
   const { data: events } = relevantOrderIds.length
-    ? await supabase
-        .from('order_stage_events')
-        .select('order_id, to_state, at')
-        .in('order_id', relevantOrderIds)
-        .in('to_state', ['suppliers_paid', 'in_production', 'delivered'])
+    ? await checkedLearningQuery(
+        supabase
+          .from('order_stage_events')
+          .select('order_id, to_state, at')
+          .in('order_id', relevantOrderIds)
+          .in('to_state', ['suppliers_paid', 'in_production', 'delivered']),
+        'learning.leadtime.events',
+      )
     : { data: [] };
   const executionStartedAtByOrder = new Map<string, number>();
   const deliveredAtByOrder = new Map<string, number>();
@@ -116,10 +111,13 @@ export async function recalibrateLeadTimeForSupplier(
   // event remains a compatibility fallback for historical/demo rows created
   // before that table existed.
   const { data: deliveryRows } = relevantOrderIds.length
-    ? await supabase
-        .from('order_supplier_deliveries')
-        .select('order_id, supplier_company_id, confirmed_at')
-        .in('order_id', relevantOrderIds)
+    ? await checkedLearningQuery(
+        supabase
+          .from('order_supplier_deliveries')
+          .select('order_id, supplier_company_id, confirmed_at')
+          .in('order_id', relevantOrderIds),
+        'learning.leadtime.deliveries',
+      )
     : { data: [] };
   const deliveredAtBySupplierOrder = new Map<string, number>();
   for (const row of deliveryRows ?? []) {
@@ -145,24 +143,30 @@ export async function recalibrateLeadTimeForSupplier(
 
   const reliability = calculateSupplierReliability(history);
 
-  const { data: latestSnapshot } = await supabase
-    .from('model_snapshots')
-    .select('params')
-    .eq('model', LEADTIME_MODEL)
-    .order('trained_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: latestSnapshot } = await checkedLearningQuery(
+    supabase
+      .from('model_snapshots')
+      .select('params')
+      .eq('model', LEADTIME_MODEL)
+      .order('trained_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    'learning.leadtime.snapshot_read',
+  );
   const previousBySupplier = (
     (latestSnapshot?.params as { bySupplier?: BySupplierEntry[] } | null)?.bySupplier ?? []
   ).filter((s) => s.supplierId !== supplierId);
   const bySupplier = [...previousBySupplier, { supplierId, kShrunk: reliability.kShrunk }];
 
-  await supabase.from('model_snapshots').insert({
-    model: LEADTIME_MODEL,
-    params: { bySupplier },
-    metrics: { nSuppliersWithHistory: bySupplier.length },
-    n_samples: history.length,
-  });
+  await checkedLearningQuery(
+    supabase.from('model_snapshots').insert({
+      model: LEADTIME_MODEL,
+      params: { bySupplier },
+      metrics: { nSuppliersWithHistory: bySupplier.length },
+      n_samples: history.length,
+    }),
+    'learning.leadtime.snapshot_write',
+  );
 }
 
 /**
@@ -181,13 +185,16 @@ export async function loadSupplierReliabilityMap(
   const map = new Map<string, number>();
   if (supplierIds.length === 0) return map;
 
-  const { data: latestSnapshot } = await supabase
-    .from('model_snapshots')
-    .select('params')
-    .eq('model', LEADTIME_MODEL)
-    .order('trained_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: latestSnapshot } = await checkedLearningQuery(
+    supabase
+      .from('model_snapshots')
+      .select('params')
+      .eq('model', LEADTIME_MODEL)
+      .order('trained_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    'learning.reliability.snapshot_read',
+  );
   const bySupplier =
     (latestSnapshot?.params as { bySupplier?: BySupplierEntry[] } | null)?.bySupplier ?? [];
   for (const entry of bySupplier) {
@@ -214,10 +221,13 @@ export async function recalibrateMatcherForOrder(
 ): Promise<void> {
   if (!order.approvedPlanId) return;
 
-  const { data: rfqRows } = await supabase
-    .from('rfqs')
-    .select('supplier_company_id, selection_reason')
-    .eq('request_id', order.requestId);
+  const { data: rfqRows } = await checkedLearningQuery(
+    supabase
+      .from('rfqs')
+      .select('supplier_company_id, selection_reason')
+      .eq('request_id', order.requestId),
+    'learning.matcher.rfqs',
+  );
   const withFeatures = (rfqRows ?? [])
     .map((r) => ({
       supplierId: r.supplier_company_id as string,
@@ -226,10 +236,10 @@ export async function recalibrateMatcherForOrder(
     .filter((r): r is { supplierId: string; features: ScoringFeatures } => !!r.features);
   if (withFeatures.length === 0) return;
 
-  const { data: winningLines } = await supabase
-    .from('plan_lines')
-    .select('supplier_company_id')
-    .eq('plan_id', order.approvedPlanId);
+  const { data: winningLines } = await checkedLearningQuery(
+    supabase.from('plan_lines').select('supplier_company_id').eq('plan_id', order.approvedPlanId),
+    'learning.matcher.winners',
+  );
   const winners = new Set((winningLines ?? []).map((l) => l.supplier_company_id));
 
   const outcomes: MatchOutcome[] = withFeatures.map((o) => ({
@@ -237,24 +247,30 @@ export async function recalibrateMatcherForOrder(
     target: winners.has(o.supplierId) ? 1 : 0,
   }));
 
-  const { data: latestSnapshot } = await supabase
-    .from('model_snapshots')
-    .select('params')
-    .eq('model', MATCHER_MODEL)
-    .order('trained_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: latestSnapshot } = await checkedLearningQuery(
+    supabase
+      .from('model_snapshots')
+      .select('params')
+      .eq('model', MATCHER_MODEL)
+      .order('trained_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    'learning.matcher.snapshot_read',
+  );
   const startingWeights =
     (latestSnapshot?.params as { weights?: MatchWeights } | null)?.weights ?? DEFAULT_WEIGHTS;
 
   const result = recalibrateMatchWeights(outcomes, startingWeights);
 
-  await supabase.from('model_snapshots').insert({
-    model: MATCHER_MODEL,
-    params: { weights: result.weights },
-    metrics: { nSamples: result.nSamples },
-    n_samples: result.nSamples,
-  });
+  await checkedLearningQuery(
+    supabase.from('model_snapshots').insert({
+      model: MATCHER_MODEL,
+      params: { weights: result.weights },
+      metrics: { nSamples: result.nSamples },
+      n_samples: result.nSamples,
+    }),
+    'learning.matcher.snapshot_write',
+  );
 }
 
 /**
@@ -276,11 +292,14 @@ export async function recalibrateEstimatorForOrder(
   supabase: SupabaseClient,
   orderId: string,
 ): Promise<void> {
-  const { data: order } = await supabase
-    .from('orders')
-    .select('request_id, final_cost_kzt, approved_plan_id')
-    .eq('id', orderId)
-    .maybeSingle();
+  const { data: order } = await checkedLearningQuery(
+    supabase
+      .from('orders')
+      .select('request_id, final_cost_kzt, approved_plan_id')
+      .eq('id', orderId)
+      .maybeSingle(),
+    'learning.estimator.order',
+  );
   if (
     order?.final_cost_kzt === null ||
     order?.final_cost_kzt === undefined ||
@@ -292,30 +311,36 @@ export async function recalibrateEstimatorForOrder(
   // Оценка против факта — относительная ошибка этого заказа. Сравнение
   // продукт-к-продукту: p50 покрывает только товар, а final_cost включает
   // доставку и комиссию, поэтому берётся plan.total_supplier_kzt.
-  const { data: estimate } = await supabase
-    .from('estimates')
-    .select('p50_kzt, request_id')
-    .eq('request_id', order.request_id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: estimate } = await checkedLearningQuery(
+    supabase
+      .from('estimates')
+      .select('p50_kzt, request_id')
+      .eq('request_id', order.request_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    'learning.estimator.estimate',
+  );
   if (!estimate?.p50_kzt) return;
 
-  const { data: items } = await supabase
-    .from('request_items')
-    .select('category, specs')
-    .eq('request_id', order.request_id);
+  const { data: items } = await checkedLearningQuery(
+    supabase.from('request_items').select('category, specs').eq('request_id', order.request_id),
+    'learning.estimator.items',
+  );
   const categories = (items ?? []).map((item) => itemKeyForEstimator(item.specs, item.category));
   const uniqueCategories = [...new Set(categories)];
   if (uniqueCategories.length === 0) return;
 
-  const { data: snapshot } = await supabase
-    .from('model_snapshots')
-    .select('params, metrics')
-    .eq('model', 'estimator')
-    .order('trained_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: snapshot } = await checkedLearningQuery(
+    supabase
+      .from('model_snapshots')
+      .select('params, metrics')
+      .eq('model', 'estimator')
+      .order('trained_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    'learning.estimator.snapshot_read',
+  );
 
   const previous = snapshot?.metrics as
     | {
@@ -327,11 +352,14 @@ export async function recalibrateEstimatorForOrder(
       }
     | undefined;
 
-  const { data: plan } = await supabase
-    .from('plans')
-    .select('total_supplier_kzt')
-    .eq('id', order.approved_plan_id)
-    .maybeSingle();
+  const { data: plan } = await checkedLearningQuery(
+    supabase
+      .from('plans')
+      .select('total_supplier_kzt')
+      .eq('id', order.approved_plan_id)
+      .maybeSingle(),
+    'learning.estimator.plan',
+  );
   if (!plan?.total_supplier_kzt) return;
 
   const relativeError = (plan.total_supplier_kzt - estimate.p50_kzt) / estimate.p50_kzt;
@@ -348,10 +376,10 @@ export async function recalibrateEstimatorForOrder(
   );
   const observationRows = await Promise.all(
     uniqueCategories.map(async (category) => {
-      const { data } = await supabase
-        .from('price_observations')
-        .select('qty, unit_price_kzt')
-        .eq('item_key', category);
+      const { data } = await checkedLearningQuery(
+        supabase.from('price_observations').select('qty, unit_price_kzt').eq('item_key', category),
+        'learning.estimator.observations',
+      );
       return [
         category,
         (data ?? []).map((observation) => ({
@@ -396,11 +424,14 @@ export async function recalibrateEstimatorForOrder(
   ];
   const nSamples = byCategory.reduce((sum, entry) => sum + (entry.nSamples ?? 0), 0);
 
-  await supabase.from('model_snapshots').insert({
-    model: 'estimator',
-    params: { byCategory: paramsByCategory },
-    metrics: { byCategory },
-    trained_at: new Date().toISOString(),
-    n_samples: nSamples,
-  });
+  await checkedLearningQuery(
+    supabase.from('model_snapshots').insert({
+      model: 'estimator',
+      params: { byCategory: paramsByCategory },
+      metrics: { byCategory },
+      trained_at: new Date().toISOString(),
+      n_samples: nSamples,
+    }),
+    'learning.estimator.snapshot_write',
+  );
 }
