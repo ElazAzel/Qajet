@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { checkedQuery, readInBatches, readQueryRows } from './data/query-rows';
 
 /**
  * Данные для /metrics (agents.md §9) — юнит-экономика на реальных данных
@@ -60,10 +61,10 @@ const CONVERTED_ORDER_STATES = new Set([
 const ACCEPTED_ORDER_STATES = new Set(['accepted', 'closed']);
 
 export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData> {
-  const { data: rfqRows } = await supabase.from('rfqs').select('request_id');
-  const { data: orderRows } = await supabase
-    .from('orders')
-    .select('request_id, state, final_cost_kzt, approved_plan_id');
+  const rfqRows = await readQueryRows(() => supabase.from('rfqs').select('id, request_id'));
+  const orderRows = await readQueryRows(() =>
+    supabase.from('orders').select('id, request_id, state, final_cost_kzt, approved_plan_id'),
+  );
 
   const orderByRequestId = new Map((orderRows ?? []).map((o) => [o.request_id, o]));
   const requestIdsWithRfq = new Set((rfqRows ?? []).map((r) => r.request_id));
@@ -73,13 +74,15 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
     if (order && CONVERTED_ORDER_STATES.has(order.state)) requestsWithRfqAndOrder++;
   }
 
-  const { data: latestEstimatorSnapshot } = await supabase
-    .from('model_snapshots')
-    .select('metrics')
-    .eq('model', 'estimator')
-    .order('trained_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: latestEstimatorSnapshot } = await checkedQuery(
+    supabase
+      .from('model_snapshots')
+      .select('metrics')
+      .eq('model', 'estimator')
+      .order('trained_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  );
 
   const byCategory =
     (latestEstimatorSnapshot?.metrics?.byCategory as { mape: number | null }[] | undefined) ?? [];
@@ -89,9 +92,9 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
       ? (withMape.reduce((sum, c) => sum + (c.mape ?? 0), 0) / withMape.length) * 100
       : null;
 
-  const { data: requestsWithOrders } = await supabase
-    .from('requests')
-    .select('buyer_company_id, orders(state)');
+  const requestsWithOrders = await readQueryRows(() =>
+    supabase.from('requests').select('id, buyer_company_id, orders(state)'),
+  );
 
   const companyOrderCounts = new Map<string, number>();
   for (const row of requestsWithOrders ?? []) {
@@ -110,19 +113,25 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
   const closedPlanIds = (orderRows ?? [])
     .filter((o) => o.state === 'closed')
     .map((o) => o.approved_plan_id);
-  const { data: closedPlans } = closedPlanIds.length
-    ? await supabase.from('plans').select('commission_kzt, total_kzt').in('id', closedPlanIds)
-    : { data: [] };
+  const closedPlans = await readInBatches(
+    closedPlanIds.filter((id): id is string => Boolean(id)),
+    (ids) =>
+      readQueryRows(() =>
+        supabase.from('plans').select('id, commission_kzt, total_kzt').in('id', ids),
+      ),
+  );
 
   const gmvTotal = (orderRows ?? [])
     .filter((o) => o.state === 'closed' && o.final_cost_kzt !== null)
     .reduce((sum, o) => sum + (o.final_cost_kzt ?? 0), 0);
   const commissionTotal = (closedPlans ?? []).reduce((sum, p) => sum + p.commission_kzt, 0);
 
-  const { data: timeEntryRows } = await supabase
-    .from('time_entries')
-    .select('order_id, seconds, created_at, source')
-    .in('source', ['active', 'manual']);
+  const timeEntryRows = await readQueryRows(() =>
+    supabase
+      .from('time_entries')
+      .select('id, order_id, seconds, created_at, source')
+      .in('source', ['active', 'manual']),
+  );
   const secondsByOrder = new Map<string, number>();
   for (const row of timeEntryRows ?? []) {
     secondsByOrder.set(row.order_id, (secondsByOrder.get(row.order_id) ?? 0) + row.seconds);
@@ -151,10 +160,14 @@ export async function loadMetrics(supabase: SupabaseClient): Promise<MetricsData
     }))
     .sort((a, b) => a.month.localeCompare(b.month));
 
-  const { data: settingRows } = await supabase
-    .from('settings')
-    .select('key, value')
-    .in('key', ['commission_rate_pct', 'procurement_hour_cost_kzt']);
+  const { data: settingRows } = await checkedQuery(
+    supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', ['commission_rate_pct', 'procurement_hour_cost_kzt'])
+      .order('key')
+      .limit(2),
+  );
   const settingValue = (key: string): number | null => {
     const row = (settingRows ?? []).find((r) => r.key === key);
     return typeof row?.value === 'number' ? row.value : null;

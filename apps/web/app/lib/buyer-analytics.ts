@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { CATEGORY_LABEL, type CatalogCategory } from './catalog';
+import { readAllPages } from './data/read-all-pages';
 
 /**
  * Аналитика закупок покупателя, в том числе по сотрудникам — agents.md
@@ -33,6 +34,7 @@ export interface BuyerAnalytics {
 }
 
 interface OrderRow {
+  id: string;
   final_cost_kzt: number | null;
   requests: {
     created_by: string;
@@ -44,10 +46,17 @@ interface OrderRow {
 export async function loadBuyerAnalytics(supabase: SupabaseClient): Promise<BuyerAnalytics> {
   // RLS (orders_select_via_request → requests_select_own_company) уже
   // ограничивает выборку компанией текущего пользователя.
-  const { data } = await supabase
-    .from('orders')
-    .select('final_cost_kzt, requests(created_by, users(full_name), request_items(category))')
-    .eq('state', 'closed');
+  const cutoff = new Date().toISOString();
+  const data = await readAllPages((after, limit) => {
+    const query = supabase
+      .from('orders')
+      .select('id, final_cost_kzt, requests(created_by, users(full_name), request_items(category))')
+      .eq('state', 'closed')
+      .lte('closed_at', cutoff)
+      .order('id')
+      .limit(limit);
+    return after ? query.gt('id', after) : query;
+  });
 
   const rows = (data ?? []) as unknown as OrderRow[];
 

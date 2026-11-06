@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { checkedQuery, readInBatches, readQueryRows } from './data/query-rows';
 import { pickLatestQuoteByRfq } from './latest-quote';
 
 /**
@@ -64,50 +65,51 @@ export async function loadSupplierHome(
   supabase: SupabaseClient,
   companyId: string | null,
 ): Promise<SupplierHomeData> {
-  const [
-    { data: rfqRows },
-    { data: orderRows },
-    { data: payoutRows },
-    statsResult,
-    { data: supplierMembers },
-    { data: quotedRfqRows },
-  ] = await Promise.all([
-    supabase
-      .from('rfqs')
-      .select(
-        'id, assigned_supplier_user_id, respond_by, is_exploration, requests(title, companies(name), request_items(name, qty, unit))',
-      )
-      .eq('status', 'sent')
-      .order('respond_by', { ascending: true }),
-    supabase
-      .from('orders')
-      .select('id, state, request_id, requests(title, companies(name)), plans(eta_date)')
-      .not('state', 'in', '(closed,cancelled)'),
-    supabase.from('supplier_payouts').select('amount_kzt').eq('status', 'paid'),
-    companyId
-      ? supabase
-          .from('supplier_stats')
-          .select('avg_buyer_score')
-          .eq('company_id', companyId)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-    companyId
-      ? supabase
-          .from('users')
-          .select('id, full_name, role')
-          .eq('company_id', companyId)
-          .eq('is_active', true)
-          .in('role', ['owner', 'manager'])
-          .order('created_at', { ascending: true })
-      : Promise.resolve({ data: [] as { id: string; full_name: string; role: string }[] }),
-    // RLS ограничивает выборку своей компанией, поэтому отдельной проверки здесь нет.
-    supabase
-      .from('rfqs')
-      .select(
-        'id, request_id, requests(title), quotes(id, version, submitted_at, quote_lines(capability_confirmed))',
-      )
-      .eq('status', 'quoted'),
-  ]);
+  const [rfqRows, orderRows, payoutRows, statsResult, supplierMembers, quotedRfqRows] =
+    await Promise.all([
+      readQueryRows(() =>
+        supabase
+          .from('rfqs')
+          .select(
+            'id, assigned_supplier_user_id, respond_by, is_exploration, requests(title, companies(name), request_items(name, qty, unit))',
+          )
+          .eq('status', 'sent'),
+      ),
+      readQueryRows(() =>
+        supabase
+          .from('orders')
+          .select('id, state, request_id, requests(title, companies(name)), plans(eta_date)')
+          .not('state', 'in', '(closed,cancelled)'),
+      ),
+      readQueryRows(() =>
+        supabase.from('supplier_payouts').select('id, amount_kzt').eq('status', 'paid'),
+      ),
+      companyId
+        ? checkedQuery(
+            supabase
+              .from('supplier_stats')
+              .select('avg_buyer_score')
+              .eq('company_id', companyId)
+              .maybeSingle(),
+          )
+        : Promise.resolve({ data: null }),
+      companyId
+        ? readQueryRows(() =>
+            supabase
+              .from('users')
+              .select('id, full_name, role, created_at')
+              .eq('company_id', companyId)
+              .eq('is_active', true)
+              .in('role', ['owner', 'manager']),
+          )
+        : Promise.resolve(
+            [] as { id: string; full_name: string; role: string; created_at: string }[],
+          ),
+      // RLS ограничивает выборку своей компанией, поэтому отдельной проверки здесь нет.
+      readQueryRows(() =>
+        supabase.from('rfqs').select('id, request_id, requests(title)').eq('status', 'quoted'),
+      ),
+    ]);
 
   // Заказ, в план которого вошёл поставщик, уже виден в «Заказах» — дублировать
   // его среди отправленных КП незачем. RLS отдаёт только такие заказы, поэтому
@@ -115,30 +117,50 @@ export async function loadSupplierHome(
   const requestsWithMyOrder = new Set(
     (orderRows ?? []).map((row) => row.request_id as string | null).filter(Boolean),
   );
+  const quoteRows = await readInBatches(
+    quotedRfqRows.filter((row) => !requestsWithMyOrder.has(row.request_id)).map((row) => row.id),
+    (ids) =>
+      readQueryRows(() =>
+        supabase.from('quotes').select('id, rfq_id, version, submitted_at').in('rfq_id', ids),
+      ),
+  );
+  const latestByRfq = pickLatestQuoteByRfq(quoteRows);
   const sentQuotes: SupplierSentQuoteRow[] = [];
   for (const row of quotedRfqRows ?? []) {
     if (requestsWithMyOrder.has(row.request_id)) continue;
-    const quotes = (Array.isArray(row.quotes) ? row.quotes : []) as {
-      id: string;
-      version: number;
-      submitted_at: string;
-      quote_lines: { capability_confirmed: boolean }[] | null;
-    }[];
-    const latest = pickLatestQuoteByRfq(quotes.map((q) => ({ ...q, rfq_id: row.id }))).get(row.id);
-    const unconfirmedCount = (latest?.quote_lines ?? []).filter(
-      (line) => line.capability_confirmed === false,
-    ).length;
+    const latest = latestByRfq.get(row.id);
     if (!latest) continue;
     const request = Array.isArray(row.requests) ? row.requests[0] : row.requests;
     sentQuotes.push({
       rfqId: row.id,
       requestTitle: request?.title ?? '—',
       submittedAt: latest.submitted_at,
-      unconfirmedCount,
+      unconfirmedCount: 0,
     });
   }
-  sentQuotes.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+  sentQuotes.sort(
+    (a, b) => b.submittedAt.localeCompare(a.submittedAt) || a.rfqId.localeCompare(b.rfqId),
+  );
   sentQuotes.splice(SENT_QUOTES_LIMIT);
+  const displayedQuoteIds = sentQuotes
+    .map((row) => latestByRfq.get(row.rfqId)?.id)
+    .filter((value): value is string => Boolean(value));
+  const unconfirmedLines = await readInBatches(displayedQuoteIds, (ids) =>
+    readQueryRows(() =>
+      supabase
+        .from('quote_lines')
+        .select('id, quote_id')
+        .in('quote_id', ids)
+        .eq('capability_confirmed', false),
+    ),
+  );
+  const unconfirmedByQuote = new Map<string, number>();
+  for (const line of unconfirmedLines) {
+    unconfirmedByQuote.set(line.quote_id, (unconfirmedByQuote.get(line.quote_id) ?? 0) + 1);
+  }
+  for (const row of sentQuotes) {
+    row.unconfirmedCount = unconfirmedByQuote.get(latestByRfq.get(row.rfqId)?.id ?? '') ?? 0;
+  }
 
   const memberNameById = new Map(
     (supplierMembers ?? []).map((member) => [member.id, member.full_name]),
@@ -193,15 +215,20 @@ export async function loadSupplierHome(
   const totalPayoutsKzt = (payoutRows ?? []).reduce((sum, r) => sum + r.amount_kzt, 0);
 
   return {
-    pendingRfqs,
+    pendingRfqs: pendingRfqs.sort(
+      (a, b) =>
+        (a.respondBy ?? '9999').localeCompare(b.respondBy ?? '9999') || a.id.localeCompare(b.id),
+    ),
     activeOrders,
     sentQuotes,
     totalPayoutsKzt,
     avgBuyerScore: statsResult.data?.avg_buyer_score ?? null,
-    supplierMembers: (supplierMembers ?? []).map((member) => ({
-      id: member.id,
-      fullName: member.full_name,
-      role: member.role,
-    })),
+    supplierMembers: supplierMembers
+      .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+      .map((member) => ({
+        id: member.id,
+        fullName: member.full_name,
+        role: member.role,
+      })),
   };
 }

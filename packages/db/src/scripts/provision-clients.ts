@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import {
   findDemoData,
   readEnvironmentKind,
+  requireExistingClientAdmin,
   writeClientEnvironment,
 } from '../client-environment.js';
 import { CLIENT_ENVIRONMENT, validateRequisites } from '../environment.js';
@@ -84,7 +85,10 @@ async function main(): Promise<void> {
       const [existing] = await sql<{ id: string }[]>`
         select id from auth.users where lower(email) = ${adminEmail}`;
       adminId = existing?.id ?? fail('админ уже зарегистрирован, но не найден в auth.users');
-      console.log('Админ уже был в Supabase Auth — пароль не менялся.');
+      await requireExistingClientAdmin(sql, adminId, adminEmail);
+      console.log(
+        'Подтверждён действующий администратор клиентского окружения — пароль не менялся.',
+      );
     }
 
     await sql.begin((tx) =>
@@ -102,4 +106,8 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => fail(error instanceof Error ? error.message : String(error)));
+main().catch(() =>
+  fail(
+    'Подготовка клиентского окружения не завершена; проверьте конфигурацию и существующую учётную запись.',
+  ),
+);

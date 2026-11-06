@@ -1,9 +1,29 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isReadyResponse, releaseManifestProblems } from './release-contract.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const strict = process.argv.includes('--strict');
+let expectedSha;
+let checkoutProblems = 0;
+try {
+  expectedSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  if (
+    strict &&
+    execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim()
+  ) {
+    console.error('Release gate: strict требует чистый checkout выпускаемого SHA.');
+    checkoutProblems++;
+  }
+} catch {
+  if (strict) {
+    console.error('Release gate: SHA исходников не подтверждён.');
+    checkoutProblems++;
+  }
+}
+
 // --ready-url=https://host: в строгом режиме проверяет, что развёрнутое приложение
 // действительно готово. Локальный успех lint/build не доказывает поведение
 // продакшена — раньше именно так «готовый» статус жил рядом с /api/ready = 503.
@@ -29,6 +49,8 @@ const requiredEnv = [
   'DATABASE_URL',
   'LINK_SIGNING_SECRET',
   'CRON_SECRET',
+  'RESEND_API_KEY',
+  'RESEND_FROM_EMAIL',
 ];
 
 const missingFiles = requiredFiles.filter((file) => !existsSync(resolve(root, file)));
@@ -56,12 +78,16 @@ if (featureLlmEnabled) {
 
 // Битый или неизвестный readiness.json — жёсткий отказ: по нему принимают решение о пилоте.
 let readinessProblems = 0;
-const readinessFile = resolve(root, 'docs/release/readiness.json');
+const evidenceArg = process.argv.find((arg) => arg.startsWith('--evidence='));
+const readinessFile = resolve(
+  root,
+  evidenceArg?.slice('--evidence='.length) || 'docs/release/readiness.json',
+);
 if (existsSync(readinessFile)) {
   try {
     const readiness = JSON.parse(readFileSync(readinessFile, 'utf8'));
-    if (readiness.schemaVersion !== 1) {
-      console.error('Release gate: docs/release/readiness.json имеет неизвестную schemaVersion.');
+    for (const problem of releaseManifestProblems(readiness, strict, expectedSha)) {
+      console.error(`Release gate: ${problem}.`);
       readinessProblems++;
     }
   } catch {
@@ -70,25 +96,28 @@ if (existsSync(readinessFile)) {
   }
 }
 
+if (!existsSync(readinessFile)) {
+  console.error('Release gate: release evidence отсутствует.');
+  readinessProblems++;
+}
+
 let readyProblems = 0;
 if (readyUrl) {
   try {
     const response = await fetch(new URL('/api/ready', readyUrl), {
       signal: AbortSignal.timeout(15000),
+      redirect: 'error',
     });
-    const body = await response.text();
-    if (response.status !== 200) {
-      console.error(
-        `Release gate: ${readyUrl}/api/ready ответил ${response.status}: ${body.slice(0, 300)}`,
-      );
+    if (!(await isReadyResponse(response, expectedSha))) {
+      console.error('Release gate: /api/ready не подтвердил безопасный JSON-контракт готовности.');
       readyProblems++;
     } else {
-      console.log(`Release gate: ${readyUrl}/api/ready = 200.`);
+      console.log(
+        'Release gate: /api/ready подтвердил runtime configuration. Внешние проверки обязательны отдельно.',
+      );
     }
-  } catch (error) {
-    console.error(
-      `Release gate: не удалось запросить /api/ready: ${error instanceof Error ? error.message : error}`,
-    );
+  } catch {
+    console.error('Release gate: не удалось проверить /api/ready.');
     readyProblems++;
   }
 } else if (strict) {
@@ -96,7 +125,8 @@ if (readyUrl) {
   readyProblems++;
 }
 
-const hardFailures = missingFiles.length + (featureLlmEnabled ? 1 : 0) + readinessProblems;
+const hardFailures =
+  checkoutProblems + missingFiles.length + (featureLlmEnabled ? 1 : 0) + readinessProblems;
 const strictFailures = strict ? missingEnv.length + readyProblems : readyProblems;
 if (hardFailures + strictFailures > 0) process.exit(2);
 

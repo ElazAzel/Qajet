@@ -2,7 +2,9 @@ import type { PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '../schema/index.js';
 import { SEED_ACCOUNTS } from '../seed/accounts.js';
 import { generateSeedDataset, type SeedDataset } from '../seed/generator.js';
+import { TABLES_IN_DELETE_ORDER } from '../seed/reset-tables.js';
 import { insertStatements, quote } from './_sql-literal.js';
+import { DEMO_RESET_PRECHECK_SQL } from './demo-reset-precheck.js';
 
 /**
  * `pnpm db:dump-sql` — тот же сброс и пересев, что `db:reset`, но выведенный
@@ -22,35 +24,6 @@ import { insertStatements, quote } from './_sql-literal.js';
  */
 
 /** Таблицы, которые чистит `db:reset` — тот же порядок от детей к родителям. */
-const TABLES_IN_DELETE_ORDER = [
-  'messages',
-  'threads',
-  'change_requests',
-  'time_entries',
-  'learning_events',
-  'model_snapshots',
-  'price_observations',
-  'ratings',
-  'documents',
-  'supplier_payouts',
-  'order_stage_events',
-  'orders',
-  'plan_rejections',
-  'plan_lines',
-  'plans',
-  'quote_lines',
-  'quotes',
-  'rfqs',
-  'prepayments',
-  'estimates',
-  'request_items',
-  'requests',
-  'permissions',
-  'supplier_stats',
-  'supplier_profiles',
-  'extraction_aliases',
-  'settings',
-] as const;
 
 /** Порядок вставки — тот же, что в runSeed(), он следует внешним ключам. */
 const INSERT_ORDER: readonly [keyof SeedDataset, PgTable][] = [
@@ -122,7 +95,7 @@ function main(): void {
     },
   });
 
-  const lines: string[] = ['begin;'];
+  const lines: string[] = ['begin;', DEMO_RESET_PRECHECK_SQL];
   for (const table of TABLES_IN_DELETE_ORDER) lines.push(`delete from "${table}";`);
   const keep = SEED_ACCOUNTS.map((a) => quote(a.email)).join(', ');
   lines.push(`delete from users where email not in (${keep});`);

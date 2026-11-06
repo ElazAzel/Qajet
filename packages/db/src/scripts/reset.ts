@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { createDbClient } from '../client.js';
 import { assertDemoDataAllowed, ENVIRONMENT_KIND_KEY, isLocalDatabaseUrl } from '../environment.js';
 import { SEED_ACCOUNTS } from '../seed/accounts.js';
+import { TABLES_IN_DELETE_ORDER } from '../seed/reset-tables.js';
 import { assertSeedEnv, runSeed } from '../seed/run.js';
 
 /**
@@ -21,39 +22,6 @@ import { assertSeedEnv, runSeed } from '../seed/run.js';
  */
 
 /** Порядок обязан идти от детей к родителям — внешние ключи без каскада. */
-const TABLES_IN_DELETE_ORDER = [
-  'outbox',
-  'attachments',
-  'messages',
-  'threads',
-  'change_requests',
-  'time_entries',
-  'learning_events',
-  'model_snapshots',
-  'price_observations',
-  'ratings',
-  'documents',
-  'payment_facts',
-  'supplier_payouts',
-  'order_supplier_deliveries',
-  'order_stage_events',
-  'orders',
-  'plan_rejections',
-  'plan_lines',
-  'plans',
-  'quote_lines',
-  'quotes',
-  'rfqs',
-  'prepayments',
-  'estimates',
-  'request_items',
-  'requests',
-  'permissions',
-  'supplier_stats',
-  'supplier_profiles',
-  'extraction_aliases',
-  'settings',
-] as const;
 
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;

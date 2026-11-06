@@ -3,18 +3,9 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export const STORAGE_BUCKET = 'qajet-docs';
-export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export { ALLOWED_ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES, STORAGE_BUCKET } from './policy';
 
-export const ALLOWED_ATTACHMENT_TYPES = new Set([
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'text/plain',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]);
+import { STORAGE_BUCKET } from './policy';
 
 /** Разовое право браузера положить один объект прямо в Storage. */
 export interface UploadGrant {

@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { readQueryRows } from './data/query-rows';
+import { loadThreadHistory } from './data/thread-history';
 import { threadTitle } from './thread-title';
 
 /**
@@ -73,54 +75,21 @@ export async function loadBuyerThreads(
   supabase: SupabaseClient,
   currentUserId?: string,
 ): Promise<BuyerThreadPreview[]> {
-  const { data: threadRows } = await supabase
-    .from('threads')
-    .select('id, order_id, orders(requests(title)), requests(title)')
-    .eq('kind', 'buyer');
+  const threadRows = await readQueryRows(() =>
+    supabase
+      .from('threads')
+      .select('id, order_id, orders(requests(title)), requests(title)')
+      .eq('kind', 'buyer'),
+  );
 
   const threads = (threadRows ?? []) as ThreadRow[];
   if (threads.length === 0) return [];
 
-  // Последнее сообщение каждого треда — одним запросом по всем тредам, а не
-  // по запросу на тред: тредов столько же, сколько заказов у компании.
-  const { data: messageRows } = await supabase
-    .from('messages')
-    .select('thread_id, body, created_at, author_user_id')
-    .in(
-      'thread_id',
-      threads.map((t) => t.id),
-    )
-    .order('created_at', { ascending: false });
-
-  const lastByThread = new Map<string, { body: string; created_at: string }>();
-  for (const message of messageRows ?? []) {
-    if (!lastByThread.has(message.thread_id)) lastByThread.set(message.thread_id, message);
-  }
-
-  const { data: readRows } = currentUserId
-    ? await supabase
-        .from('thread_reads')
-        .select('thread_id, last_read_at')
-        .eq('user_id', currentUserId)
-        .in(
-          'thread_id',
-          threads.map((thread) => thread.id),
-        )
-    : { data: [] };
-  const lastReadByThread = new Map(
-    (readRows ?? []).map((row) => [row.thread_id, row.last_read_at] as const),
+  const { lastByThread, unreadByThread } = await loadThreadHistory(
+    supabase,
+    threads.map((row) => row.id),
+    currentUserId,
   );
-  const unreadByThread = new Map<string, number>();
-  if (currentUserId) {
-    for (const message of messageRows ?? []) {
-      if (
-        message.author_user_id !== currentUserId &&
-        message.created_at > (lastReadByThread.get(message.thread_id) ?? '')
-      ) {
-        unreadByThread.set(message.thread_id, (unreadByThread.get(message.thread_id) ?? 0) + 1);
-      }
-    }
-  }
 
   return threads
     .map((row) => {
@@ -134,7 +103,7 @@ export async function loadBuyerThreads(
         unreadCount: unreadByThread.get(row.id) ?? 0,
       };
     })
-    .sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''));
+    .sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? '') || a.id.localeCompare(b.id));
 }
 
 export async function loadThreadMessages(
@@ -142,33 +111,43 @@ export async function loadThreadMessages(
   threadId: string,
   currentUserId: string,
 ): Promise<ThreadMessage[]> {
-  const { data } = await supabase
-    .from('messages')
-    .select('id, body, created_at, author_user_id')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true });
+  const cutoff = new Date().toISOString();
+  const data = await readQueryRows(() =>
+    supabase
+      .from('messages')
+      .select('id, body, created_at, author_user_id')
+      .eq('thread_id', threadId)
+      .lte('created_at', cutoff),
+  );
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    body: row.body,
-    createdAt: row.created_at,
-    mine: row.author_user_id === currentUserId,
-  }));
+  return data
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+    .map((row) => ({
+      id: row.id,
+      body: row.body,
+      createdAt: row.created_at,
+      mine: row.author_user_id === currentUserId,
+    }));
 }
 
 export async function loadThreadAttachments(
   supabase: SupabaseClient,
   threadId: string,
 ): Promise<ThreadAttachment[]> {
-  const { data } = await supabase
-    .from('attachments')
-    .select('id, file_name, content_type, size_bytes')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true });
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    fileName: row.file_name,
-    contentType: row.content_type,
-    sizeBytes: row.size_bytes,
-  }));
+  const cutoff = new Date().toISOString();
+  const data = await readQueryRows(() =>
+    supabase
+      .from('attachments')
+      .select('id, file_name, content_type, size_bytes, created_at')
+      .eq('thread_id', threadId)
+      .lte('created_at', cutoff),
+  );
+  return data
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+    .map((row) => ({
+      id: row.id,
+      fileName: row.file_name,
+      contentType: row.content_type,
+      sizeBytes: row.size_bytes,
+    }));
 }
