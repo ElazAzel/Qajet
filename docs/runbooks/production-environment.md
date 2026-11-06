@@ -1,8 +1,9 @@
 # Runtime configuration and job verification
 
-These instructions describe the source contract at `d2e79f2`. This update did
-not inspect production configuration or execute a release check. September
-observations in [baseline.md](../qa/baseline.md) and
+These instructions describe the source contract in the reviewed checkout.
+Verify the exact reviewed commit against the selected runtime before using
+them. This documentation update did not inspect production configuration or
+execute a release check. September observations in [baseline.md](../qa/baseline.md) and
 [readiness.json](../release/readiness.json) are historical evidence for their
 recorded environments and SHAs, not a current inventory or approval.
 
@@ -141,8 +142,10 @@ alone does not prove duplicate-free retries or recipient delivery.
 The admin Retry action only returns a failed row to pending. It does not send
 mail or bypass missing configuration. Check uncertain provider acceptance
 before requeuing. The adapter has no explicit fetch timeout/throttling or
-Retry-After handling, and outbox does not confirm every failed-state RPC result.
-Do not infer a guaranteed retry or service quota from this code.
+Retry-After handling. Outbox reports `retryUnconfirmed` when its failure-state
+RPC errors or does not confirm the transition; later rows still run. This count
+does not trigger an automatic resend or prove a retry was scheduled. Do not
+infer guaranteed retry, exactly-once delivery or a service quota from this code.
 
 ---
 

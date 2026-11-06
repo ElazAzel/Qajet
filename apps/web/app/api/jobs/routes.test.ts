@@ -42,7 +42,7 @@ for (const job of scenarios) {
             [job.count]: item.done,
             failed: item.failed,
             errors,
-            ...(job.name === 'learning' ? { retryUnconfirmed: 0 } : {}),
+            retryUnconfirmed: 0,
             privateUnexpectedField: PRIVATE,
           });
           const response = await job.route[method](request(job.name, method));
@@ -54,6 +54,7 @@ for (const job of scenarios) {
             claimed: item.claimed,
             [job.count]: item.done,
             failed: item.failed,
+            retryUnconfirmed: 0,
             errors: errors.map(() => 'job.item_failed'),
           });
           expect(JSON.stringify(body)).not.toContain(PRIVATE);
@@ -111,32 +112,37 @@ for (const job of scenarios) {
   });
 }
 
-it.each([0, 1])(
-  'does not claim success when retry is unconfirmed, even if failed=%i',
-  async (failed) => {
-    mocks.learning.mockResolvedValue({
-      claimed: 1,
-      processed: 0,
-      failed,
-      retryUnconfirmed: 1,
-      errors: [PRIVATE, PRIVATE],
-    });
-    const response = await learning.POST(request('learning', 'POST'));
-    const body = await response.json();
-    expect(response.status).toBe(200);
-    expect(body).toMatchObject({
-      ok: false,
-      failed,
-      retryUnconfirmed: 1,
-      errors: ['job.item_failed', 'job.item_failed'],
-    });
-    expect(mocks.log).toHaveBeenCalledExactlyOnceWith({
-      supportId: body.supportId,
-      operation: 'job.learning',
-      code: 'retry_unconfirmed',
-      errorName: 'JobBatchFailure',
-    });
-    expect(JSON.stringify([body, mocks.log.mock.calls])).not.toContain(PRIVATE);
-    expect(mocks.learning).toHaveBeenCalledTimes(1);
-  },
-);
+for (const job of scenarios) {
+  for (const method of ['GET', 'POST'] as const) {
+    it.each([0, 1])(
+      `${job.name} ${method} reports unconfirmed retry even if failed=%i`,
+      async (failed) => {
+        job.dispatch.mockResolvedValue({
+          claimed: 1,
+          [job.count]: 0,
+          failed,
+          retryUnconfirmed: 1,
+          errors: [PRIVATE, PRIVATE],
+        });
+        const response = await job.route[method](request(job.name, method));
+        const body = await response.json();
+        expect(response.status).toBe(200);
+        expect(response.headers.has('retry-after')).toBe(false);
+        expect(body).toMatchObject({
+          ok: false,
+          failed,
+          retryUnconfirmed: 1,
+          errors: ['job.item_failed', 'job.item_failed'],
+        });
+        expect(mocks.log).toHaveBeenCalledExactlyOnceWith({
+          supportId: body.supportId,
+          operation: `job.${job.name}`,
+          code: 'retry_unconfirmed',
+          errorName: 'JobBatchFailure',
+        });
+        expect(JSON.stringify([body, mocks.log.mock.calls])).not.toContain(PRIVATE);
+        expect(job.dispatch).toHaveBeenCalledExactlyOnceWith(job.limit);
+      },
+    );
+  }
+}

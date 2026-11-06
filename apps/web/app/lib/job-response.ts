@@ -26,10 +26,9 @@ export function completedJobResponse(
   return NextResponse.json({
     ok,
     claimed: result.claimed,
-    ...('sent' in result
-      ? { sent: result.sent }
-      : { processed: result.processed, retryUnconfirmed: result.retryUnconfirmed }),
+    ...('sent' in result ? { sent: result.sent } : { processed: result.processed }),
     failed: result.failed,
+    retryUnconfirmed,
     errors: result.errors.map(() => 'job.item_failed'),
     ...(supportId ? { supportId } : {}),
   });
