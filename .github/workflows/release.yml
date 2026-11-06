@@ -9,9 +9,13 @@ on:
   workflow_dispatch:
     inputs:
       strict:
-        description: 'Строгая проверка развёртывания: обязательные переменные и /api/ready = 200'
+        description: 'Проверить evidence, обязательную конфигурацию и точный SHA runtime'
         type: boolean
         default: false
+      evidence_json:
+        description: 'Release evidence JSON с sourceSha/gateSourceShas для выпускаемого commit (strict)'
+        type: string
+        default: ''
       ready_url:
         description: 'Адрес развёртывания для проверки /api/ready (нужен при strict)'
         type: string
@@ -44,7 +48,7 @@ jobs:
 
       # Каждый push в main проверяет исходники. Строгий режим — про развёртывание:
       # он запускается вручную и падает, если в окружении нет обязательных
-      # переменных или живой /api/ready не отвечает 200. Раньше «готовность»
+      # переменных, evidence для целевого SHA или безопасного JSON /api/ready. Раньше «готовность»
       # подтверждалась записью в readiness.json, пока /api/ready в production
       # отдавал 503.
       - name: Source readiness (non-strict)
@@ -53,10 +57,18 @@ jobs:
 
       - name: Deployment readiness (strict)
         if: ${{ inputs.strict }}
-        run: node tools/ci/check-release-readiness.mjs --strict --ready-url="$READY_URL"
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const evidence = JSON.parse(process.env.RELEASE_EVIDENCE_JSON || 'null');
+          writeFileSync(join(process.env.RUNNER_TEMP, 'qajet-release-evidence.json'), JSON.stringify(evidence));
+          NODE
+          node tools/ci/check-release-readiness.mjs --strict --ready-url="$READY_URL" --evidence="$RUNNER_TEMP/qajet-release-evidence.json"
         env:
           # Через переменную, а не подстановкой в команду: вход workflow_dispatch не должен попадать в shell.
           READY_URL: ${{ inputs.ready_url }}
+          RELEASE_EVIDENCE_JSON: ${{ inputs.evidence_json }}
           NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -64,6 +76,8 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LINK_SIGNING_SECRET: ${{ secrets.LINK_SIGNING_SECRET }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
 
       - run: pnpm lint
       - run: pnpm typecheck

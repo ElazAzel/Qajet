@@ -19,7 +19,8 @@
     "./compliance": "./src/compliance/restricted.ts",
     "./commission": "./src/commission/index.ts",
     "./learn": "./src/learn/recalibrate.ts",
-    "./explain": "./src/explain/types.ts"
+    "./explain": "./src/explain/types.ts",
+    "./client-requisites": "./src/client-requisites.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

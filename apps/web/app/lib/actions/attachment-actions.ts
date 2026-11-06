@@ -68,7 +68,6 @@ function allowedKindsFor(actor: ReturnType<typeof orderActorFor>): Set<string> {
 async function canUpload(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   actor: ReturnType<typeof orderActorFor>,
-  userId: string,
   context: AttachmentContext,
 ): Promise<boolean> {
   if (actor === 'admin' || actor === 'concierge') return true;
@@ -127,15 +126,14 @@ async function canUpload(
     }
     if (context.orderId) {
       const { data } = await supabase
-        .from('plan_lines')
-        .select('id, orders!inner(id)')
-        .eq('orders.id', context.orderId)
+        .from('orders')
+        .select('id')
+        .eq('id', context.orderId)
         .maybeSingle();
       return Boolean(data);
     }
   }
 
-  void userId;
   return false;
 }
 
@@ -205,7 +203,7 @@ export async function prepareAttachmentUpload(
   if (!allowedKindsFor(actor).has(kind)) {
     return { ok: false, error: 'Этот тип вложения недоступен для вашей роли' };
   }
-  if (!(await canUpload(supabase, actor, user.id, context))) {
+  if (!(await canUpload(supabase, actor, context))) {
     return { ok: false, error: 'У вас нет доступа к этому контексту' };
   }
 
@@ -257,7 +255,7 @@ export async function finishAttachmentUpload(
   const actor = orderActorFor(user);
   if (
     !allowedKindsFor(actor).has(intent.kind) ||
-    !(await canUpload(supabase, actor, user.id, intent.context))
+    !(await canUpload(supabase, actor, intent.context))
   ) {
     return { ok: false, code: 'forbidden', error: 'У вас нет доступа к этому контексту' };
   }
@@ -291,7 +289,8 @@ export async function finishAttachmentUpload(
     kind: intent.kind,
   });
   if (error && error.code !== '23505') {
-    await storage.delete(intent.objectKey).catch(() => undefined);
+    // A lost response can follow a successful insert. Retain the object so a
+    // retry cannot delete an attachment already referenced by the database.
     return actionFailure('attachment.finishUpload', error, 'Не удалось сохранить файл');
   }
 

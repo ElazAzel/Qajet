@@ -6,10 +6,7 @@ import {
   prepareAttachmentUpload,
 } from '../../lib/actions/attachment-actions';
 
-/** Как MAX_ATTACHMENT_BYTES на сервере (app/lib/storage/adapter.ts). */
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-/** Как STORAGE_BUCKET на сервере. */
-const STORAGE_BUCKET = 'qajet-docs';
+import { MAX_ATTACHMENT_BYTES, STORAGE_BUCKET } from '../../lib/storage/policy';
 
 type AttachmentKind =
   | 'attachment'

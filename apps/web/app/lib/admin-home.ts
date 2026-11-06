@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { readAllPages } from './data/read-all-pages';
 
 /**
  * Данные для /admin (agents.md §10 «Админ»: верификация и комплаенс
@@ -67,15 +68,16 @@ export async function loadAdminHome(supabase: SupabaseClient): Promise<AdminHome
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   const [
-    { count: usersTotal },
-    { count: usersNewLast30d },
-    { count: suppliersTotal },
-    { count: suppliersNewLast30d },
-    { data: closedOrdersThisMonth },
-    { data: closedOrdersLastMonth },
-    { data: verificationCompanies },
-    { data: recentUserRows },
-    { data: payoutRows },
+    { count: usersTotal, error: usersTotalError },
+    { count: usersNewLast30d, error: usersNewLast30dError },
+    { count: suppliersTotal, error: suppliersTotalError },
+    { count: suppliersNewLast30d, error: suppliersNewLast30dError },
+    closedOrdersThisMonth,
+    closedOrdersLastMonth,
+    { data: verificationCompanies, error: verificationCompaniesError },
+    { data: recentUserRows, error: recentUserRowsError },
+    { data: payoutRows, error: payoutRowsError },
+    { count: pendingVerificationCount, error: verificationError },
   ] = await Promise.all([
     supabase.from('users').select('*', { count: 'exact', head: true }),
     supabase
@@ -88,17 +90,29 @@ export async function loadAdminHome(supabase: SupabaseClient): Promise<AdminHome
       .select('*', { count: 'exact', head: true })
       .eq('type', 'supplier')
       .gte('created_at', thirtyDaysAgo),
-    supabase
-      .from('orders')
-      .select('final_cost_kzt')
-      .eq('state', 'closed')
-      .gte('closed_at', startOfThisMonth),
-    supabase
-      .from('orders')
-      .select('final_cost_kzt')
-      .eq('state', 'closed')
-      .gte('closed_at', startOfLastMonth)
-      .lt('closed_at', startOfThisMonth),
+    readAllPages<{ id: string; final_cost_kzt: number | null }>((after, limit) => {
+      const query = supabase
+        .from('orders')
+        .select('id, final_cost_kzt')
+        .eq('state', 'closed')
+        .gte('closed_at', startOfThisMonth)
+        .lte('closed_at', now.toISOString())
+        .order('id')
+        .limit(limit);
+      return after ? query.gt('id', after) : query;
+    }),
+    readAllPages<{ id: string; final_cost_kzt: number | null }>((after, limit) => {
+      const query = supabase
+        .from('orders')
+        .select('id, final_cost_kzt')
+        .eq('state', 'closed')
+        .gte('closed_at', startOfLastMonth)
+        .lt('closed_at', startOfThisMonth)
+        .lte('closed_at', now.toISOString())
+        .order('id')
+        .limit(limit);
+      return after ? query.gt('id', after) : query;
+    }),
     supabase
       .from('companies')
       .select('id, name, city, verified_at, is_active, created_at, supplier_profiles(categories)')
@@ -115,7 +129,35 @@ export async function loadAdminHome(supabase: SupabaseClient): Promise<AdminHome
       .select('id, amount_kzt, companies(name), orders(requests(title))')
       .order('created_at', { ascending: false })
       .limit(4),
+    supabase
+      .from('companies')
+      .select('*', { count: 'exact', head: true })
+      .eq('type', 'supplier')
+      .eq('is_active', true)
+      .is('verified_at', null),
   ]);
+  const errors = [
+    usersTotalError,
+    usersNewLast30dError,
+    suppliersTotalError,
+    suppliersNewLast30dError,
+    verificationCompaniesError,
+    recentUserRowsError,
+    payoutRowsError,
+    verificationError,
+  ];
+  if (
+    errors.some(Boolean) ||
+    [
+      usersTotal,
+      usersNewLast30d,
+      suppliersTotal,
+      suppliersNewLast30d,
+      pendingVerificationCount,
+    ].some((count) => count === null)
+  ) {
+    throw new Error('Не удалось загрузить данные администратора');
+  }
 
   const turnoverThisMonthKzt = (closedOrdersThisMonth ?? []).reduce(
     (sum, o) => sum + (o.final_cost_kzt ?? 0),
@@ -139,7 +181,6 @@ export async function loadAdminHome(supabase: SupabaseClient): Promise<AdminHome
       status: verificationStatus(c),
     };
   });
-  const pendingVerificationCount = verificationQueue.filter((r) => r.status === 'pending').length;
 
   const recentUsers: RecentUserRow[] = (recentUserRows ?? []).map((u) => {
     const company = Array.isArray(u.companies) ? u.companies[0] : u.companies;
@@ -174,7 +215,7 @@ export async function loadAdminHome(supabase: SupabaseClient): Promise<AdminHome
     suppliersNewLast30d: suppliersNewLast30d ?? 0,
     turnoverThisMonthKzt,
     turnoverLastMonthKzt,
-    pendingVerificationCount,
+    pendingVerificationCount: pendingVerificationCount ?? 0,
     verificationQueue,
     recentUsers,
     recentPayouts,

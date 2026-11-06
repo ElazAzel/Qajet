@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { type CaseDescription, describeCase, isBuyerTurn } from './buyer-stage';
+import { checkedQuery, readInBatches, readQueryRows } from './data/query-rows';
 import type { OrderState } from './order-state';
 
 /**
@@ -62,21 +63,25 @@ export async function loadBuyerCases(
   supabase: SupabaseClient,
   isOwner: boolean,
 ): Promise<BuyerCaseSummary[]> {
-  const { data: rows } = await supabase
-    .from('requests')
-    .select('id, title, status, deadline_date, updated_at, orders(id, state, updated_at)');
-  const requests = rows ?? [];
+  const requests = await readQueryRows(() =>
+    supabase
+      .from('requests')
+      .select('id, title, status, deadline_date, updated_at, orders(id, state, updated_at)'),
+  );
   if (requests.length === 0) return [];
 
-  const { data: planRows } = await supabase
-    .from('plans')
-    .select('request_id, eta_date, version')
-    .in(
-      'request_id',
-      requests.map((r) => r.id),
-    )
-    .in('status', ['proposed', 'approved'])
-    .order('version', { ascending: false });
+  const planRows = await readInBatches(
+    requests.map((row) => row.id),
+    (ids) =>
+      readQueryRows(() =>
+        supabase
+          .from('plans')
+          .select('id, request_id, eta_date, version')
+          .in('request_id', ids)
+          .in('status', ['proposed', 'approved']),
+      ),
+  );
+  planRows.sort((a, b) => b.version - a.version || a.id.localeCompare(b.id));
   const etaByRequest = new Map<string, string>();
   for (const plan of planRows ?? []) {
     if (plan.eta_date && !etaByRequest.has(plan.request_id)) {
@@ -111,34 +116,41 @@ export async function loadBuyerCase(
   requestId: string,
   isOwner: boolean,
 ): Promise<BuyerCaseDetail | null> {
-  const { data: request } = await supabase
-    .from('requests')
-    .select(
-      'id, title, status, city, budget_kzt, delivery_address, deadline_date, created_at, updated_at',
-    )
-    .eq('id', requestId)
-    .maybeSingle();
+  const { data: request } = await checkedQuery(
+    supabase
+      .from('requests')
+      .select(
+        'id, title, status, city, budget_kzt, delivery_address, deadline_date, created_at, updated_at',
+      )
+      .eq('id', requestId)
+      .maybeSingle(),
+  );
   if (!request) return null;
 
-  const [{ data: order }, { data: items }, { data: plan }] = await Promise.all([
-    supabase
-      .from('orders')
-      .select('id, state, updated_at')
-      .eq('request_id', requestId)
-      .maybeSingle(),
-    supabase
-      .from('request_items')
-      .select('id, name, qty, unit')
-      .eq('request_id', requestId)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('plans')
-      .select('eta_date')
-      .eq('request_id', requestId)
-      .in('status', ['proposed', 'approved'])
-      .order('version', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+  const [{ data: order }, items, { data: plan }] = await Promise.all([
+    checkedQuery(
+      supabase
+        .from('orders')
+        .select('id, state, updated_at')
+        .eq('request_id', requestId)
+        .maybeSingle(),
+    ),
+    readQueryRows(() =>
+      supabase
+        .from('request_items')
+        .select('id, name, qty, unit, created_at')
+        .eq('request_id', requestId),
+    ),
+    checkedQuery(
+      supabase
+        .from('plans')
+        .select('eta_date')
+        .eq('request_id', requestId)
+        .in('status', ['proposed', 'approved'])
+        .order('version', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ),
   ]);
 
   return {
@@ -159,11 +171,13 @@ export async function loadBuyerCase(
     budgetKzt: request.budget_kzt,
     deliveryAddress: request.delivery_address,
     createdAt: request.created_at,
-    items: (items ?? []).map((item) => ({
-      id: item.id,
-      name: item.name,
-      qty: item.qty,
-      unit: item.unit,
-    })),
+    items: items
+      .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        qty: item.qty,
+        unit: item.unit,
+      })),
   };
 }
