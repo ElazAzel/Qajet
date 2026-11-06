@@ -155,8 +155,33 @@ gh workflow run "Scheduled jobs"
 gh run list --workflow="Scheduled jobs" --limit 1
 ```
 
-Expect success, with both `outbox: HTTP 200` and `learning: HTTP 200` in the log.
-Then let one natural 15-minute tick pass and confirm it also succeeds.
+Both jobs are attempted once, even if the first fails. A successful manual run
+requires HTTP 200 **and** JSON `ok: true`, numeric `failed: 0`, and, when present,
+numeric `retryUnconfirmed: 0` for both. HTTP, network, JSON or batch failures make
+the final workflow fail after both attempts. An unavailable readiness gate is
+`NOT RUN` and also fails the workflow without dispatching either job. Response
+bodies are not printed. No automatic HTTP retries are added.
+
+The endpoint response contract keeps HTTP 200 for a returned batch. `ok: false`
+means one or more item failures or an unconfirmed retry transition; it does not
+mean all items failed or that a retry was scheduled. Counts retain their names:
+`claimed`, `sent` or `processed`, `failed`, and learning's `retryUnconfirmed`.
+`errors` remains a string array, but its entries are safe `job.item_failed`
+markers, not raw provider diagnostics. Its length is not a failed-item count:
+one learning event can produce two diagnostics. A failed batch includes an
+opaque `supportId` linked to one safe server log entry. Unauthorized requests
+remain 401, and a thrown dispatcher error remains 503 with a safe support ID.
+
+Neither 503 nor a timeout proves that no work committed. Do not blindly replay
+a batch: learning stages are still non-atomic, and outbox completion can be
+uncertain after provider acceptance. The queue's existing lease/backoff rules
+are unchanged; this patch does not prove exactly-once delivery or learning.
+
+Then observe one natural 15-minute tick. The database scheduler enqueues both
+requests asynchronously and does **not** inspect their responses. Check actual
+responses and queue state separately: a successful cron invocation or HTTP 200
+alone does not prove successful item processing. This change does not add
+automatic production alerting, change pg_cron or configure any provider.
 
 Mail is **not** verified by any of the above. Verifying it means sending one
 synthetic RFQ to a controlled test recipient and confirming the message actually
