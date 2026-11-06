@@ -648,7 +648,7 @@ export async function advanceOrderStage(
     const { data: plan, error: planError } = await supabase
       .rpc('get_buyer_plans', { p_request_ids: [order.request_id] })
       .eq('id', order.approved_plan_id ?? '')
-      .maybeSingle();
+      .maybeSingle<{ total_kzt: number }>();
     if (planError) return actionFailure('order.advanceOrderStage', planError);
     if (!plan || !Number.isSafeInteger(plan.total_kzt) || plan.total_kzt < 0) {
       return { ok: false, error: 'У заказа нет корректной согласованной стоимости' };
