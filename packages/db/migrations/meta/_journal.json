@@ -421,6 +421,13 @@
       "when": 1793939040000,
       "tag": "0059_quote_revision_null_safe_authorization",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793948952134,
+      "tag": "0060_outbox_owner_invite_isolation",
+      "breakpoints": true
     }
   ]
 }

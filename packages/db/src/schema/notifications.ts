@@ -21,8 +21,8 @@ const staffOnly = sql`${currentRoleSubquery} in ('concierge', 'admin')`;
  * В development сообщение фиксируется здесь вместо обязательного Resend.
  * Позже worker может забрать pending-строки и отправить их через адаптер,
  * не меняя бизнес-действия. Клиенты не могут читать или отравлять очередь:
- * просмотр доступен только staff, запись — staff для серверных actions и
- * service_role для фонового отправителя.
+ * обычные уведомления доступны staff; owner invite со ссылкой входа — только
+ * активному admin. service_role сохраняет доступ для фонового отправителя.
  */
 export const outbox = pgTable(
   'outbox',
@@ -55,20 +55,20 @@ export const outbox = pgTable(
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: staffOnly,
+      using: sql`${staffOnly} and (${t.kind} <> 'company_owner_invite' or ${currentRoleSubquery} = 'admin')`,
     }),
     pgPolicy('outbox_insert_staff', {
       as: 'permissive',
       for: 'insert',
       to: authenticatedRole,
-      withCheck: staffOnly,
+      withCheck: sql`${staffOnly} and (${t.kind} <> 'company_owner_invite' or ${currentRoleSubquery} = 'admin')`,
     }),
     pgPolicy('outbox_update_staff', {
       as: 'permissive',
       for: 'update',
       to: authenticatedRole,
-      using: staffOnly,
-      withCheck: staffOnly,
+      using: sql`${staffOnly} and (${t.kind} <> 'company_owner_invite' or ${currentRoleSubquery} = 'admin')`,
+      withCheck: sql`${staffOnly} and (${t.kind} <> 'company_owner_invite' or ${currentRoleSubquery} = 'admin')`,
     }),
     pgPolicy('outbox_service_all', {
       as: 'permissive',
