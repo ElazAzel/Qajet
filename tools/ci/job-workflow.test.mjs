@@ -148,10 +148,16 @@ test('both failed jobs are each attempted once before the final failure', (t) =>
   bothOnce(result);
 });
 
-test('root test command runs these regressions before Turbo', () => {
+test('root test command runs job and release regressions before Turbo', () => {
   const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-  const [nodeTests, turbo] = manifest.scripts.test.split(' && ');
+  const [nodeTests, ...remaining] = manifest.scripts.test.split(' && ');
   assert.ok(nodeTests.startsWith('node --test '));
-  assert.ok(nodeTests.split(' ').includes('tools/ci/job-workflow.test.mjs'));
-  assert.equal(turbo, 'turbo run test');
+  for (const path of [
+    'tools/ci/job-workflow.test.mjs',
+    'tools/ci/release-cli.test.mjs',
+    'tools/ci/release-contract.test.mjs',
+  ]) {
+    assert.equal(nodeTests.split(' ').filter((entry) => entry === path).length, 1);
+  }
+  assert.deepEqual(remaining, ['turbo run test']);
 });
