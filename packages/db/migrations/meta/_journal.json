@@ -435,6 +435,13 @@
       "when": 1793949940666,
       "tag": "0061_buyer_plan_confidentiality",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793951640243,
+      "tag": "0062_document_buyer_isolation",
+      "breakpoints": true
     }
   ]
 }

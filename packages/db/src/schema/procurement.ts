@@ -1043,15 +1043,25 @@ export const documents = pgTable(
   },
   (t) => [
     index('documents_order_id_idx').on(t.orderId),
-    // supplier_invoice — внутренний документ на исполнителя, покупателю не
-    // адресован и раскрыл бы его личность (agents.md §10 «Покупатель»).
-    // Остальные типы (prepay_invoice/act/final_invoice/refund_confirmation/
-    // spec) адресованы покупателю и видны как обычно.
+    // Buyer documents do not inherit supplier order visibility. supplier_invoice
+    // remains staff-only: no supplier recipient is recorded on this table.
+    // Explicit buyer types fail closed for future internal document types.
+    // Company activity is checked separately from active-profile RLS helpers.
     pgPolicy('documents_select_via_order', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.orderId} in (select id from ${orders}) and (${t.type} <> 'supplier_invoice' or ${staffOnly})`,
+      using: sql`${staffOnly} or (
+        ${currentRoleSubquery} in ('owner', 'manager')
+        and ${t.type} in ('prepay_invoice', 'act', 'final_invoice', 'refund_confirmation', 'spec')
+        and ${t.orderId} in (
+          select o.id from ${orders} o
+          join ${requests} r on r.id = o.request_id
+          join ${companies} c on c.id = r.buyer_company_id
+          where r.buyer_company_id = ${currentCompanyIdSubquery}
+            and c.type = 'buyer' and c.is_active
+        )
+      )`,
     }),
     // Document Engine (agents.md §14 шаг 11) — счёт/акт пишет order-actions.ts
     // в момент перехода стадии заказа (prepaid → prepay_invoice, closed →
