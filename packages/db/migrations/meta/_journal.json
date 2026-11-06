@@ -414,6 +414,13 @@
       "when": 1790181437948,
       "tag": "0058_supplier_whatsapp_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793939040000,
+      "tag": "0059_quote_revision_null_safe_authorization",
+      "breakpoints": true
     }
   ]
 }
