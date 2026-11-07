@@ -16,6 +16,8 @@ export interface DispatchResult {
   claimed: number;
   sent: number;
   failed: number;
+  /** Failed rows whose failure/retry transition could not be confirmed. */
+  retryUnconfirmed: number;
   errors: string[];
 }
 
@@ -34,7 +36,13 @@ export async function dispatchOutbox(limit = 20): Promise<DispatchResult> {
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as OutboxRow[];
-  const result: DispatchResult = { claimed: rows.length, sent: 0, failed: 0, errors: [] };
+  const result: DispatchResult = {
+    claimed: rows.length,
+    sent: 0,
+    failed: 0,
+    retryUnconfirmed: 0,
+    errors: [],
+  };
 
   for (const row of rows) {
     try {
@@ -54,13 +62,21 @@ export async function dispatchOutbox(limit = 20): Promise<DispatchResult> {
       result.sent += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка отправки';
-      await supabase.rpc('fail_outbox', {
-        p_id: row.id,
-        p_lease_id: leaseId,
-        p_error: message,
-      });
       result.failed += 1;
       result.errors.push(`${row.id}: ${message}`);
+      try {
+        const { data: failed, error: failError } = await supabase.rpc('fail_outbox', {
+          p_id: row.id,
+          p_lease_id: leaseId,
+          p_error: message,
+        });
+        if (failError || failed !== true) throw new Error('outbox.retry_unconfirmed');
+      } catch {
+        // Completion may already have committed, or the lease may recover
+        // later. Do not claim a retry was scheduled or abandon later rows.
+        result.retryUnconfirmed += 1;
+        result.errors.push(`${row.id}: outbox.retry_unconfirmed`);
+      }
     }
   }
 

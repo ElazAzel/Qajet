@@ -40,23 +40,35 @@ jobs:
             echo "::error::CRON_SECRET не задан в секретах репозитория"
             exit 1
           fi
+          tmp_dir=$(mktemp -d)
+          trap 'rm -rf "$tmp_dir"' EXIT
           # Пока приложение не готово (нет ключей окружения), задачи не имеют смысла.
           # Это NOT RUN, а не успех: причина видна в сообщении, а готовность
           # проверяет release-gate.
-          ready=$(curl -sS -o /tmp/ready.json -w '%{http_code}' "$APP_URL/api/ready" || echo 000)
+          if ! ready=$(curl -sS --connect-timeout 10 --max-time 45 -o "$tmp_dir/ready.json" -w '%{http_code}' "$APP_URL/api/ready"); then
+            ready=000
+          fi
           if [ "$ready" != "200" ]; then
             echo "::warning::NOT RUN: $APP_URL/api/ready вернул $ready, очереди не разбирались"
-            cat /tmp/ready.json 2>/dev/null || true
-            exit 0
+            exit 1
           fi
+          failed=0
           for job in outbox learning; do
-            code=$(curl -sS -o /tmp/out.json -w '%{http_code}' -X POST \
-              -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/jobs/$job" || echo 000)
+            if ! code=$(curl -sS --connect-timeout 10 --max-time 45 -o "$tmp_dir/$job.json" -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/jobs/$job"); then
+              code=000
+            fi
             echo "$job: HTTP $code"
-            cat /tmp/out.json 2>/dev/null || true
-            echo
             if [ "$code" != "200" ]; then
               echo "::error::задача $job завершилась с HTTP $code"
-              exit 1
+              failed=1
+              continue
+            fi
+            # Не повторяем batch: успешные элементы могли уже зафиксироваться.
+            # Не печатаем сырой ответ, в том числе при ошибке разбора JSON.
+            if ! jq -se 'length == 1 and (.[0] | type == "object" and .ok == true and (.failed | type == "number" and . == 0) and (if has("retryUnconfirmed") then (.retryUnconfirmed | type == "number" and . == 0) else true end))' "$tmp_dir/$job.json" >/dev/null 2>&1; then
+              echo "::error::задача $job вернула отказ или некорректный результат batch"
+              failed=1
             fi
           done
+          exit "$failed"

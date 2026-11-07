@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { loadBuyerPlans } from './buyer-plans';
 import { loadQajetRequisites, type QajetRequisites } from './documents';
 
 /**
@@ -72,11 +73,8 @@ export async function loadOrderConfirmation(
     .maybeSingle();
   if (!request) return null;
 
-  const { data: plan } = await supabase
-    .from('plans')
-    .select('version, total_kzt, delivery_kzt, supplier_rebate_kzt, eta_date')
-    .eq('id', order.approved_plan_id)
-    .maybeSingle();
+  const plans = await loadBuyerPlans(supabase, [order.request_id]);
+  const plan = plans.find((row) => row.id === order.approved_plan_id);
   if (!plan) return null;
 
   const { data: itemRows } = await supabase

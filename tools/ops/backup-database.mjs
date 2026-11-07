@@ -203,6 +203,23 @@ if (run.status !== 0) {
   process.exit(1);
 }
 
+// Любая ошибка процесса делает результат непроверенным, даже если stdout
+// выглядит правдоподобно. Не печатаем сырой stderr: там могут быть данные БД.
+function requireSuccess(result, label) {
+  if (result.error || result.signal || result.status !== 0) {
+    throw new Error(`${label}: команда не завершилась успешно`);
+  }
+}
+
+function readCounts(result, label) {
+  requireSuccess(result, label);
+  const value = result.stdout?.trim() ?? '';
+  if (!/^(0|[1-9]\d*)\/(0|[1-9]\d*)\/(0|[1-9]\d*)$/.test(value)) {
+    throw new Error(`${label}: ожидались три неотрицательных целых счётчика`);
+  }
+  return value;
+}
+
 try {
   let ready = false;
   for (let i = 0; i < 60 && !ready; i++) {
@@ -228,12 +245,13 @@ try {
         '--no-owner',
         '--clean',
         '--if-exists',
+        '--exit-on-error',
       ],
       { input: readFileSync(file), encoding: 'buffer', maxBuffer: 1024 * 1024 * 1024 },
     );
 
-  restore(identity.path, 'supabase_admin');
-  restore(business.path, 'postgres');
+  requireSuccess(restore(identity.path, 'supabase_admin'), 'pg_restore auth/storage');
+  requireSuccess(restore(business.path, 'postgres'), 'pg_restore public/drizzle');
 
   const count = spawnSync(
     'docker',
@@ -245,18 +263,25 @@ try {
       'postgres',
       '-d',
       'postgres',
+      '-X',
+      '-v',
+      'ON_ERROR_STOP=1',
       '-At',
       '-c',
       "select (select count(*) from public.orders) || '/' || (select count(*) from auth.users) || '/' || (select count(*) from public.companies)",
     ],
     { encoding: 'utf8' },
   );
+  const got = readCounts(count, 'psql копии');
   const source = spawnSync(
     'docker',
     [
       'exec',
       container,
       'psql',
+      '-X',
+      '-v',
+      'ON_ERROR_STOP=1',
       '-At',
       '-c',
       "select (select count(*) from public.orders) || '/' || (select count(*) from auth.users) || '/' || (select count(*) from public.companies)",
@@ -266,14 +291,15 @@ try {
     { encoding: 'utf8' },
   );
 
-  const got = count.stdout.trim();
-  const want = source.stdout.trim();
+  const want = readCounts(source, 'psql источника');
   console.log(`  заказы/пользователи/компании — источник ${want}, копия ${got}`);
-  if (got && got === want) {
-    console.log('  ПРОВЕРЕНО: копия восстанавливается и содержит те же строки.');
+  if (got === want) {
+    console.log(
+      '  ПРОВЕРЕНО: оба pg_restore завершились без ошибок; три счётчика строк совпадают.',
+    );
   } else {
     console.error(
-      '  РАСХОЖДЕНИЕ: копия восстановилась не полностью. Разберитесь до того, как полагаться на неё.',
+      '  РАСХОЖДЕНИЕ: счётчики источника и копии различаются; копия НЕ проверена. Источник мог измениться после дампа.',
     );
     process.exitCode = 1;
   }

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { loadBuyerPlans } from './buyer-plans';
 import { ORDER_STATE_LABEL, type OrderState } from './order-state';
 
 /**
@@ -14,16 +15,9 @@ import { ORDER_STATE_LABEL, type OrderState } from './order-state';
  * видит только итоговую цену исполнения заказа, без разбивки поставщик/
  * комиссия. `delivery_kzt` оставлен отдельной строкой — это логистика, не
  * структура наценки. Отдельное вознаграждение поставщика, если оно есть,
- * раскрывается отдельной строкой по правилу §7.9. Честная оговорка:
- * `plans_select_via_request`
- * по-прежнему пускает покупательскую сессию читать ВСЮ строку `plans`
- * напрямую через PostgREST (RLS не умеет колоночно), так что
- * `commission_kzt`/`total_supplier_kzt` в самой БД остаются technically
- * достижимы в обход этого файла при прямом запросе — тот же класс
- * остаточного риска, что уже документирован в ADR-0009 (RFQ/plan_lines
- * UUID). Настоящая колоночная защита потребовала бы отдельного view, вне
- * объёма этой задачи. Запись цены отдельно закрыта — см. approve_plan()
- * RPC, packages/db/migrations/0013.
+ * раскрывается отдельной строкой по правилу §7.9. `get_buyer_plans`
+ * возвращает только разрешённые поля; прямое чтение `plans` покупателем
+ * закрыто в БД. Утверждение цены проходит через атомарный `approve_plan` RPC.
  */
 
 export interface StageEvent {
@@ -126,15 +120,8 @@ export async function loadBuyerOrder(
     itemNames: row.item_names ?? [],
   }));
 
-  const { data: planRows } = await supabase
-    .from('plans')
-    .select(
-      'id, version, kind, status, delivery_kzt, supplier_rebate_kzt, total_kzt, eta_date, slack_days, supplier_count',
-    )
-    .eq('request_id', order.request_id)
-    .in('status', ['draft', 'proposed', 'approved'])
-    .order('version', { ascending: false });
-  const toPlan = (planRow: NonNullable<typeof planRows>[number]): BuyerOrderPlan => ({
+  const planRows = await loadBuyerPlans(supabase, [order.request_id]);
+  const toPlan = (planRow: (typeof planRows)[number]): BuyerOrderPlan => ({
     id: planRow.id,
     version: planRow.version,
     kind: planRow.kind,

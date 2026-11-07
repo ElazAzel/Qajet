@@ -414,6 +414,34 @@
       "when": 1790181437948,
       "tag": "0058_supplier_whatsapp_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793939040000,
+      "tag": "0059_quote_revision_null_safe_authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793948952134,
+      "tag": "0060_outbox_owner_invite_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793949940666,
+      "tag": "0061_buyer_plan_confidentiality",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793951640243,
+      "tag": "0062_document_buyer_isolation",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { loadBuyerPlans } from './buyer-plans';
 import { type CaseDescription, describeCase, isBuyerTurn } from './buyer-stage';
-import { checkedQuery, readInBatches, readQueryRows } from './data/query-rows';
+import { checkedQuery, readQueryRows } from './data/query-rows';
 import type { OrderState } from './order-state';
 
 /**
@@ -70,20 +71,12 @@ export async function loadBuyerCases(
   );
   if (requests.length === 0) return [];
 
-  const planRows = await readInBatches(
+  const planRows = await loadBuyerPlans(
+    supabase,
     requests.map((row) => row.id),
-    (ids) =>
-      readQueryRows(() =>
-        supabase
-          .from('plans')
-          .select('id, request_id, eta_date, version')
-          .in('request_id', ids)
-          .in('status', ['proposed', 'approved']),
-      ),
   );
-  planRows.sort((a, b) => b.version - a.version || a.id.localeCompare(b.id));
   const etaByRequest = new Map<string, string>();
-  for (const plan of planRows ?? []) {
+  for (const plan of planRows.filter((row) => ['proposed', 'approved'].includes(row.status))) {
     if (plan.eta_date && !etaByRequest.has(plan.request_id)) {
       etaByRequest.set(plan.request_id, plan.eta_date);
     }
@@ -127,7 +120,7 @@ export async function loadBuyerCase(
   );
   if (!request) return null;
 
-  const [{ data: order }, items, { data: plan }] = await Promise.all([
+  const [{ data: order }, items, plans] = await Promise.all([
     checkedQuery(
       supabase
         .from('orders')
@@ -141,17 +134,9 @@ export async function loadBuyerCase(
         .select('id, name, qty, unit, created_at')
         .eq('request_id', requestId),
     ),
-    checkedQuery(
-      supabase
-        .from('plans')
-        .select('eta_date')
-        .eq('request_id', requestId)
-        .in('status', ['proposed', 'approved'])
-        .order('version', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ),
+    loadBuyerPlans(supabase, [requestId]),
   ]);
+  const plan = plans.find((row) => ['proposed', 'approved'].includes(row.status));
 
   return {
     requestId: request.id,

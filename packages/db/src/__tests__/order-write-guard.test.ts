@@ -100,7 +100,7 @@ async function asUser(tx: postgres.TransactionSql, id: string) {
 async function deliverOrder(tx: postgres.TransactionSql, f: Fixture) {
   await asUser(tx, f.buyerOwner);
   const [plan] = await tx<{ id: string; version: number }[]>`
-    select p.id, p.version from orders o join plans p on p.id = o.approved_plan_id where o.id = ${f.order}`;
+    select p.id, p.version from orders o join lateral public.get_buyer_plans(ARRAY[o.request_id]) p on p.id = o.approved_plan_id where o.id = ${f.order}`;
   if (!plan) throw new Error('fixture: у заказа нет плана');
   await tx`select approve_plan(${f.order}, ${plan.id}, ${plan.version})`;
   await asUser(tx, f.staff);
@@ -187,7 +187,7 @@ describeIfConfigured('защита записи в orders и подтвержд�
     scenario(async (tx, f) => {
       await asUser(tx, f.buyerOwner);
       const [plan] = await tx<{ id: string; version: number }[]>`
-        select p.id, p.version from orders o join plans p on p.id = o.approved_plan_id where o.id = ${f.order}`;
+        select p.id, p.version from orders o join lateral public.get_buyer_plans(ARRAY[o.request_id]) p on p.id = o.approved_plan_id where o.id = ${f.order}`;
       if (!plan) throw new Error('fixture: у заказа нет плана');
       await tx`select approve_plan(${f.order}, ${plan.id}, ${plan.version})`;
       await asUser(tx, f.staff);
