@@ -15,7 +15,7 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
-    "test": "node --test tools/ci/quote-revision-guard.test.mjs tools/ci/job-workflow.test.mjs tools/ci/release-cli.test.mjs tools/ci/release-contract.test.mjs tools/ops/backup-database.test.mjs && turbo run test",
+    "test": "node --test tools/ci/quote-revision-guard.test.mjs tools/ci/job-workflow.test.mjs tools/ci/release-cli.test.mjs tools/ci/release-contract.test.mjs tools/ci/summarize-gates.test.mjs tools/ops/backup-database.test.mjs && turbo run test",
     "test:watch": "turbo run test:watch",
     "e2e": "pnpm --filter @qajet/web build && pnpm --filter @qajet/web e2e",
     "db:generate": "pnpm --filter @qajet/db db:generate",

@@ -156,6 +156,7 @@ test('root test command runs job and release regressions before Turbo', () => {
     'tools/ci/job-workflow.test.mjs',
     'tools/ci/release-cli.test.mjs',
     'tools/ci/release-contract.test.mjs',
+    'tools/ci/summarize-gates.test.mjs',
   ]) {
     assert.equal(nodeTests.split(' ').filter((entry) => entry === path).length, 1);
   }
