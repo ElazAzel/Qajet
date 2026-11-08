@@ -1043,13 +1043,16 @@ export const documents = pgTable(
     index('documents_order_id_idx').on(t.orderId),
     // supplier_invoice — внутренний документ на исполнителя, покупателю не
     // адресован и раскрыл бы его личность (agents.md §10 «Покупатель»).
-    // Остальные типы (prepay_invoice/act/final_invoice/refund_confirmation/
-    // spec) адресованы покупателю и видны как обычно.
+    // Остальные типы адресованы только покупателю своей заявки и staff.
+    // Видимость orders для поставщика не даёт ему доступ к этим документам.
     pgPolicy('documents_select_via_order', {
       as: 'permissive',
       for: 'select',
       to: authenticatedRole,
-      using: sql`${t.orderId} in (select id from ${orders}) and (${t.type} <> 'supplier_invoice' or ${staffOnly})`,
+      using: sql`${staffOnly} or (${t.type} <> 'supplier_invoice' and ${t.orderId} in (
+        select o.id from ${orders} o join ${requests} r on r.id = o.request_id
+        where r.buyer_company_id = ${currentCompanyIdSubquery}
+      ))`,
     }),
     // Document Engine (agents.md §14 шаг 11) — счёт/акт пишет order-actions.ts
     // в момент перехода стадии заказа (prepaid → prepay_invoice, closed →

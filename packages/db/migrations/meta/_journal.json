@@ -414,6 +414,27 @@
       "when": 1790181437948,
       "tag": "0058_supplier_whatsapp_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794119412174,
+      "tag": "0059_quote_revision_authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794119412175,
+      "tag": "0060_owner_invite_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794119412176,
+      "tag": "0061_buyer_document_isolation",
+      "breakpoints": true
     }
   ]
 }

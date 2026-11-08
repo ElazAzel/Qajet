@@ -29,6 +29,8 @@ interface World {
   conciergeUser: string;
   adminUser: string;
   inactiveStaff: string;
+  inactiveAdmin: string;
+  noProfileUser: string;
   inactiveBuyerOwner: string;
 }
 
@@ -59,8 +61,11 @@ async function scenario(run: (tx: postgres.TransactionSql, w: World) => Promise<
           conciergeUser: id(),
           adminUser: id(),
           inactiveStaff: id(),
+          inactiveAdmin: id(),
+          noProfileUser: id(),
           inactiveBuyerOwner: id(),
         };
+        await tx`insert into auth.users (id, email) values (${w.noProfileUser}, ${`E2E-no-profile-${w.noProfileUser}@example.test`})`;
         const otherRequest = id();
         const item = id();
 
@@ -76,6 +81,7 @@ async function scenario(run: (tx: postgres.TransactionSql, w: World) => Promise<
           [w.conciergeUser, null, 'concierge', true],
           [w.adminUser, null, 'admin', true],
           [w.inactiveStaff, null, 'concierge', false],
+          [w.inactiveAdmin, null, 'admin', false],
           [w.inactiveBuyerOwner, buyerCoA, 'owner', false],
         ];
         for (const [uid] of users) await tx`insert into auth.users (id) values (${uid})`;
@@ -370,28 +376,43 @@ describeIfConfigured('SECURITY DEFINER RPC: граница актёра внут
       await tx`update rfqs set status = 'quoted' where id = ${w.supplierS1.rfq}`;
     }
 
-    it('сотрудник просит исправить КП: флаг ставится, письмо уходит только своему поставщику', async () => {
-      await scenario(async (tx, w) => {
-        await quote(tx, w);
-        await asUser(tx, w.conciergeUser);
-        await tx`select public.request_supplier_quote_revision(${w.supplierS1.rfq}, ${NOTE})`;
-        await asOwner(tx);
-        const [r] = await tx`select revision_requested from rfqs where id = ${w.supplierS1.rfq}`;
-        expect(r?.revision_requested).toBe(true);
-        const mail = await tx`select recipient from outbox where kind = 'rfq_revision_requested'
+    it.each([
+      ['concierge', (w: World) => w.conciergeUser],
+      ['admin', (w: World) => w.adminUser],
+    ])(
+      '%s просит исправить КП: флаг ставится, письмо уходит только своему поставщику',
+      async (_role, actor) => {
+        await scenario(async (tx, w) => {
+          await quote(tx, w);
+          await asUser(tx, actor(w));
+          await tx`select public.request_supplier_quote_revision(${w.supplierS1.rfq}, ${NOTE})`;
+          await asOwner(tx);
+          const [r] = await tx`select revision_requested from rfqs where id = ${w.supplierS1.rfq}`;
+          expect(r?.revision_requested).toBe(true);
+          const mail = await tx`select recipient from outbox where kind = 'rfq_revision_requested'
           and payload->>'rfqId' = ${w.supplierS1.rfq}`;
-        const recipients = mail.map((m) => m.recipient as string);
-        expect(recipients).toContain(`${w.supplierS1.owner}@example.test`);
-        expect(recipients).not.toContain(`${w.supplierS2.owner}@example.test`);
-      });
-    });
+          const recipients = mail.map((m) => m.recipient as string);
+          expect(recipients).toContain(`${w.supplierS1.owner}@example.test`);
+          expect(recipients).not.toContain(`${w.supplierS2.owner}@example.test`);
+        });
+      },
+    );
 
     it.each([
       ['покупатель', (w: World) => w.buyerA.owner],
       ['поставщик', (w: World) => w.supplierS1.owner],
+      ['менеджер поставщика', (w: World) => w.supplierS1.manager],
+      ['неактивный консьерж', (w: World) => w.inactiveStaff],
+      ['неактивный администратор', (w: World) => w.inactiveAdmin],
+      ['неактивный покупатель', (w: World) => w.inactiveBuyerOwner],
+      ['Auth-пользователь без профиля', (w: World) => w.noProfileUser],
     ])('«%s» не может запросить исправление', async (_name, actor) => {
       await scenario(async (tx, w) => {
         await quote(tx, w);
+        const before =
+          await tx`select revision_requested, revision_note, updated_at from rfqs where id = ${w.supplierS1.rfq}`;
+        const beforeMail =
+          await tx`select count(*)::int as count from outbox where payload->>'rfqId' = ${w.supplierS1.rfq}`;
         await asUser(tx, actor(w));
         await expectRejected(
           tx,
@@ -399,8 +420,12 @@ describeIfConfigured('SECURITY DEFINER RPC: граница актёра внут
           () => tx`select public.request_supplier_quote_revision(${w.supplierS1.rfq}, ${NOTE})`,
         );
         await asOwner(tx);
-        const [r] = await tx`select revision_requested from rfqs where id = ${w.supplierS1.rfq}`;
-        expect(r?.revision_requested).toBe(false);
+        expect(
+          await tx`select revision_requested, revision_note, updated_at from rfqs where id = ${w.supplierS1.rfq}`,
+        ).toEqual(before);
+        expect(
+          await tx`select count(*)::int as count from outbox where payload->>'rfqId' = ${w.supplierS1.rfq}`,
+        ).toEqual(beforeMail);
       });
     });
 
@@ -421,6 +446,30 @@ describeIfConfigured('SECURITY DEFINER RPC: граница актёра внут
           /только для уже отправленного КП/,
           () => tx`select public.request_supplier_quote_revision(${w.supplierS1.rfq}, ${NOTE})`,
         );
+      });
+    });
+
+    it('authenticated без JWT не меняет RFQ и не создаёт уведомления', async () => {
+      await scenario(async (tx, w) => {
+        await quote(tx, w);
+        const before =
+          await tx`select revision_requested, revision_note from rfqs where id = ${w.supplierS1.rfq}`;
+        const mail =
+          await tx`select count(*)::int as count from outbox where payload->>'rfqId' = ${w.supplierS1.rfq}`;
+        await tx`set local role authenticated`;
+        await tx`select set_config('request.jwt.claims', '{}', true)`;
+        await expectRejected(
+          tx,
+          /может только сотрудник QAJET/,
+          () => tx`select public.request_supplier_quote_revision(${w.supplierS1.rfq}, ${NOTE})`,
+        );
+        await asOwner(tx);
+        expect(
+          await tx`select revision_requested, revision_note from rfqs where id = ${w.supplierS1.rfq}`,
+        ).toEqual(before);
+        expect(
+          await tx`select count(*)::int as count from outbox where payload->>'rfqId' = ${w.supplierS1.rfq}`,
+        ).toEqual(mail);
       });
     });
 

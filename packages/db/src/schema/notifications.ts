@@ -13,16 +13,14 @@ import { authenticatedRole, serviceRole } from 'drizzle-orm/supabase';
 import { id, timestamps } from './_columns.js';
 import { currentRoleSubquery } from './identity.js';
 
-const staffOnly = sql`${currentRoleSubquery} in ('concierge', 'admin')`;
-
 /**
  * Dev-first очередь исходящих уведомлений — agents.md §2 и §10.
  *
  * В development сообщение фиксируется здесь вместо обязательного Resend.
  * Позже worker может забрать pending-строки и отправить их через адаптер,
  * не меняя бизнес-действия. Клиенты не могут читать или отравлять очередь:
- * просмотр доступен только staff, запись — staff для серверных actions и
- * service_role для фонового отправителя.
+ * Обычные сообщения доступны staff; одноразовые приглашения owner — только
+ * admin и service_role, поскольку тело и payload содержат Auth-ссылку.
  */
 export const outbox = pgTable(
   'outbox',
@@ -47,35 +45,38 @@ export const outbox = pgTable(
     sentAt: timestamp('sent_at', { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [
-    index('outbox_status_available_at_idx').on(t.status, t.availableAt),
-    index('outbox_created_at_idx').on(t.createdAt),
-    uniqueIndex('outbox_idempotency_key_idx').on(t.idempotencyKey),
-    pgPolicy('outbox_select_staff', {
-      as: 'permissive',
-      for: 'select',
-      to: authenticatedRole,
-      using: staffOnly,
-    }),
-    pgPolicy('outbox_insert_staff', {
-      as: 'permissive',
-      for: 'insert',
-      to: authenticatedRole,
-      withCheck: staffOnly,
-    }),
-    pgPolicy('outbox_update_staff', {
-      as: 'permissive',
-      for: 'update',
-      to: authenticatedRole,
-      using: staffOnly,
-      withCheck: staffOnly,
-    }),
-    pgPolicy('outbox_service_all', {
-      as: 'permissive',
-      for: 'all',
-      to: serviceRole,
-      using: sql`true`,
-      withCheck: sql`true`,
-    }),
-  ],
+  (t) => {
+    const allowed = sql`${currentRoleSubquery} = 'admin' or (${currentRoleSubquery} = 'concierge' and ${t.kind} <> 'company_owner_invite')`;
+    return [
+      index('outbox_status_available_at_idx').on(t.status, t.availableAt),
+      index('outbox_created_at_idx').on(t.createdAt),
+      uniqueIndex('outbox_idempotency_key_idx').on(t.idempotencyKey),
+      pgPolicy('outbox_select_staff', {
+        as: 'permissive',
+        for: 'select',
+        to: authenticatedRole,
+        using: allowed,
+      }),
+      pgPolicy('outbox_insert_staff', {
+        as: 'permissive',
+        for: 'insert',
+        to: authenticatedRole,
+        withCheck: allowed,
+      }),
+      pgPolicy('outbox_update_staff', {
+        as: 'permissive',
+        for: 'update',
+        to: authenticatedRole,
+        using: allowed,
+        withCheck: allowed,
+      }),
+      pgPolicy('outbox_service_all', {
+        as: 'permissive',
+        for: 'all',
+        to: serviceRole,
+        using: sql`true`,
+        withCheck: sql`true`,
+      }),
+    ];
+  },
 ).enableRLS();
