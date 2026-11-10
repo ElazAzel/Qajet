@@ -86,15 +86,15 @@ async function asUser(tx: postgres.TransactionSql, id: string) {
   await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: id, role: 'authenticated' })}, true)`;
 }
 
-function planPayload(f: Fixture, kind: string) {
+function planPayload(f: Fixture, kind: string, commissionPct = 15) {
   return {
     kind,
     total_supplier_kzt: 100000,
     delivery_kzt: 0,
-    commission_kzt: 23000,
+    commission_kzt: Math.round((100000 * commissionPct) / 100),
     commission_base: 'supplier_ex_delivery',
     tax_effect_kzt: 0,
-    total_kzt: 123000,
+    total_kzt: 100000 + Math.round((100000 * commissionPct) / 100),
     eta_date: '2027-01-15',
     slack_days: 5,
     supplier_count: 1,
@@ -106,14 +106,41 @@ function planPayload(f: Fixture, kind: string) {
         quote_line_id: f.quoteLine,
         qty: 10,
         line_total_kzt: 100000,
-        commission_pct: 23,
-        commission_kzt: 23000,
+        commission_pct: commissionPct,
+        commission_kzt: Math.round((100000 * commissionPct) / 100),
       },
     ],
   };
 }
 
 describeIfConfigured('первое предложение плана консьержем', () => {
+  it.each([10, 12.5, 15])('сохраняет новую комиссию %s%% через RPC', async (commissionPct) =>
+    scenario(async (tx, f) => {
+      await asUser(tx, f.staff);
+      await tx`select propose_order_plans(${f.order}, 'quotes_received', ${tx.json([planPayload(f, 'recommended', commissionPct)])}, ${tx.json([])}, 'recommended')`;
+      await tx`set constraints all immediate`;
+      const [line] = await tx<{ commission_pct: number; commission_kzt: string }[]>`
+        select l.commission_pct, l.commission_kzt from plan_lines l
+        join plans p on p.id = l.plan_id where p.request_id = ${f.request}`;
+      expect(line?.commission_pct).toBe(commissionPct);
+      expect(Number(line?.commission_kzt)).toBe(1000 * commissionPct);
+    }),
+  );
+
+  it.each([9.99, 15.01, 21, 23, 24])(
+    'отклоняет новую комиссию %s%% на уровне БД',
+    async (commissionPct) =>
+      scenario(async (tx, f) => {
+        await asUser(tx, f.staff);
+        await expect(
+          tx.savepoint(
+            (sp) =>
+              sp`select propose_order_plans(${f.order}, 'quotes_received', ${sp.json([planPayload(f, 'recommended', commissionPct)])}, ${sp.json([])}, 'recommended')`,
+          ),
+        ).rejects.toThrow('некорректную стоимость или комиссию');
+      }),
+  );
+
   it('переводит заказ в plan_proposed и сохраняет варианты со строками', async () =>
     scenario(async (tx, f) => {
       await asUser(tx, f.staff);

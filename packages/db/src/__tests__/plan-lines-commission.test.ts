@@ -138,7 +138,7 @@ describeIfConfigured('комиссия по позиции плана (RLS + app
             commission_kzt, commission_base, total_kzt, supplier_count, explanation, status
           ) values (
             ${request.id}, 1, 'recommended', 100000, 5000,
-            23000, 'supplier_ex_delivery', 128000, 1, '{}'::jsonb, 'proposed'
+            15000, 'supplier_ex_delivery', 120000, 1, '{}'::jsonb, 'proposed'
           )
           returning id
         `,
@@ -150,7 +150,7 @@ describeIfConfigured('комиссия по позиции плана (RLS + app
             qty, line_total_kzt, commission_pct, commission_kzt
           ) values (
             ${plan.id}, ${item.id}, ${supplierCompany.id}, ${quoteLine.id},
-            10, 100000, 23, 23000
+            10, 100000, 15, 15000
           )
           returning id
         `,

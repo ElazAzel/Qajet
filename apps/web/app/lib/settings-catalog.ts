@@ -1,3 +1,4 @@
+import { COMMISSION_MAX_PCT, COMMISSION_MIN_PCT } from '@qajet/engine/commission';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -7,7 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * сломала бы счёт и акт.
  *
  * Границы — не украшение формы, а часть смысла параметра: комиссия вне
- * 21-24% расходится с диапазоном, который задан для построчной правки
+ * диапазона движка расходится с правилами, заданными для построчной правки
  * консьержем (`@qajet/engine/commission`), а нулевая ставка часа
  * превращает «вклад после прямых затрат» в комиссию и делает метрику
  * бессмысленной.
@@ -27,10 +28,10 @@ export const EDITABLE_SETTINGS: readonly EditableSetting[] = [
   {
     key: 'commission_rate_pct',
     label: 'Ставка комиссии',
-    hint: 'Начисляется поверх цены поставщика. Консьерж правит её по позиции в пределах 21-24%.',
+    hint: `Начисляется поверх цены поставщика. Консьерж правит её по позиции в пределах ${COMMISSION_MIN_PCT}-${COMMISSION_MAX_PCT}%.`,
     unit: '%',
-    min: 21,
-    max: 24,
+    min: COMMISSION_MIN_PCT,
+    max: COMMISSION_MAX_PCT,
     step: 0.5,
   },
   {

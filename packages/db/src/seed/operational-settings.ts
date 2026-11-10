@@ -6,8 +6,10 @@
  * окружении обязаны быть настоящими.
  */
 
-/** Плейсхолдер до решения по тарифам (agents.md §17: "финальный процент комиссии — параметр, не константа"). */
-export const COMMISSION_RATE_PCT = 15;
+import { COMMISSION_DEFAULT_PCT } from '@qajet/engine/commission';
+
+/** Стандартная ставка для нового окружения; админ может менять её в пределах движка. */
+export const COMMISSION_RATE_PCT = COMMISSION_DEFAULT_PCT;
 /** Ставка КПН РК, 2026 (agents.md §11.4). */
 export const CIT_RATE_PCT = 20;
 /** Стоимость часа закупщика (agents.md §9) — параметр экономики, правится админом вживую. */

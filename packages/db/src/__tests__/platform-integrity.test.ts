@@ -469,15 +469,22 @@ describe.skipIf(!databaseUrl)('platform integrity under real PostgreSQL RLS', ()
       await tx`insert into plan_lines(id,plan_id,request_item_id,supplier_company_id,quote_line_id,qty,line_total_kzt,commission_pct,commission_kzt)
       values(${line},${f[10]},${f[7]},${f[1]},${quoteLine},10,100000,23,23000)`;
       await asUser(tx, f[3]);
-      await tx`update plan_lines set commission_pct = 21 where id = ${line}`;
+      await tx`update plan_lines set commission_pct = 12 where id = ${line}`;
       expect(
         Number((await tx`select total_kzt from plans where id = ${f[10]}`)[0]?.total_kzt),
-      ).toBe(121000);
+      ).toBe(112000);
+      await tx`select update_plan_line_commission(${line}, 15)`;
+      expect(
+        Number((await tx`select total_kzt from plans where id = ${f[10]}`)[0]?.total_kzt),
+      ).toBe(115000);
+      await expect(
+        tx.savepoint((sp) => sp`select update_plan_line_commission(${line}, 23)`),
+      ).rejects.toThrow('от 10% до 15%');
       await asUser(tx, f[2]);
       await approvePlan(tx, f[11]);
       await asUser(tx, f[3]);
       await expect(
-        tx.savepoint((sp) => sp`update plan_lines set commission_pct = 24 where id = ${line}`),
+        tx.savepoint((sp) => sp`update plan_lines set commission_pct = 12 where id = ${line}`),
       ).rejects.toThrow();
       await expect(
         tx.savepoint((sp) => sp`update plans set total_kzt = 1 where id = ${f[10]}`),
