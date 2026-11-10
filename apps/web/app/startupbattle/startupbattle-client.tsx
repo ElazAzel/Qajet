@@ -1,5 +1,7 @@
 'use client';
 
+import { COMMISSION_DEFAULT_PCT } from '@qajet/engine/commission';
+
 import { cn } from '@qajet/ui/lib/cn';
 import { BarGrow, type BarSegment, CountUp, ScrollProgress } from '@qajet/ui/motion';
 import { ArrowUpRight, Check, ChevronDown } from 'lucide-react';
@@ -73,18 +75,25 @@ const parts = [
   { index: 2, label: 'Доставка', color: 'muted' },
   { index: 3, label: 'Комиссия QAJET', color: 'purple' },
 ] as const satisfies readonly { index: number; label: string; color: BarSegment['color'] }[];
+// Иллюстративные значения: комиссия всегда считается от товаров и работ,
+// без доставки — тот же принцип, что и в production-калькуляторе.
 const variants = [
   {
     title: 'Сбалансированный',
     note: 'Полная стоимость ниже',
-    costs: [800000, 220000, 77650, 82350],
+    costs: [800000, 220000, 77650, Math.round(((800000 + 220000) * COMMISSION_DEFAULT_PCT) / 100)],
   },
   {
     title: 'Дешевле только товар',
     note: 'Больше расходов на работы и доставку',
-    costs: [720000, 330000, 109000, 81000],
+    costs: [720000, 330000, 109000, Math.round(((720000 + 330000) * COMMISSION_DEFAULT_PCT) / 100)],
   },
 ] as const;
+const variantTotals = variants.map((variant) =>
+  variant.costs.reduce<number>((sum, cost) => sum + cost, 0),
+);
+const maxVariantTotal = Math.max(...variantTotals);
+const comparisonDifference = Math.abs(variantTotals[0] - variantTotals[1]);
 
 export function Comparison() {
   return (
@@ -113,7 +122,7 @@ export function Comparison() {
                 label: part.label,
                 color: part.color,
                 amountLabel: money(variant.costs[part.index]),
-                fraction: variant.costs[part.index] / 1240000,
+                fraction: variant.costs[part.index] / maxVariantTotal,
               }))}
             />
             <p>{variant.note}</p>
@@ -122,7 +131,7 @@ export function Comparison() {
       </div>
       <div className={styles.comparisonTakeaway}>
         <span>Разница в полной стоимости</span>
-        <strong>60 000 ₸</strong>
+        <strong>{money(comparisonDifference)}</strong>
       </div>
       <details className={styles.breakdown}>
         <summary>
