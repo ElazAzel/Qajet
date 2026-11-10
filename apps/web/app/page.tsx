@@ -1,10 +1,20 @@
 import { BarGrow, Reveal } from '@qajet/ui/motion';
-import { ArrowRight, Check, Eye, FileCheck2, Repeat2 } from 'lucide-react';
+import {
+  ArrowRight,
+  Check,
+  Eye,
+  FileCheck2,
+  Gift,
+  PackageOpen,
+  Repeat2,
+  Shirt,
+} from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { DemoVideo } from './_landing/demo-video';
 import { CONTACTS } from './lib/contacts';
 import { LANDING_EXAMPLE_PHRASE } from './lib/landing-example';
+import { PROGRAMS } from './lib/program-brief';
 
 /**
  * Посадочная — отвечает на один вопрос: что это и зачем мне. Раньше заголовок
@@ -206,14 +216,12 @@ const HERO_POINTS = ['Один договор и один счёт', 'Видно
 
 function PrimaryCta({ className = '' }: { className?: string }) {
   return (
-    <a
-      href={CONTACTS.whatsapp}
-      target="_blank"
-      rel="noreferrer"
+    <Link
+      href="/collections"
       className={`inline-flex h-12 items-center justify-center gap-2 rounded-control bg-lime px-6 text-sm font-bold text-ink transition-transform duration-[var(--duration-quick)] hover:-translate-y-0.5 ${className}`}
     >
-      Обсудить закупку <ArrowRight size={16} aria-hidden="true" />
-    </a>
+      Собрать закупку <ArrowRight size={16} aria-hidden="true" />
+    </Link>
   );
 }
 
@@ -236,6 +244,9 @@ export default function LandingPage() {
             aria-label="Разделы страницы"
             className="hidden gap-7 text-fine text-white/70 md:flex"
           >
+            <a href="#collections" className="hover:text-white">
+              Готовые сценарии
+            </a>
             <a href="#how" className="hover:text-white">
               Как это работает
             </a>
@@ -258,23 +269,25 @@ export default function LandingPage() {
                 Внешний отдел закупок для бизнеса
               </p>
               <h1 className="mt-4 text-4xl leading-[1.05] font-extrabold tracking-tight text-balance sm:text-5xl lg:text-6xl">
-                Скажите, что нужно купить. <span className="text-lime">Остальное сделаем мы.</span>
+                Мерч и наборы <span className="text-lime">под ваш бюджет и дату.</span>
               </h1>
             </Reveal>
             <Reveal delay={0.05}>
               <p className="mt-5 max-w-xl text-base text-white/75 sm:text-lg">
-                Мерч, подарки, welcome-наборы и полиграфия для HR и маркетинга — от одной фразы до
-                закрывающих документов.
+                Выберите повод и составьте бриф. QAJET подберёт поставщиков, согласует полную
+                стоимость и проведёт закупку до приёмки и документов.
               </p>
             </Reveal>
             <Reveal delay={0.1} className="mt-7 flex flex-wrap items-center gap-3">
               <PrimaryCta />
-              <Link
-                href="/login"
+              <a
+                href={CONTACTS.whatsapp}
+                target="_blank"
+                rel="noreferrer"
                 className="inline-flex h-12 items-center justify-center rounded-control border border-white/20 px-5 text-sm font-semibold text-white hover:bg-white/10"
               >
-                Войти в систему
-              </Link>
+                Обсудить задачу
+              </a>
             </Reveal>
             <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-fine text-white/80">
               {HERO_POINTS.map((point) => (
@@ -294,6 +307,48 @@ export default function LandingPage() {
       </section>
 
       <main>
+        <section
+          id="collections"
+          aria-labelledby="collections-heading"
+          className="mx-auto max-w-6xl scroll-mt-8 px-5 pt-16 sm:px-8 sm:pt-20"
+        >
+          <p className="text-fine font-semibold text-purple">Начните с повода</p>
+          <h2
+            id="collections-heading"
+            className="mt-3 max-w-3xl text-3xl font-extrabold tracking-tight text-balance sm:text-4xl"
+          >
+            Готовая основа для вашей закупки
+          </h2>
+          <p className="mt-4 max-w-2xl text-base text-muted">
+            Укажите количество, бюджет и дату. Получите состав для согласования, который можно
+            обсудить с консьержем или перенести в заявку.
+          </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {PROGRAMS.map((program) => {
+              const Icon =
+                program.id === 'welcome' ? PackageOpen : program.id === 'event' ? Shirt : Gift;
+              return (
+                <Link
+                  key={program.id}
+                  href={`/collections?program=${program.id}`}
+                  className="group flex flex-col rounded-card border border-rule bg-surface p-6 transition-colors hover:border-purple focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple"
+                >
+                  <Icon className="text-purple" size={32} aria-hidden="true" />
+                  <p className="mt-5 text-fine text-muted">{program.occasion}</p>
+                  <h3 className="mt-2 text-xl font-bold">{program.title}</h3>
+                  <p className="mt-3 text-sm text-muted">{program.description}</p>
+                  <span className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-purple">
+                    Подготовить бриф <ArrowRight size={16} aria-hidden="true" />
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+          <p className="mt-4 text-fine text-muted">
+            Сценарии помогают описать задачу. Наличие, стоимость и срок подтвердим перед
+            согласованием заказа.
+          </p>
+        </section>
         {/* Одна фраза — главный жест продукта, крупно, до шагов. */}
         <section
           className="mx-auto max-w-6xl px-5 pt-16 sm:px-8 sm:pt-20"

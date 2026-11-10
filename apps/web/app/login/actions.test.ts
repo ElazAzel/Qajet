@@ -42,4 +42,34 @@ describe('signIn profile gate', () => {
     });
     await expect(signIn(null, form())).rejects.toThrow('redirect:/supplier');
   });
+
+  it('после входа покупателя сохраняет явно подготовленный бриф', async () => {
+    mocks.profile.mockResolvedValue({
+      data: { role: 'owner', is_active: true, companies: { type: 'buyer' } },
+    });
+    const data = form();
+    const brief = 'program=welcome&qty=50&city=almaty&budget=500000';
+    data.set('brief', brief);
+    await expect(signIn(null, data)).rejects.toThrow(
+      'redirect:/buyer/requests/new?prepared=program',
+    );
+  });
+
+  it('не использует бриф для перенаправления поставщика в кабинет покупателя', async () => {
+    mocks.profile.mockResolvedValue({
+      data: { role: 'owner', is_active: true, companies: { type: 'supplier' } },
+    });
+    const data = form();
+    data.set('brief', 'program=welcome&qty=50&city=almaty');
+    await expect(signIn(null, data)).rejects.toThrow('redirect:/supplier');
+  });
+
+  it('отклоняет произвольный адрес вместо брифа', async () => {
+    mocks.profile.mockResolvedValue({
+      data: { role: 'owner', is_active: true, companies: { type: 'buyer' } },
+    });
+    const data = form();
+    data.set('brief', '//evil.example');
+    await expect(signIn(null, data)).rejects.toThrow('redirect:/buyer');
+  });
 });

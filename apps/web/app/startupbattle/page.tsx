@@ -1,3 +1,4 @@
+import { COMMISSION_DEFAULT_PCT } from '@qajet/engine/commission';
 import { cn } from '@qajet/ui/lib/cn';
 import { Reveal, ScrollReveal, Stagger } from '@qajet/ui/motion';
 import {
@@ -296,34 +297,41 @@ export default function StartupBattlePage() {
               когда заказ <span>исполнен.</span>
             </h2>
             <p>
-              Планируемая комиссия — за поиск поставщиков, сравнение предложений и сопровождение
-              заказа.
+              Сервисная наценка к стоимости товаров и работ поставщиков. Она покрывает подбор,
+              сравнение предложений и сопровождение закупки.
             </p>
             <div className={styles.commission}>
-              7–10<span>%</span>
+              {COMMISSION_DEFAULT_PCT}
+              <span>%</span>
             </div>
-            <p className={styles.modelNote}>Модель из питч-дека. Экономику проверяем в пилотах.</p>
+            <p className={styles.modelNote}>
+              Стартовая гипотеза пилота. Доставка рассчитывается отдельно.
+            </p>
           </ScrollReveal>
           <div className={styles.modelDetails}>
             <ScrollReveal className={cn(styles.example)}>
               <p className={styles.kicker}>Пример одного заказа</p>
               <div>
-                <span>Сумма заказа</span>
+                <span>Стоимость поставщиков</span>
                 <strong>
                   <MoneyCountUp value={750000} />
                 </strong>
               </div>
               <div>
-                <span>Комиссия QAJET</span>
-                <strong>7%</strong>
+                <span>Сервисная наценка</span>
+                <strong>{COMMISSION_DEFAULT_PCT}%</strong>
               </div>
               <div className={styles.exampleTotal}>
-                <span>Выручка QAJET</span>
+                <span>Доход сервиса до затрат</span>
                 <strong>
-                  <MoneyCountUp value={52500} />
+                  <MoneyCountUp value={Math.round((750000 * COMMISSION_DEFAULT_PCT) / 100)} />
                 </strong>
               </div>
-              <small>Выручка до операционных расходов, не прибыль.</small>
+              <small>
+                Цена клиенту до доставки:{' '}
+                {(750000 * (1 + COMMISSION_DEFAULT_PCT / 100)).toLocaleString('ru-RU')} ₸. Доход
+                сервиса не равен прибыли.
+              </small>
             </ScrollReveal>
             <ScrollReveal delay={0.08} className={cn(styles.market)}>
               <h3>Начинаем с повторяемых закупок</h3>
@@ -332,7 +340,8 @@ export default function StartupBattlePage() {
                 <IntCountUp value={225} /> млн ₸ <span>годового оборота заказов</span>
               </strong>
               <small>
-                Расчётный сценарий: 15,75 млн ₸ выручки при 7%. Не фактические продажи и не прогноз.
+                Расчётный объём закупок первого сегмента. Это не фактические продажи и не оценка
+                всего рынка.
               </small>
             </ScrollReveal>
           </div>

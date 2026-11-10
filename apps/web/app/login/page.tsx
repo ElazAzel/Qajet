@@ -14,6 +14,10 @@ import { LoginForm } from './login-form';
  */
 export const dynamic = 'force-dynamic';
 
-export default function LoginPage() {
-  return <LoginForm />;
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ prepared?: string | string[] }>;
+}) {
+  return <LoginForm resumeProgramBrief={(await searchParams).prepared === 'program'} />;
 }

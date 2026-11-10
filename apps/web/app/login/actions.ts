@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { parseProgramBrief, programRequestUrl } from '../lib/program-brief';
 
 /** Куда вести после входа — по роли и типу компании (agents.md §3). */
 async function redirectPathFor(
@@ -45,7 +46,8 @@ export async function signIn(
     await supabase.auth.signOut();
     return 'Профиль недоступен. Обратитесь к администратору QAJET.';
   }
-  redirect(path);
+  const brief = parseProgramBrief(formData.get('brief'));
+  redirect(path === '/buyer' && brief ? programRequestUrl() : path);
 }
 
 /**

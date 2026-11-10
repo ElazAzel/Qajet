@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('public landing opens from the production standalone server', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.getByRole('link', { name: /войти в систему/i })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^войти$/i })).toBeVisible();
 });
 
 /**
@@ -20,8 +20,8 @@ for (const viewport of [
     try {
       await page.goto('/');
       const heading = page.getByRole('heading', { level: 1 });
-      await expect(heading).toContainText('Скажите, что нужно купить');
-      const cta = page.getByRole('link', { name: /Обсудить закупку/ }).first();
+      await expect(heading).toContainText('Мерч и наборы');
+      const cta = page.getByRole('link', { name: /Собрать закупку/ }).first();
       for (const locator of [heading, cta]) {
         const box = await locator.boundingBox();
         expect(box && box.y + box.height <= viewport.height, 'в первом экране').toBe(true);

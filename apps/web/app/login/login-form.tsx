@@ -2,7 +2,12 @@
 
 import { Reveal } from '@qajet/ui/motion';
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
+import {
+  PROGRAM_BRIEF_STORAGE_KEY,
+  parseProgramBrief,
+  programBriefQuery,
+} from '../lib/program-brief';
 import { quickSignIn, signIn } from './actions';
 
 const DEMO_ACCOUNTS = [
@@ -12,16 +17,32 @@ const DEMO_ACCOUNTS = [
   { email: 'admin@demo.qajet.kz', label: 'Админ' },
 ] as const;
 
-export function LoginForm() {
+export function LoginForm({ resumeProgramBrief = false }: { resumeProgramBrief?: boolean }) {
   const [error, formAction, isPending] = useActionState(signIn, null);
+  const [brief, setBrief] = useState<string | null>(null);
+  useEffect(() => {
+    if (!resumeProgramBrief) return;
+    try {
+      const stored = parseProgramBrief(sessionStorage.getItem(PROGRAM_BRIEF_STORAGE_KEY));
+      if (stored) setBrief(programBriefQuery(stored));
+    } catch {
+      /* An unavailable browser store does not prevent sign-in. */
+    }
+  }, [resumeProgramBrief]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-page px-6">
       <Reveal className="w-full max-w-sm rounded-card border border-rule bg-surface p-6">
         <h1 className="text-lg font-extrabold text-ink">Вход в QAJET</h1>
         <p className="mt-1 text-fine text-muted">Один закупочный партнёр. Один вход.</p>
+        {brief && (
+          <p className="mt-3 text-fine text-purple">
+            После входа откроется подготовленная заявка. Перед отправкой вы проверите её состав.
+          </p>
+        )}
 
         <form action={formAction} className="mt-6 space-y-3">
+          {brief && <input type="hidden" name="brief" value={brief} />}
           <label className="block">
             <span className="text-fine text-muted">Email</span>
             <input
