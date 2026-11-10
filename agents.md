@@ -22,6 +22,20 @@ When evidence conflicts, record the conflict and prefer a reproducible test over
 a documentation claim. Use only the status words defined under «Release
 semantics» below.
 
+## B2B delivery plan and progress
+
+Before work on the B2B platform, read the full
+[2026-11-10 development plan](./docs/superpowers/plans/2026-11-10-qajet-b2b-platform.md)
+and the live [T01–T28 progress tracker](./docs/product/qajet-b2b-progress.md).
+The plan is the preserved owner-provided target, not proof of implementation.
+Its original baseline, pricing and migration numbers are historical; reconcile
+them with current code, ADRs, main and open PRs as recorded in the tracker.
+Do not silently override the source hierarchy or rewrite historical financial
+facts. At each meaningful step update the tracker with the task, exact SHA/PR,
+executed checks, remaining gates and next action. Do not mark work complete
+from file existence, a draft PR or a preview alone. Preserve other contributors'
+work and check current refs before publishing.
+
 ## Scope and commands
 
 - Install: `pnpm install`.
