@@ -435,6 +435,13 @@
       "when": 1794119412176,
       "tag": "0061_buyer_document_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794320000000,
+      "tag": "0062_qajet_commission_15",
+      "breakpoints": true
     }
   ]
 }
