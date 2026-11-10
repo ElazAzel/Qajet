@@ -224,6 +224,123 @@ export default function StartupBattlePage() {
           </div>
         </section>
 
+        <section id="technology" className={styles.section} aria-labelledby="technology-title">
+          <ScrollReveal className={cn(styles.sectionHeading)}>
+            <div>
+              <p className={styles.kicker}>Технология внутри</p>
+              <h2 id="technology-title">
+                Не чат-бот.
+                <br />
+                <span>Объяснимый подбор поставщиков.</span>
+              </h2>
+            </div>
+            <p>
+              Смысл технологии — снизить трудозатраты на закупку и обоснованно выбрать
+              исполнимый вариант. Решения проверяются по данным, а не генерируются из воздуха.
+            </p>
+          </ScrollReveal>
+          <div className={styles.engineGrid}>
+            {[
+              {
+                step: '01',
+                heading: 'Проверяем ограничения',
+                body: 'Категория, доступные технологии, тираж, город и сроки. Неподходящие исполнители не попадают в короткий список.',
+              },
+              {
+                step: '02',
+                heading: 'Ранжируем предложения',
+                body: 'Подбор учитывает историю ответов, соблюдение сроков и загрузку. Причину выбора можно объяснить.',
+              },
+              {
+                step: '03',
+                heading: 'Улучшаем по результатам',
+                body: 'Механизм обновляет веса подбора и прогноз сроков после закрытых заказов. Сравниваем стоимость всей закупки.',
+              },
+            ].map(({ step, heading, body }) => (
+              <ScrollReveal key={step} className={cn(styles.engineCard)}>
+                <span>{step}</span>
+                <h3>{heading}</h3>
+                <p>{body}</p>
+              </ScrollReveal>
+            ))}
+          </div>
+          <p className={styles.sourceNote}>
+            Алгоритмы и контур обучения реализованы в MVP. Пока нет подтверждённой статистики
+            коммерческого эффекта на реальных пилотах. Генеративный AI-ассистент — не активная
+            функция текущего продукта.
+          </p>
+        </section>
+
+        <section id="competition" className={styles.section} aria-labelledby="competition-title">
+          <ScrollReveal className={cn(styles.sectionHeading)}>
+            <div>
+              <p className={styles.kicker}>Конкурентная среда</p>
+              <h2 id="competition-title">
+                Мерч под ключ уже существует.
+                <br />
+                <span>Чем будет отличаться QAJET?</span>
+              </h2>
+            </div>
+            <p>
+              Брендирование, подбор подарков и доставка не являются уникальными преимуществами.
+              QAJET строит управляемый процесс сравнения нескольких поставщиков и исполнения заказа.
+            </p>
+          </ScrollReveal>
+          <div className={styles.competitorGrid}>
+            {[
+              {
+                name: 'NAIRA Corporate',
+                type: 'Казахстан',
+                body: 'Онлайн-подбор корпоративных подарков под бюджет, брендирование и сопровождение.',
+                url: 'https://corporate.naira.kz/',
+              },
+              {
+                name: 'ÖRNE',
+                type: 'Казахстан',
+                body: 'Поиск товаров и производителей, варианты под задачу, производство и логистика.',
+                url: 'https://orne.kz/services/sourcing',
+              },
+              {
+                name: 'ADVERTAU',
+                type: 'Казахстан',
+                body: 'Мерч, полиграфия, корпоративные подарки и реализация проекта под ключ.',
+                url: 'https://advertau.kz/',
+              },
+              {
+                name: 'SwagUp',
+                type: 'Международный',
+                body: 'Платформа корпоративного мерча: комплектация, хранение и выполнение отправок.',
+                url: 'https://www.swagup.com/',
+              },
+              {
+                name: 'Sendoso',
+                type: 'Международный',
+                body: 'Корпоративные подарки, мерч и автоматизация логистики и закупочных сценариев.',
+                url: 'https://www.sendoso.com/merch',
+              },
+            ].map(({ name, type, body, url }) => (
+              <ScrollReveal key={name} className={cn(styles.competitorCard)}>
+                <div className={styles.competitorMeta}>
+                  <span>{type}</span>
+                  <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`Сайт ${name}`}>
+                    <ArrowUpRight size={16} aria-hidden="true" />
+                  </a>
+                </div>
+                <h3>{name}</h3>
+                <p>{body}</p>
+              </ScrollReveal>
+            ))}
+          </div>
+          <ScrollReveal className={cn(styles.competitionAdvantage)}>
+            <strong>Гипотеза преимущества QAJET</strong>
+            <p>
+              Один бриф → несколько сопоставимых планов → единый ответственный за результат.
+              Проверяем на пилотах, удаётся ли снизить минуты закупщика, количество уточнений
+              и отклонения от сроков.
+            </p>
+          </ScrollReveal>
+        </section>
+
         <section id="progress" className={styles.section} aria-labelledby="progress-title">
           <ScrollReveal className={cn(styles.sectionHeading)}>
             <div>
@@ -286,6 +403,36 @@ export default function StartupBattlePage() {
             <ArrowUpRight aria-hidden="true" size={18} />
             <strong>2 повторных клиента</strong>
           </ScrollReveal>
+        </section>
+
+        <section className={styles.section} aria-labelledby="prize-title">
+          <ScrollReveal className={cn(styles.sectionHeading)}>
+            <div>
+              <p className={styles.kicker}>Pizza Pitch · 500 000 ₸</p>
+              <h2 id="prize-title">
+                Приз — не на рекламу идеи.
+                <br />
+                <span>На проверку реальных закупок.</span>
+              </h2>
+            </div>
+            <p>План использования возможного приза на пилотную проверку спроса и экономики.</p>
+          </ScrollReveal>
+          <div className={styles.prizeGrid}>
+            {[
+              { amount: '200 000 ₸', label: 'Пилотные заказы и образцы' },
+              { amount: '150 000 ₸', label: 'Контроль качества и логистика' },
+              { amount: '100 000 ₸', label: 'Привлечение и интервью B2B-клиентов' },
+              { amount: '50 000 ₸', label: 'Замеры эффективности и инфраструктура' },
+            ].map(({ amount, label }) => (
+              <ScrollReveal key={amount} className={cn(styles.prizeCard)}>
+                <strong>{amount}</strong>
+                <span>{label}</span>
+              </ScrollReveal>
+            ))}
+          </div>
+          <p className={styles.sourceNote}>
+            Это план расходования призовых, а не уже понесённые расходы или достигнутые результаты.
+          </p>
         </section>
 
         <section className={`${styles.section} ${styles.economics}`} aria-labelledby="model-title">
@@ -393,7 +540,7 @@ export default function StartupBattlePage() {
                 Давайте начнём
                 <br />с вашей <span>следующей закупки.</span>
               </h2>
-              <p>Ищем 5 пилотных компаний и 1 млн ₸ на тестирование и отладку процесса.</p>
+              <p>Ищем 5 пилотных компаний. Возможный приз 500 000 ₸ направим на первые заказы и измерение эффективности.</p>
               <a
                 href={contact}
                 target="_blank"

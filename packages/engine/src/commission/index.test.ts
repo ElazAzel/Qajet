@@ -15,8 +15,8 @@ describe('isValidCommissionPct', () => {
   });
 
   it('отклоняет значения вне диапазона', () => {
-    expect(isValidCommissionPct(20)).toBe(false);
-    expect(isValidCommissionPct(25)).toBe(false);
+    expect(isValidCommissionPct(9)).toBe(false);
+    expect(isValidCommissionPct(16)).toBe(false);
     expect(isValidCommissionPct(0)).toBe(false);
   });
 
@@ -29,43 +29,43 @@ describe('isValidCommissionPct', () => {
 describe('suggestCommissionPct', () => {
   it('ниже порога образцов — null', () => {
     const samples = [
-      { category: 'merch', pct: 22 },
-      { category: 'merch', pct: 22 },
+      { category: 'merch', pct: 12 },
+      { category: 'merch', pct: 12 },
     ];
     expect(suggestCommissionPct('merch', samples)).toBeNull();
   });
 
   it('на пороге — усредняет и округляет', () => {
     const samples = [
-      { category: 'merch', pct: 21 },
-      { category: 'merch', pct: 22 },
-      { category: 'merch', pct: 22 },
+      { category: 'merch', pct: 10 },
+      { category: 'merch', pct: 12 },
+      { category: 'merch', pct: 12 },
     ];
-    // (21+22+22)/3 = 21.666... -> round -> 22
-    expect(suggestCommissionPct('merch', samples)).toEqual({ pct: 22, sampleCount: 3 });
+    // (10+12+12)/3 = 11.333... -> round -> 11
+    expect(suggestCommissionPct('merch', samples)).toEqual({ pct: 11, sampleCount: 3 });
   });
 
   it('учитывает только совпадающую категорию', () => {
     const samples = [
-      { category: 'merch', pct: 24 },
-      { category: 'merch', pct: 24 },
-      { category: 'merch', pct: 24 },
-      { category: 'printing', pct: 21 },
-      { category: 'printing', pct: 21 },
+      { category: 'merch', pct: 15 },
+      { category: 'merch', pct: 15 },
+      { category: 'merch', pct: 15 },
+      { category: 'printing', pct: 10 },
+      { category: 'printing', pct: 10 },
     ];
-    expect(suggestCommissionPct('merch', samples)).toEqual({ pct: 24, sampleCount: 3 });
+    expect(suggestCommissionPct('merch', samples)).toEqual({ pct: 15, sampleCount: 3 });
     expect(suggestCommissionPct('printing', samples)).toBeNull();
   });
 
   it('клампит результат усреднения в допустимый диапазон', () => {
     // Гипотетический случай данных вне диапазона (не должен встречаться
     // в реальности — override всегда валидируется isValidCommissionPct
-    // перед записью), но функция не должна вернуть значение вне [21,24].
+    // перед записью), но функция не должна вернуть значение вне [10,15].
     const samples = [
       { category: 'merch', pct: 30 },
       { category: 'merch', pct: 30 },
       { category: 'merch', pct: 30 },
     ];
-    expect(suggestCommissionPct('merch', samples)).toEqual({ pct: 24, sampleCount: 3 });
+    expect(suggestCommissionPct('merch', samples)).toEqual({ pct: 15, sampleCount: 3 });
   });
 });

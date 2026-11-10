@@ -62,11 +62,11 @@ function PlanLineRow({
           <p className="numeric text-fine text-ink">{formatKzt(line.commissionKzt)}</p>
         </div>
         <label className="ml-auto flex items-center gap-2">
-          <span className="text-micro font-semibold text-muted">%, 21-24</span>
+          <span className="text-micro font-semibold text-muted">%, 10–15</span>
           <input
             type="number"
-            min={21}
-            max={24}
+            min={10}
+            max={15}
             value={pct}
             onChange={(e) => setPct(e.target.value)}
             className={inputClass}

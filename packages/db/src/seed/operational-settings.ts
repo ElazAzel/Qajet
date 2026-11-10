@@ -7,7 +7,7 @@
  */
 
 /** Плейсхолдер до решения по тарифам (agents.md §17: "финальный процент комиссии — параметр, не константа"). */
-export const COMMISSION_RATE_PCT = 23;
+export const COMMISSION_RATE_PCT = 15;
 /** Ставка КПН РК, 2026 (agents.md §11.4). */
 export const CIT_RATE_PCT = 20;
 /** Стоимость часа закупщика (agents.md §9) — параметр экономики, правится админом вживую. */

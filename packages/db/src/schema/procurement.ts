@@ -585,9 +585,9 @@ export const planLines = pgTable(
     lineTotalKzt: bigint('line_total_kzt', { mode: 'number' }).notNull(),
     /** Комиссия по этой конкретной позиции — по умолчанию плоский процент
      *  из settings (proposePlan), консьерж может задать другой в диапазоне
-     *  21-24% (packages/engine/src/commission). Снимок на момент правки —
+     *  10-15% (packages/engine/src/commission). Снимок на момент правки —
      *  agents.md §7 правило 8: задним числом не меняется, только вперёд. */
-    commissionPct: real('commission_pct').notNull().default(23),
+    commissionPct: real('commission_pct').notNull().default(15),
     commissionKzt: bigint('commission_kzt', { mode: 'number' }).notNull().default(0),
     ...timestamps,
   },

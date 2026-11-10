@@ -1,16 +1,16 @@
 /**
  * Комиссия платформы по позиции плана — по умолчанию плоский процент из
  * `settings` (agents.md §7), но консьерж может задать другой процент для
- * конкретной позиции в диапазоне 21-24% (объём, сложность исполнения и
+ * конкретной позиции в диапазоне 10-15% (объём, сложность исполнения и
  * т.д.). Здесь — только чистые правила диапазона и подсказка на основе
  * прошлых правок консьержа; сама запись и агрегация — в apps/web
  * (server actions), это исключительно бизнес-правило без побочных
  * эффектов, тем же приёмом, что normalizeText/resolveAlias в intake.
  */
 
-export const COMMISSION_DEFAULT_PCT = 23;
-export const COMMISSION_MIN_PCT = 21;
-export const COMMISSION_MAX_PCT = 24;
+export const COMMISSION_DEFAULT_PCT = 15;
+export const COMMISSION_MIN_PCT = 10;
+export const COMMISSION_MAX_PCT = 15;
 
 /** Тот же порог, что ALIAS_AUTO_APPLY_HITS_THRESHOLD (intake/parse.ts) —
  *  подсказка появляется только когда накопилось достаточно решений

@@ -34,7 +34,7 @@ test('cost breakdown and product tour work with the keyboard', async ({ page }) 
   await page.locator('summary').focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('table')).toBeVisible();
-  await expect(page.getByRole('cell', { name: '82 350 ₸' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '153 000 ₸' })).toBeVisible();
   await page.getByRole('tab', { name: 'Покупатель', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Консьерж', exact: true })).toBeFocused();

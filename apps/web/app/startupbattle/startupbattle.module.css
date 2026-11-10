@@ -847,6 +847,137 @@
   display: flex;
   align-items: center;
 }
+/* Technology, competition and pilot-use sections on StartupBattle. */
+.engineGrid,
+.competitorGrid,
+.prizeGrid {
+  display: grid;
+  gap: 14px;
+}
+.engineGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.competitorGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.prizeGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.engineCard,
+.competitorCard,
+.prizeCard {
+  min-width: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-card);
+  padding: 24px;
+}
+.engineCard > span {
+  color: var(--color-purple);
+  font-size: 12px;
+  font-weight: 700;
+  display: block;
+  margin-bottom: 26px;
+}
+.engineCard h3,
+.competitorCard h3 {
+  font-size: 16px;
+  font-weight: 700;
+}
+.engineCard p,
+.competitorCard p {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--color-muted);
+  margin-top: 12px;
+}
+.competitorMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 10px;
+}
+.competitorMeta > span {
+  font-size: 11px;
+  color: var(--color-purple);
+}
+.competitorMeta a {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  color: var(--color-ink);
+}
+.competitorMeta a:hover,
+.competitorMeta a:focus-visible {
+  border-color: var(--color-purple);
+  color: var(--color-purple);
+}
+.competitionAdvantage {
+  background: var(--color-purple-10);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  margin-top: 16px;
+}
+.competitionAdvantage strong {
+  font-size: 15px;
+}
+.competitionAdvantage p {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 9px;
+}
+.prizeCard strong {
+  display: block;
+  color: var(--color-purple);
+  font-size: 24px;
+  letter-spacing: -0.6px;
+  font-variant-numeric: tabular-nums;
+}
+.prizeCard span {
+  display: block;
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+@media (max-width: 950px) {
+  .competitorGrid,
+  .prizeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .engineGrid,
+  .competitorGrid {
+    grid-template-columns: 1fr;
+  }
+  .prizeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .engineCard,
+  .competitorCard,
+  .prizeCard {
+    padding: 20px;
+  }
+  .engineCard > span,
+  .competitorMeta {
+    margin-bottom: 15px;
+  }
+  .prizeCard strong {
+    font-size: 21px;
+  }
+}
+@media (max-width: 380px) {
+  .prizeGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1050px) {
   .hero {
     padding: 36px 28px;
