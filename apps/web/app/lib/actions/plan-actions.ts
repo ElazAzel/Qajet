@@ -18,7 +18,7 @@ import { loadOrder } from './order-actions';
  * Комиссия по позиции плана — agents.md §7, задача «комиссия платформы».
  * По умолчанию каждая plan_lines строка получает плоскую ставку из settings
  * (proposePlan(), packages/db/migrations 0012-0014). Здесь — точечная
- * правка консьержем в диапазоне 21-24% (объём, сложность исполнения),
+ * правка консьержем в диапазоне 10-15% (объём, сложность исполнения),
  * подсказка на основе прошлых правок (learning_events, тот же приём, что
  * extraction_fix/extraction_aliases в Classification Engine) — подсказка,
  * не авто-применение, решение остаётся за человеком.
@@ -70,7 +70,7 @@ export async function updatePlanLineCommission(
     return { ok: false, error: 'Только консьерж может менять комиссию по позиции' };
   }
   if (!isValidCommissionPct(pct)) {
-    return { ok: false, error: 'Комиссия по позиции — от 21% до 24%' };
+    return { ok: false, error: 'Комиссия по позиции — от 10% до 15%' };
   }
 
   const supabase = await createSupabaseServerClient();
