@@ -1,4 +1,5 @@
 import { type CombineResult, combine, type QuoteOffer } from '@qajet/engine/combine';
+import { COMMISSION_DEFAULT_PCT, isValidCommissionPct } from '@qajet/engine/commission';
 import { applyReliability } from '@qajet/engine/leadtime';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { deliveryRoute } from './delivery-route';
@@ -30,7 +31,6 @@ import { loadSupplierReliabilityMap } from './recalibration';
  * глубину), но эта функция не должна давать шанс проверить это на практике.
  */
 
-const FALLBACK_COMMISSION_RATE_PCT = 23;
 const FALLBACK_CIT_RATE_PCT = 20;
 
 export interface ComparisonItem {
@@ -50,7 +50,7 @@ export interface RequestComparison {
   result: CombineResult;
   /** Ставка, которой реально считались варианты — proposePlan() переиспользует
    *  её при вставке plan_lines, без второго похода в settings (комиссия по
-   *  умолчанию на каждой позиции, консьерж правит потом точечно, 21-24%). */
+   *  умолчанию на каждой позиции, консьерж правит потом в диапазоне движка). */
   commissionRatePct: number;
 }
 
@@ -132,7 +132,13 @@ export async function loadRequestComparison(
       'logistics_delivery_kzt_intercity',
     ]);
   const settingsMap = new Map((settingsRows ?? []).map((s) => [s.key, s.value as number]));
-  const commissionRatePct = settingsMap.get('commission_rate_pct') ?? FALLBACK_COMMISSION_RATE_PCT;
+  const configuredCommissionPct = settingsMap.get('commission_rate_pct');
+  // Старое или повреждённое значение settings не должно попадать в новый план.
+  // Исторические планы загружаются отдельно и здесь не пересчитываются.
+  const commissionRatePct =
+    typeof configuredCommissionPct === 'number' && isValidCommissionPct(configuredCommissionPct)
+      ? configuredCommissionPct
+      : COMMISSION_DEFAULT_PCT;
   const citRatePct = settingsMap.get('cit_rate_pct') ?? FALLBACK_CIT_RATE_PCT;
   const localBufferDays = settingsMap.get('logistics_buffer_days_almaty');
   const intercityBufferDays = settingsMap.get('logistics_buffer_days_intercity');

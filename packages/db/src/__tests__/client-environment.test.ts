@@ -71,7 +71,7 @@ describeIfConfigured('клиентское окружение', () => {
         { key: string; value: unknown }[]
       >`select key, value from public.settings`;
       const byKey = new Map(settings.map((row) => [row.key, row.value]));
-      expect(byKey.get('commission_rate_pct')).toBe(23);
+      expect(byKey.get('commission_rate_pct')).toBe(15);
       expect(byKey.get('rfq_batch_size_per_item')).toBe(5);
       expect(byKey.get('qajet_requisites')).toEqual(REQUISITES);
       const [admin] = await tx<{ role: string; company_id: string | null }[]>`
@@ -83,11 +83,11 @@ describeIfConfigured('клиентское окружение', () => {
       expect(() => assertDemoDataAllowed(kind, 'db:reset')).toThrow(/клиентск/);
 
       // Повтор безопасен и не перетирает параметры, поправленные вживую.
-      await tx`update public.settings set value = '22'::jsonb where key = 'commission_rate_pct'`;
+      await tx`update public.settings set value = '12'::jsonb where key = 'commission_rate_pct'`;
       await writeClientEnvironment(tx, input);
       const [rate] = await tx<{ value: unknown }[]>`
         select value from public.settings where key = 'commission_rate_pct'`;
-      expect(rate?.value).toBe(22);
+      expect(rate?.value).toBe(12);
       const [admins] = await tx<{ count: number }[]>`
         select count(*)::int as count from public.users where id = ${adminId}`;
       expect(admins?.count).toBe(1);
