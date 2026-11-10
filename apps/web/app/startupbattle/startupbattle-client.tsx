@@ -93,7 +93,7 @@ const variantTotals = variants.map((variant) =>
   variant.costs.reduce<number>((sum, cost) => sum + cost, 0),
 );
 const maxVariantTotal = Math.max(...variantTotals);
-const comparisonDifference = Math.abs(variantTotals[0] - variantTotals[1]);
+const comparisonDifference = Math.abs((variantTotals[0] ?? 0) - (variantTotals[1] ?? 0));
 
 export function Comparison() {
   return (
